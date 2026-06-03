@@ -1,0 +1,2 @@
+- [API Zod barrel exports](api-zod-barrel.md) — collision fix: never `export * from "./generated/types"` wholesale; list individual type files to skip colliders.
+- [Orval params naming](orval-params-naming.md) — path-param Zod schemas use `GetBookParams`; query-param-only Zod schemas use `SearchUsersQueryParams` (not `SearchUsersParams` which is a TS type only).

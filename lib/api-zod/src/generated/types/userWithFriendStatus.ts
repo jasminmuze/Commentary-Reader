@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface UserWithFriendStatus {
+  id: number;
+  username: string;
+  avatarColor: string;
+  createdAt: Date;
+  isFriend: boolean;
 }

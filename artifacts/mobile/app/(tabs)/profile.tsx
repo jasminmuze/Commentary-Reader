@@ -1,0 +1,169 @@
+import React from "react";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useColors } from "@/hooks/useColors";
+import { useUser } from "@/context/UserContext";
+import { UserAvatar } from "@/components/UserAvatar";
+
+const USER_ID_KEY = "bookmarks_user_id";
+
+export default function ProfileScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { user } = useUser();
+
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem(USER_ID_KEY);
+    // In a real app, reset navigation. For now, force a reload.
+  };
+
+  const memberSince = user
+    ? new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : "";
+
+  return (
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={{ paddingBottom: bottomPad + 80 }}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
+        <Text style={[styles.title, { color: colors.foreground }]}>Profile</Text>
+      </View>
+
+      {/* Avatar + name */}
+      <View style={[styles.profileSection, { borderBottomColor: colors.border }]}>
+        <UserAvatar
+          username={user?.username ?? ""}
+          avatarColor={user?.avatarColor ?? colors.primary}
+          size={72}
+        />
+        <Text style={[styles.profileName, { color: colors.foreground }]}>
+          {user?.username}
+        </Text>
+        <Text style={[styles.profileSince, { color: colors.mutedForeground }]}>
+          Member since {memberSince}
+        </Text>
+      </View>
+
+      {/* About */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>ABOUT BOOKMARKS</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+          <Text style={[styles.aboutText, { color: colors.foreground }]}>
+            Bookmarks is a social reading app that lets you discover what others think about the passages that moved them most. Text glows brighter where more readers have commented — explore those highlights to find the best thoughts.
+          </Text>
+        </View>
+      </View>
+
+      {/* How highlights work */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>HOW HIGHLIGHTS WORK</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius, gap: 12 }]}>
+          {[
+            { label: "No glow", subtitle: "No comments yet", intensity: 0 },
+            { label: "Soft glow", subtitle: "1–2 comments", intensity: 0.2 },
+            { label: "Warm glow", subtitle: "3–5 comments", intensity: 0.45 },
+            { label: "Bright glow", subtitle: "6–10 comments", intensity: 0.65 },
+            { label: "Blazing", subtitle: "11+ comments", intensity: 0.85 },
+          ].map((item) => (
+            <View key={item.label} style={styles.highlightRow}>
+              <View
+                style={[
+                  styles.highlightSwatch,
+                  {
+                    backgroundColor: item.intensity > 0
+                      ? `rgba(212, 137, 26, ${item.intensity})`
+                      : colors.muted,
+                    borderRadius: 4,
+                  },
+                ]}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.highlightLabel, { color: colors.foreground }]}>{item.label}</Text>
+                <Text style={[styles.highlightSub, { color: colors.mutedForeground }]}>{item.subtitle}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "700",
+    letterSpacing: -0.5,
+  },
+  profileSection: {
+    alignItems: "center",
+    paddingVertical: 32,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  profileName: {
+    fontSize: 24,
+    fontWeight: "700",
+    letterSpacing: -0.4,
+  },
+  profileSince: {
+    fontSize: 13,
+  },
+  section: {
+    paddingHorizontal: 16,
+    paddingTop: 24,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    marginBottom: 10,
+    marginLeft: 4,
+  },
+  card: {
+    padding: 16,
+    borderWidth: 1,
+  },
+  aboutText: {
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  highlightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  highlightSwatch: {
+    width: 48,
+    height: 24,
+  },
+  highlightLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  highlightSub: {
+    fontSize: 12,
+    marginTop: 1,
+  },
+});

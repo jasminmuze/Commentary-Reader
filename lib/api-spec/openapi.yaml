@@ -3,20 +3,27 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Bookmarks - Social Ebook Reader API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: books
+    description: Book operations
+  - name: passages
+    description: Passage operations
+  - name: comments
+    description: Comment operations
+  - name: users
+    description: User operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +31,305 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /books:
+    get:
+      operationId: listBooks
+      tags: [books]
+      summary: List all books
+      responses:
+        "200":
+          description: List of books
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Book"
+
+  /books/{bookId}:
+    get:
+      operationId: getBook
+      tags: [books]
+      summary: Get a book with its passages and highlight intensities
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Book with passages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookDetail"
+        "404":
+          description: Book not found
+
+  /passages/{passageId}/comments:
+    get:
+      operationId: getPassageComments
+      tags: [comments]
+      summary: Get comments for a passage
+      parameters:
+        - name: passageId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: filter
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [best, friends, all]
+            default: all
+      responses:
+        "200":
+          description: Comments list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+    post:
+      operationId: createComment
+      tags: [comments]
+      summary: Create a comment on a passage
+      parameters:
+        - name: passageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentInput"
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+
+  /comments/{commentId}/like:
+    post:
+      operationId: likeComment
+      tags: [comments]
+      summary: Like a comment
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRef"
+      responses:
+        "200":
+          description: Like toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LikeResult"
+
+  /comments/{commentId}/save:
+    post:
+      operationId: saveComment
+      tags: [comments]
+      summary: Save/unsave a comment
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRef"
+      responses:
+        "200":
+          description: Save toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveResult"
+
+  /users:
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create or get a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "200":
+          description: User created or retrieved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{userId}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get a user by ID
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: Not found
+
+  /users/search:
+    get:
+      operationId: searchUsers
+      tags: [users]
+      summary: Search users by username
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserWithFriendStatus"
+
+  /users/{userId}/friends:
+    get:
+      operationId: getFriends
+      tags: [users]
+      summary: Get friends of a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Friends list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: addFriend
+      tags: [users]
+      summary: Add a friend
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FriendInput"
+      responses:
+        "200":
+          description: Friend added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{userId}/friends/{friendId}:
+    delete:
+      operationId: removeFriend
+      tags: [users]
+      summary: Remove a friend
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: friendId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Friend removed
+
+  /users/{userId}/saved-comments:
+    get:
+      operationId: getSavedComments
+      tags: [users]
+      summary: Get saved comments for a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Saved comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +340,160 @@ components:
       required:
         - status
 
+    Book:
+      type: object
+      required: [id, title, author, description, coverColor, totalPassages]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        description:
+          type: string
+        coverColor:
+          type: string
+        totalPassages:
+          type: integer
+
+    Passage:
+      type: object
+      required: [id, bookId, orderIndex, text, commentCount, highlightIntensity]
+      properties:
+        id:
+          type: integer
+        bookId:
+          type: integer
+        orderIndex:
+          type: integer
+        text:
+          type: string
+        commentCount:
+          type: integer
+        highlightIntensity:
+          type: number
+          description: 0.0 to 1.0 representing highlight strength
+
+    BookDetail:
+      type: object
+      required: [id, title, author, description, coverColor, passages]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        description:
+          type: string
+        coverColor:
+          type: string
+        passages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Passage"
+
+    Comment:
+      type: object
+      required: [id, passageId, userId, username, avatarColor, text, likeCount, likedByMe, savedByMe, createdAt]
+      properties:
+        id:
+          type: integer
+        passageId:
+          type: integer
+        userId:
+          type: integer
+        username:
+          type: string
+        avatarColor:
+          type: string
+        text:
+          type: string
+        likeCount:
+          type: integer
+        likedByMe:
+          type: boolean
+        savedByMe:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    CommentInput:
+      type: object
+      required: [userId, text]
+      properties:
+        userId:
+          type: integer
+        text:
+          type: string
+          minLength: 1
+
+    LikeResult:
+      type: object
+      required: [liked, likeCount]
+      properties:
+        liked:
+          type: boolean
+        likeCount:
+          type: integer
+
+    SaveResult:
+      type: object
+      required: [saved]
+      properties:
+        saved:
+          type: boolean
+
+    UserRef:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: integer
+
+    User:
+      type: object
+      required: [id, username, avatarColor, createdAt]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        avatarColor:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    UserWithFriendStatus:
+      type: object
+      required: [id, username, avatarColor, createdAt, isFriend]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        avatarColor:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        isFriend:
+          type: boolean
+
+    UserInput:
+      type: object
+      required: [username]
+      properties:
+        username:
+          type: string
+          minLength: 2
+
+    FriendInput:
+      type: object
+      required: [friendId]
+      properties:
+        friendId:
+          type: integer

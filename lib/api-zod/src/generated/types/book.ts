@@ -6,6 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface Book {
+  id: number;
+  title: string;
+  author: string;
+  description: string;
+  coverColor: string;
+  totalPassages: number;
 }
