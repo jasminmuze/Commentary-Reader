@@ -55,6 +55,7 @@ Bookmarks is a social ebook reader: users upload their own EPUB files, read them
 ## Gotchas
 
 - After `pnpm --filter @workspace/api-spec run codegen`, generated `useGetX` hooks require an explicit `queryKey` whenever you pass `query` options — use the `getGetXQueryKey(...)` helper.
+- Codegen + Metro race: while Orval is cleaning its output folder mid-codegen, Metro can bundle and cache an `Unable to resolve module ./generated/api` error that persists even after the files reappear. Restart the `artifacts/mobile: expo` workflow after running codegen to clear it.
 - Do NOT install `@epubjs-react-native/file-system` or `@epubjs-react-native/expo-file-system`; use the local `hooks/useFileSystem.ts` (imports from `expo-file-system/legacy`).
 - `lib/api-zod/src/index.ts` is hand-maintained — never `export * from "./generated/types"` wholesale (name collisions); list individual files.
 - `artifacts/mockup-sandbox` has pre-existing React 19 ref-type typecheck errors in `calendar.tsx`/`spinner.tsx`, unrelated to this app.
