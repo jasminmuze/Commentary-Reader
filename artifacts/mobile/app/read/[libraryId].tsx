@@ -218,7 +218,11 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
   }, []);
 
   const topPad = insets.top;
-  const src = apiUrl(entry.epubUrl);
+  const raw = apiUrl(entry.epubUrl);
+  // @epubjs-react-native/core detects SourceType.EPUB by checking source.includes('.epub').
+  // New uploads already have .epub in the path; for older entries without it, append a
+  // harmless query hint so the library can identify the source type correctly.
+  const src = raw.includes('.epub') ? raw : `${raw}${raw.includes('?') ? '&' : '?'}x=.epub`;
   const subtitle = canonicalBookId
     ? anchoring
       ? "커뮤니티 하이라이트 표시 중…"
