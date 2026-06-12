@@ -23,6 +23,7 @@ export * from "./generated/types/matchResultStatus";
 export * from "./generated/types/quote";
 export * from "./generated/types/saveResult";
 export * from "./generated/types/searchUsersParams";
+export * from "./generated/types/updateReadingLocationInput";
 export * from "./generated/types/user";
 export * from "./generated/types/userInput";
 export * from "./generated/types/userRef";

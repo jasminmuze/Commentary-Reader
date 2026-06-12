@@ -42,6 +42,7 @@ import type {
   Quote,
   SaveResult,
   SearchUsersParams,
+  UpdateReadingLocationInput,
   User,
   UserInput,
   UserRef,
@@ -1137,6 +1138,78 @@ export const useMatchLibraryEntry = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getMatchLibraryEntryMutationOptions(options));
+    }
+
+export const getUpdateReadingLocationUrl = (libraryId: number,) => {
+
+
+
+
+  return `/api/library/${libraryId}/location`
+}
+
+/**
+ * @summary Save the reader's last reading location (CFI)
+ */
+export const updateReadingLocation = async (libraryId: number,
+    updateReadingLocationInput: UpdateReadingLocationInput, options?: RequestInit): Promise<LibraryEntry> => {
+
+  return customFetch<LibraryEntry>(getUpdateReadingLocationUrl(libraryId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateReadingLocationInput,)
+  }
+);}
+
+
+
+
+export const getUpdateReadingLocationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateReadingLocation>>, TError,{libraryId: number;data: BodyType<UpdateReadingLocationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateReadingLocation>>, TError,{libraryId: number;data: BodyType<UpdateReadingLocationInput>}, TContext> => {
+
+const mutationKey = ['updateReadingLocation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateReadingLocation>>, {libraryId: number;data: BodyType<UpdateReadingLocationInput>}> = (props) => {
+          const {libraryId,data} = props ?? {};
+
+          return  updateReadingLocation(libraryId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateReadingLocationMutationResult = NonNullable<Awaited<ReturnType<typeof updateReadingLocation>>>
+    export type UpdateReadingLocationMutationBody = BodyType<UpdateReadingLocationInput>
+    export type UpdateReadingLocationMutationError = ErrorType<void>
+
+    /**
+ * @summary Save the reader's last reading location (CFI)
+ */
+export const useUpdateReadingLocation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateReadingLocation>>, TError,{libraryId: number;data: BodyType<UpdateReadingLocationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateReadingLocation>>,
+        TError,
+        {libraryId: number;data: BodyType<UpdateReadingLocationInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateReadingLocationMutationOptions(options));
     }
 
 export const getGetUserLibraryUrl = (userId: number,) => {

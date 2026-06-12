@@ -12,6 +12,8 @@ export const userLibraryTable = pgTable("user_library", {
   originalTitle: text("original_title"),
   originalAuthor: text("original_author"),
   originalIsbn: text("original_isbn"),
+  // Last reading position (EPUB CFI) for the owning user, saved as they read.
+  lastReadingLocation: text("last_reading_location"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

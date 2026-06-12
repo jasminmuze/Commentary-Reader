@@ -20,6 +20,8 @@ export interface LibraryEntry {
   originalAuthor: string | null;
   /** @nullable */
   originalIsbn: string | null;
+  /** @nullable */
+  lastReadingLocation: string | null;
   createdAt: Date;
   book: Book | null;
 }

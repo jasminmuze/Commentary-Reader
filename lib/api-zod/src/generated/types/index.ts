@@ -31,6 +31,7 @@ export * from './matchResultStatus';
 export * from './quote';
 export * from './saveResult';
 export * from './searchUsersParams';
+export * from './updateReadingLocationInput';
 export * from './user';
 export * from './userInput';
 export * from './userRef';

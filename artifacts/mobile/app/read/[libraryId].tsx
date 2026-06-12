@@ -13,12 +13,13 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { Reader, ReaderProvider, useReader } from "@epubjs-react-native/core";
-import type { Annotation, SearchResult } from "@epubjs-react-native/core";
+import type { Annotation, Location, SearchResult } from "@epubjs-react-native/core";
 import {
   useGetLibraryEntry,
   useGetBookQuotes,
   useCreateQuote,
   useToggleHighlight,
+  useUpdateReadingLocation,
   getGetBookQuotesQueryKey,
   getGetLibraryEntryQueryKey,
 } from "@workspace/api-client-react";
@@ -48,6 +49,8 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
   const { addAnnotation, search } = useReader();
   const createQuote = useCreateQuote();
   const toggleHighlight = useToggleHighlight();
+  const updateLocation = useUpdateReadingLocation();
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
@@ -195,6 +198,25 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
     return true;
   }, [ensureMatched, canonicalBookId, createQuote]);
 
+  // Debounce-persist the reading position so the book reopens where it was left.
+  const handleLocationChange = useCallback(
+    (_total: number, location: Location) => {
+      const cfi = location?.start?.cfi;
+      if (!cfi) return;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        updateLocation.mutate({ libraryId, data: { location: cfi } });
+      }, 1500);
+    },
+    [updateLocation, libraryId]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
+
   const topPad = insets.top;
   const src = apiUrl(entry.epubUrl);
   const subtitle = canonicalBookId
@@ -227,7 +249,9 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
           src={src}
           fileSystem={useFileSystem}
           enableSelection
+          initialLocation={entry.lastReadingLocation ?? undefined}
           onReady={handleReady}
+          onLocationChange={handleLocationChange}
           onSearch={handleSearch}
           onPressAnnotation={handlePressAnnotation}
           menuItems={[

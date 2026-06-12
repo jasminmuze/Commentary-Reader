@@ -20,7 +20,7 @@ Bookmarks is a social ebook reader: users upload their own EPUB files, read them
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
-- Storage: Replit Object Storage (`expo_object_storage` blueprint) — public EPUB uploads
+- Storage: Replit Object Storage (`expo_object_storage` blueprint) — owner-private EPUB uploads (ACL-gated)
 - EPUB rendering: `@epubjs-react-native/core` + `react-native-webview`
 
 ## Where things live
@@ -38,6 +38,8 @@ Bookmarks is a social ebook reader: users upload their own EPUB files, read them
 - No `highlightCount` denormalization — counts are computed via GROUP BY on read.
 - The reader matches a quote across editions by searching a distinctive LEADING SUBSTRING (~first 8 words), not the full quote, to survive punctuation/hyphenation drift between editions.
 - The WebView reader runs on device / Expo Go only, NOT the web preview (accepted limitation). It is platform-guarded with a fallback on web.
+- Uploaded EPUBs use a `private` object ACL with `owner = userId`. `GET /api/objects/*` enforces the ACL via `canAccessObjectEntity`; `LibraryEntry.epubUrl` carries `?userId=` so the owner's WebView fetch passes. The app has no real auth (userId is client-supplied) — this is best-effort within that model; true authz is a follow-up.
+- Reading location is persisted per library entry: `userLibrary.lastReadingLocation` (EPUB CFI). The reader passes it to `<Reader initialLocation>` to resume, and debounce-saves `onLocationChange` via `PUT /api/library/{libraryId}/location`.
 
 ## Product
 

@@ -272,6 +272,7 @@ export const GetLibraryEntryResponse = zod.object({
   "originalTitle": zod.string().nullable(),
   "originalAuthor": zod.string().nullable(),
   "originalIsbn": zod.string().nullable(),
+  "lastReadingLocation": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "book": zod.union([zod.object({
   "id": zod.number(),
@@ -306,6 +307,45 @@ export const MatchLibraryEntryResponse = zod.object({
   "originalTitle": zod.string().nullable(),
   "originalAuthor": zod.string().nullable(),
   "originalIsbn": zod.string().nullable(),
+  "lastReadingLocation": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "book": zod.union([zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "author": zod.string(),
+  "description": zod.string(),
+  "coverColor": zod.string(),
+  "quoteCount": zod.number(),
+  "commentCount": zod.number(),
+  "highlightCount": zod.number()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Save the reader's last reading location (CFI)
+ */
+export const UpdateReadingLocationParams = zod.object({
+  "libraryId": zod.coerce.number()
+})
+
+
+
+
+export const UpdateReadingLocationBody = zod.object({
+  "location": zod.string().min(1)
+})
+
+export const UpdateReadingLocationResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "canonicalBookId": zod.number().nullable(),
+  "epubObjectPath": zod.string(),
+  "epubUrl": zod.string(),
+  "originalTitle": zod.string().nullable(),
+  "originalAuthor": zod.string().nullable(),
+  "originalIsbn": zod.string().nullable(),
+  "lastReadingLocation": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "book": zod.union([zod.object({
   "id": zod.number(),
@@ -336,6 +376,7 @@ export const GetUserLibraryResponseItem = zod.object({
   "originalTitle": zod.string().nullable(),
   "originalAuthor": zod.string().nullable(),
   "originalIsbn": zod.string().nullable(),
+  "lastReadingLocation": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "book": zod.union([zod.object({
   "id": zod.number(),

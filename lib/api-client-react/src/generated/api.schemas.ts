@@ -117,8 +117,15 @@ export interface LibraryEntry {
   originalAuthor: string | null;
   /** @nullable */
   originalIsbn: string | null;
+  /** @nullable */
+  lastReadingLocation: string | null;
   createdAt: string;
   book: Book | null;
+}
+
+export interface UpdateReadingLocationInput {
+  /** @minLength 1 */
+  location: string;
 }
 
 export type MatchResultStatus = typeof MatchResultStatus[keyof typeof MatchResultStatus];

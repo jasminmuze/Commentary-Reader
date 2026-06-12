@@ -6,6 +6,8 @@ import {
   GetLibraryEntryParams,
   MatchLibraryEntryParams,
   MatchLibraryEntryBody,
+  UpdateReadingLocationParams,
+  UpdateReadingLocationBody,
   GetUserLibraryParams,
 } from "@workspace/api-zod";
 import type {
@@ -41,17 +43,18 @@ async function formatLibraryEntry(
     userId: entry.userId,
     canonicalBookId: entry.canonicalBookId ?? null,
     epubObjectPath: entry.epubObjectPath,
-    epubUrl: `/api${entry.epubObjectPath}`,
+    epubUrl: `/api${entry.epubObjectPath}?userId=${entry.userId}`,
     originalTitle: entry.originalTitle ?? null,
     originalAuthor: entry.originalAuthor ?? null,
     originalIsbn: entry.originalIsbn ?? null,
+    lastReadingLocation: entry.lastReadingLocation ?? null,
     createdAt: entry.createdAt,
     book,
   };
 }
 
-// Register an uploaded EPUB: normalize path, set public ACL, download, extract
-// metadata, then auto-match against canonical books.
+// Register an uploaded EPUB: normalize path, set private owner-only ACL,
+// download, extract metadata, then auto-match against canonical books.
 router.post("/library", async (req, res): Promise<void> => {
   const body = CreateLibraryEntryBody.safeParse(req.body);
   if (!body.success) {
@@ -66,7 +69,7 @@ router.post("/library", async (req, res): Promise<void> => {
   try {
     normalizedPath = await svc.trySetObjectEntityAclPolicy(uploadURL, {
       owner: String(userId),
-      visibility: "public",
+      visibility: "private",
     });
     const file = await svc.getObjectEntityFile(normalizedPath);
     const [buf] = await file.download();
@@ -175,6 +178,30 @@ router.patch("/library/:libraryId", async (req, res): Promise<void> => {
   const [entry] = await db
     .update(userLibraryTable)
     .set({ canonicalBookId: body.data.canonicalBookId })
+    .where(eq(userLibraryTable.id, params.data.libraryId))
+    .returning();
+  if (!entry) {
+    res.status(404).json({ error: "Library entry not found" });
+    return;
+  }
+  res.json(await formatLibraryEntry(entry));
+});
+
+// Persist the reader's last reading location (EPUB CFI) for resume-on-reopen.
+router.put("/library/:libraryId/location", async (req, res): Promise<void> => {
+  const params = UpdateReadingLocationParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const body = UpdateReadingLocationBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const [entry] = await db
+    .update(userLibraryTable)
+    .set({ lastReadingLocation: body.data.location })
     .where(eq(userLibraryTable.id, params.data.libraryId))
     .returning();
   if (!entry) {

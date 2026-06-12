@@ -341,6 +341,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/LibraryEntry"
 
+  /library/{libraryId}/location:
+    put:
+      operationId: updateReadingLocation
+      tags: [library]
+      summary: Save the reader's last reading location (CFI)
+      parameters:
+        - name: libraryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReadingLocationInput"
+      responses:
+        "200":
+          description: Library entry updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryEntry"
+        "404":
+          description: Not found
+
   /users/{userId}/library:
     get:
       operationId: getUserLibrary
@@ -697,7 +724,7 @@ components:
 
     LibraryEntry:
       type: object
-      required: [id, userId, canonicalBookId, epubObjectPath, epubUrl, originalTitle, originalAuthor, originalIsbn, createdAt, book]
+      required: [id, userId, canonicalBookId, epubObjectPath, epubUrl, originalTitle, originalAuthor, originalIsbn, lastReadingLocation, createdAt, book]
       properties:
         id:
           type: integer
@@ -715,6 +742,8 @@ components:
           type: [string, "null"]
         originalIsbn:
           type: [string, "null"]
+        lastReadingLocation:
+          type: [string, "null"]
         createdAt:
           type: string
           format: date-time
@@ -722,6 +751,14 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Book"
             - type: "null"
+
+    UpdateReadingLocationInput:
+      type: object
+      required: [location]
+      properties:
+        location:
+          type: string
+          minLength: 1
 
     MatchResult:
       type: object
