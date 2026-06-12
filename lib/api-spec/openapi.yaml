@@ -12,10 +12,12 @@ tags:
     description: Health operations
   - name: books
     description: Book operations
-  - name: passages
-    description: Passage operations
+  - name: quotes
+    description: Quote operations
   - name: comments
     description: Comment operations
+  - name: library
+    description: User library / uploaded EPUB operations
   - name: users
     description: User operations
 paths:
@@ -36,7 +38,13 @@ paths:
     get:
       operationId: listBooks
       tags: [books]
-      summary: List all books
+      summary: List / search canonical books
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: List of books
@@ -46,12 +54,29 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Book"
+    post:
+      operationId: createBook
+      tags: [books]
+      summary: Create a canonical book
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBookInput"
+      responses:
+        "201":
+          description: Book created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
 
   /books/{bookId}:
     get:
       operationId: getBook
       tags: [books]
-      summary: Get a book with its passages and highlight intensities
+      summary: Get a book with its best comments and most-highlighted quotes
       parameters:
         - name: bookId
           in: path
@@ -65,7 +90,7 @@ paths:
             type: integer
       responses:
         "200":
-          description: Book with passages
+          description: Book detail
           content:
             application/json:
               schema:
@@ -73,13 +98,62 @@ paths:
         "404":
           description: Book not found
 
-  /passages/{passageId}/comments:
+  /books/{bookId}/quotes:
     get:
-      operationId: getPassageComments
-      tags: [comments]
-      summary: Get comments for a passage
+      operationId: getBookQuotes
+      tags: [quotes]
+      summary: Community quotes for a book (reader overlay)
       parameters:
-        - name: passageId
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Quotes list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Quote"
+    post:
+      operationId: createQuote
+      tags: [quotes]
+      summary: Find or create a quote in a book (by normalized text)
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateQuoteInput"
+      responses:
+        "200":
+          description: Quote found or created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quote"
+
+  /quotes/{quoteId}/comments:
+    get:
+      operationId: getQuoteComments
+      tags: [comments]
+      summary: Get comments for a quote
+      parameters:
+        - name: quoteId
           in: path
           required: true
           schema:
@@ -108,9 +182,9 @@ paths:
     post:
       operationId: createComment
       tags: [comments]
-      summary: Create a comment on a passage
+      summary: Create a comment on a quote
       parameters:
-        - name: passageId
+        - name: quoteId
           in: path
           required: true
           schema:
@@ -128,6 +202,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Comment"
+
+  /quotes/{quoteId}/highlight:
+    post:
+      operationId: toggleHighlight
+      tags: [quotes]
+      summary: Toggle the current user's highlight on a quote
+      parameters:
+        - name: quoteId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HighlightInput"
+      responses:
+        "200":
+          description: Highlight toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HighlightResult"
 
   /comments/{commentId}/like:
     post:
@@ -178,6 +277,90 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SaveResult"
+
+  /library:
+    post:
+      operationId: createLibraryEntry
+      tags: [library]
+      summary: Register an uploaded EPUB, extract metadata, and auto-match
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLibraryInput"
+      responses:
+        "201":
+          description: Library entry created with match result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryUploadResult"
+
+  /library/{libraryId}:
+    get:
+      operationId: getLibraryEntry
+      tags: [library]
+      summary: Get a library entry (with EPUB url and matched book)
+      parameters:
+        - name: libraryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Library entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryEntry"
+        "404":
+          description: Not found
+    patch:
+      operationId: matchLibraryEntry
+      tags: [library]
+      summary: Manually match a library entry to a canonical book
+      parameters:
+        - name: libraryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManualMatchInput"
+      responses:
+        "200":
+          description: Library entry updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryEntry"
+
+  /users/{userId}/library:
+    get:
+      operationId: getUserLibrary
+      tags: [library]
+      summary: List a user's uploaded books
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Library entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LibraryEntry"
 
   /users:
     post:
@@ -342,7 +525,7 @@ components:
 
     Book:
       type: object
-      required: [id, title, author, description, coverColor, totalPassages]
+      required: [id, title, author, description, coverColor, quoteCount, commentCount, highlightCount]
       properties:
         id:
           type: integer
@@ -354,30 +537,39 @@ components:
           type: string
         coverColor:
           type: string
-        totalPassages:
+        quoteCount:
+          type: integer
+        commentCount:
+          type: integer
+        highlightCount:
           type: integer
 
-    Passage:
+    Quote:
       type: object
-      required: [id, bookId, orderIndex, text, commentCount, highlightIntensity]
+      required: [id, canonicalBookId, text, searchText, highlightCount, commentCount, highlightIntensity]
       properties:
         id:
           type: integer
-        bookId:
-          type: integer
-        orderIndex:
+        canonicalBookId:
           type: integer
         text:
           type: string
+        searchText:
+          type: string
+          description: Distinctive leading substring used to locate the quote in an EPUB
+        highlightCount:
+          type: integer
         commentCount:
           type: integer
         highlightIntensity:
           type: number
-          description: 0.0 to 1.0 representing highlight strength
+          description: 0.0 to 1.0 representing community highlight strength
+        highlightedByMe:
+          type: boolean
 
     BookDetail:
       type: object
-      required: [id, title, author, description, coverColor, passages]
+      required: [id, title, author, description, coverColor, quoteCount, commentCount, highlightCount, topQuotes, bestComments]
       properties:
         id:
           type: integer
@@ -389,18 +581,28 @@ components:
           type: string
         coverColor:
           type: string
-        passages:
+        quoteCount:
+          type: integer
+        commentCount:
+          type: integer
+        highlightCount:
+          type: integer
+        topQuotes:
           type: array
           items:
-            $ref: "#/components/schemas/Passage"
+            $ref: "#/components/schemas/Quote"
+        bestComments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"
 
     Comment:
       type: object
-      required: [id, passageId, userId, username, avatarColor, text, likeCount, likedByMe, savedByMe, createdAt]
+      required: [id, quoteId, userId, username, avatarColor, text, likeCount, likedByMe, savedByMe, createdAt]
       properties:
         id:
           type: integer
-        passageId:
+        quoteId:
           type: integer
         userId:
           type: integer
@@ -409,6 +611,8 @@ components:
         avatarColor:
           type: string
         text:
+          type: string
+        quoteText:
           type: string
         likeCount:
           type: integer
@@ -429,6 +633,120 @@ components:
         text:
           type: string
           minLength: 1
+
+    CreateQuoteInput:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 8
+          maxLength: 1000
+
+    HighlightInput:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: integer
+        userLibraryId:
+          type: integer
+        cfiRange:
+          type: string
+
+    HighlightResult:
+      type: object
+      required: [highlighted, highlightCount]
+      properties:
+        highlighted:
+          type: boolean
+        highlightCount:
+          type: integer
+
+    CreateBookInput:
+      type: object
+      required: [title, author]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        author:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        isbn:
+          type: string
+
+    CreateLibraryInput:
+      type: object
+      required: [userId, uploadURL]
+      properties:
+        userId:
+          type: integer
+        uploadURL:
+          type: string
+          description: The presigned upload URL (or object path) returned after upload
+
+    ManualMatchInput:
+      type: object
+      required: [canonicalBookId]
+      properties:
+        canonicalBookId:
+          type: integer
+
+    LibraryEntry:
+      type: object
+      required: [id, userId, canonicalBookId, epubObjectPath, epubUrl, originalTitle, originalAuthor, originalIsbn, createdAt, book]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        canonicalBookId:
+          type: [integer, "null"]
+        epubObjectPath:
+          type: string
+        epubUrl:
+          type: string
+        originalTitle:
+          type: [string, "null"]
+        originalAuthor:
+          type: [string, "null"]
+        originalIsbn:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        book:
+          oneOf:
+            - $ref: "#/components/schemas/Book"
+            - type: "null"
+
+    MatchResult:
+      type: object
+      required: [status, book, candidates]
+      properties:
+        status:
+          type: string
+          enum: [matched, candidates, none]
+        book:
+          oneOf:
+            - $ref: "#/components/schemas/Book"
+            - type: "null"
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/Book"
+
+    LibraryUploadResult:
+      type: object
+      required: [entry, match]
+      properties:
+        entry:
+          $ref: "#/components/schemas/LibraryEntry"
+        match:
+          $ref: "#/components/schemas/MatchResult"
 
     LikeResult:
       type: object

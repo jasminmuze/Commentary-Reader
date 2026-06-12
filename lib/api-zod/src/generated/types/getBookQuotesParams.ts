@@ -5,9 +5,7 @@
  * Bookmarks - Social Ebook Reader API
  * OpenAPI spec version: 0.1.0
  */
-import type { GetPassageCommentsFilter } from './getPassageCommentsFilter';
 
-export type GetPassageCommentsParams = {
+export type GetBookQuotesParams = {
 userId?: number;
-filter?: GetPassageCommentsFilter;
 };

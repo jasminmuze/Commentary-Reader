@@ -19,6 +19,7 @@ import {
   useAddFriend,
   useRemoveFriend,
   getGetFriendsQueryKey,
+  getSearchUsersQueryKey,
 } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
@@ -35,12 +36,17 @@ export default function FriendsScreen() {
   const [isSearching, setIsSearching] = useState(false);
 
   const { data: friends, isLoading: loadingFriends } = useGetFriends(user?.id ?? 0, {
-    query: { enabled: !!user },
+    query: { enabled: !!user, queryKey: getGetFriendsQueryKey(user?.id ?? 0) },
   });
 
   const { data: searchResults, isLoading: loadingSearch } = useSearchUsers(
     { q: query, userId: user?.id },
-    { query: { enabled: query.length >= 2 } }
+    {
+      query: {
+        enabled: query.length >= 2,
+        queryKey: getSearchUsersQueryKey({ q: query, userId: user?.id }),
+      },
+    }
   );
 
   const addFriend = useAddFriend();

@@ -5,7 +5,8 @@
  * Bookmarks - Social Ebook Reader API
  * OpenAPI spec version: 0.1.0
  */
-import type { Passage } from './passage';
+import type { Comment } from './comment';
+import type { Quote } from './quote';
 
 export interface BookDetail {
   id: number;
@@ -13,5 +14,9 @@ export interface BookDetail {
   author: string;
   description: string;
   coverColor: string;
-  passages: Passage[];
+  quoteCount: number;
+  commentCount: number;
+  highlightCount: number;
+  topQuotes: Quote[];
+  bestComments: Comment[];
 }

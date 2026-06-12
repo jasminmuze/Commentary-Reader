@@ -1,12 +1,12 @@
 import { Router, type IRouter } from "express";
-import { eq, and, like, ne } from "drizzle-orm";
+import { eq, and, like, inArray } from "drizzle-orm";
 import {
   db,
   usersTable,
   friendshipsTable,
   commentsTable,
   commentSavesTable,
-  commentLikesTable,
+  quotesTable,
 } from "@workspace/db";
 import {
   CreateUserBody,
@@ -18,6 +18,7 @@ import {
   GetSavedCommentsParams,
   SearchUsersQueryParams,
 } from "@workspace/api-zod";
+import { formatComment } from "../lib/queries";
 
 const AVATAR_COLORS = [
   "#E8A020", "#4A9EFF", "#FF6B6B", "#7CB9A8", "#C084FC",
@@ -182,25 +183,22 @@ router.get("/users/:userId/saved-comments", async (req, res): Promise<void> => {
   }
 
   const commentIds = saves.map((s) => s.commentId);
-  const comments = await db.select().from(commentsTable);
-  const filtered = comments.filter((c) => commentIds.includes(c.id));
+  const comments = await db
+    .select()
+    .from(commentsTable)
+    .where(inArray(commentsTable.id, commentIds));
 
-  const result = await Promise.all(filtered.map(async (c) => {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, c.userId));
-    const likedByMe = (await db.select().from(commentLikesTable).where(and(eq(commentLikesTable.commentId, c.id), eq(commentLikesTable.userId, userId)))).length > 0;
-    return {
-      id: c.id,
-      passageId: c.passageId,
-      userId: c.userId,
-      username: user?.username ?? "unknown",
-      avatarColor: user?.avatarColor ?? "#7A8BAA",
-      text: c.text,
-      likeCount: c.likeCount,
-      likedByMe,
-      savedByMe: true,
-      createdAt: c.createdAt.toISOString(),
-    };
-  }));
+  const quoteIds = [...new Set(comments.map((c) => c.quoteId))];
+  const quotes = quoteIds.length
+    ? await db.select().from(quotesTable).where(inArray(quotesTable.id, quoteIds))
+    : [];
+  const quoteTextById = new Map(quotes.map((q) => [q.id, q.text]));
+
+  const result = await Promise.all(
+    comments.map((c) =>
+      formatComment(c, userId, quoteTextById.get(c.quoteId)),
+    ),
+  );
 
   res.json(result);
 });

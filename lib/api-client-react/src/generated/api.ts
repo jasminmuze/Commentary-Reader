@@ -24,11 +24,22 @@ import type {
   BookDetail,
   Comment,
   CommentInput,
+  CreateBookInput,
+  CreateLibraryInput,
+  CreateQuoteInput,
   FriendInput,
   GetBookParams,
-  GetPassageCommentsParams,
+  GetBookQuotesParams,
+  GetQuoteCommentsParams,
   HealthStatus,
+  HighlightInput,
+  HighlightResult,
+  LibraryEntry,
+  LibraryUploadResult,
   LikeResult,
+  ListBooksParams,
+  ManualMatchInput,
+  Quote,
   SaveResult,
   SearchUsersParams,
   User,
@@ -126,20 +137,27 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
-export const getListBooksUrl = () => {
+export const getListBooksUrl = (params?: ListBooksParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/books`
+  return stringifiedParams.length > 0 ? `/api/books?${stringifiedParams}` : `/api/books`
 }
 
 /**
- * @summary List all books
+ * @summary List / search canonical books
  */
-export const listBooks = async ( options?: RequestInit): Promise<Book[]> => {
+export const listBooks = async (params?: ListBooksParams, options?: RequestInit): Promise<Book[]> => {
 
-  return customFetch<Book[]>(getListBooksUrl(),
+  return customFetch<Book[]>(getListBooksUrl(params),
   {
     ...options,
     method: 'GET'
@@ -152,23 +170,23 @@ export const listBooks = async ( options?: RequestInit): Promise<Book[]> => {
 
 
 
-export const getListBooksQueryKey = () => {
+export const getListBooksQueryKey = (params?: ListBooksParams,) => {
     return [
-    `/api/books`
+    `/api/books`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListBooksQueryOptions = <TData = Awaited<ReturnType<typeof listBooks>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListBooksQueryOptions = <TData = Awaited<ReturnType<typeof listBooks>>, TError = ErrorType<unknown>>(params?: ListBooksParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListBooksQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListBooksQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBooks>>> = ({ signal }) => listBooks({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBooks>>> = ({ signal }) => listBooks(params, { signal, ...requestOptions });
 
 
 
@@ -182,15 +200,15 @@ export type ListBooksQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List all books
+ * @summary List / search canonical books
  */
 
 export function useListBooks<TData = Awaited<ReturnType<typeof listBooks>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListBooksParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListBooksQueryOptions(options)
+  const queryOptions = getListBooksQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -202,6 +220,77 @@ export function useListBooks<TData = Awaited<ReturnType<typeof listBooks>>, TErr
 
 
 
+
+export const getCreateBookUrl = () => {
+
+
+
+
+  return `/api/books`
+}
+
+/**
+ * @summary Create a canonical book
+ */
+export const createBook = async (createBookInput: CreateBookInput, options?: RequestInit): Promise<Book> => {
+
+  return customFetch<Book>(getCreateBookUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createBookInput,)
+  }
+);}
+
+
+
+
+export const getCreateBookMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBook>>, TError,{data: BodyType<CreateBookInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBook>>, TError,{data: BodyType<CreateBookInput>}, TContext> => {
+
+const mutationKey = ['createBook'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBook>>, {data: BodyType<CreateBookInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createBook(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBookMutationResult = NonNullable<Awaited<ReturnType<typeof createBook>>>
+    export type CreateBookMutationBody = BodyType<CreateBookInput>
+    export type CreateBookMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a canonical book
+ */
+export const useCreateBook = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBook>>, TError,{data: BodyType<CreateBookInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBook>>,
+        TError,
+        {data: BodyType<CreateBookInput>},
+        TContext
+      > => {
+      return useMutation(getCreateBookMutationOptions(options));
+    }
 
 export const getGetBookUrl = (bookId: number,
     params?: GetBookParams,) => {
@@ -220,7 +309,7 @@ export const getGetBookUrl = (bookId: number,
 }
 
 /**
- * @summary Get a book with its passages and highlight intensities
+ * @summary Get a book with its best comments and most-highlighted quotes
  */
 export const getBook = async (bookId: number,
     params?: GetBookParams, options?: RequestInit): Promise<BookDetail> => {
@@ -270,7 +359,7 @@ export type GetBookQueryError = ErrorType<void>
 
 
 /**
- * @summary Get a book with its passages and highlight intensities
+ * @summary Get a book with its best comments and most-highlighted quotes
  */
 
 export function useGetBook<TData = Awaited<ReturnType<typeof getBook>>, TError = ErrorType<void>>(
@@ -292,8 +381,8 @@ export function useGetBook<TData = Awaited<ReturnType<typeof getBook>>, TError =
 
 
 
-export const getGetPassageCommentsUrl = (passageId: number,
-    params?: GetPassageCommentsParams,) => {
+export const getGetBookQuotesUrl = (bookId: number,
+    params?: GetBookQuotesParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -305,16 +394,16 @@ export const getGetPassageCommentsUrl = (passageId: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/passages/${passageId}/comments?${stringifiedParams}` : `/api/passages/${passageId}/comments`
+  return stringifiedParams.length > 0 ? `/api/books/${bookId}/quotes?${stringifiedParams}` : `/api/books/${bookId}/quotes`
 }
 
 /**
- * @summary Get comments for a passage
+ * @summary Community quotes for a book (reader overlay)
  */
-export const getPassageComments = async (passageId: number,
-    params?: GetPassageCommentsParams, options?: RequestInit): Promise<Comment[]> => {
+export const getBookQuotes = async (bookId: number,
+    params?: GetBookQuotesParams, options?: RequestInit): Promise<Quote[]> => {
 
-  return customFetch<Comment[]>(getGetPassageCommentsUrl(passageId,params),
+  return customFetch<Quote[]>(getGetBookQuotesUrl(bookId,params),
   {
     ...options,
     method: 'GET'
@@ -327,48 +416,48 @@ export const getPassageComments = async (passageId: number,
 
 
 
-export const getGetPassageCommentsQueryKey = (passageId: number,
-    params?: GetPassageCommentsParams,) => {
+export const getGetBookQuotesQueryKey = (bookId: number,
+    params?: GetBookQuotesParams,) => {
     return [
-    `/api/passages/${passageId}/comments`, ...(params ? [params] : [])
+    `/api/books/${bookId}/quotes`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetPassageCommentsQueryOptions = <TData = Awaited<ReturnType<typeof getPassageComments>>, TError = ErrorType<unknown>>(passageId: number,
-    params?: GetPassageCommentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPassageComments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetBookQuotesQueryOptions = <TData = Awaited<ReturnType<typeof getBookQuotes>>, TError = ErrorType<unknown>>(bookId: number,
+    params?: GetBookQuotesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBookQuotes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetPassageCommentsQueryKey(passageId,params);
+  const queryKey =  queryOptions?.queryKey ?? getGetBookQuotesQueryKey(bookId,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPassageComments>>> = ({ signal }) => getPassageComments(passageId,params, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBookQuotes>>> = ({ signal }) => getBookQuotes(bookId,params, { signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, enabled: !!(passageId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPassageComments>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, enabled: !!(bookId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBookQuotes>>, TError, TData> & { queryKey: QueryKey }
 }
 
-export type GetPassageCommentsQueryResult = NonNullable<Awaited<ReturnType<typeof getPassageComments>>>
-export type GetPassageCommentsQueryError = ErrorType<unknown>
+export type GetBookQuotesQueryResult = NonNullable<Awaited<ReturnType<typeof getBookQuotes>>>
+export type GetBookQuotesQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get comments for a passage
+ * @summary Community quotes for a book (reader overlay)
  */
 
-export function useGetPassageComments<TData = Awaited<ReturnType<typeof getPassageComments>>, TError = ErrorType<unknown>>(
- passageId: number,
-    params?: GetPassageCommentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPassageComments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetBookQuotes<TData = Awaited<ReturnType<typeof getBookQuotes>>, TError = ErrorType<unknown>>(
+ bookId: number,
+    params?: GetBookQuotesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBookQuotes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetPassageCommentsQueryOptions(passageId,params,options)
+  const queryOptions = getGetBookQuotesQueryOptions(bookId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -381,21 +470,182 @@ export function useGetPassageComments<TData = Awaited<ReturnType<typeof getPassa
 
 
 
-export const getCreateCommentUrl = (passageId: number,) => {
+export const getCreateQuoteUrl = (bookId: number,) => {
 
 
 
 
-  return `/api/passages/${passageId}/comments`
+  return `/api/books/${bookId}/quotes`
 }
 
 /**
- * @summary Create a comment on a passage
+ * @summary Find or create a quote in a book (by normalized text)
  */
-export const createComment = async (passageId: number,
+export const createQuote = async (bookId: number,
+    createQuoteInput: CreateQuoteInput, options?: RequestInit): Promise<Quote> => {
+
+  return customFetch<Quote>(getCreateQuoteUrl(bookId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createQuoteInput,)
+  }
+);}
+
+
+
+
+export const getCreateQuoteMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createQuote>>, TError,{bookId: number;data: BodyType<CreateQuoteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createQuote>>, TError,{bookId: number;data: BodyType<CreateQuoteInput>}, TContext> => {
+
+const mutationKey = ['createQuote'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createQuote>>, {bookId: number;data: BodyType<CreateQuoteInput>}> = (props) => {
+          const {bookId,data} = props ?? {};
+
+          return  createQuote(bookId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateQuoteMutationResult = NonNullable<Awaited<ReturnType<typeof createQuote>>>
+    export type CreateQuoteMutationBody = BodyType<CreateQuoteInput>
+    export type CreateQuoteMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Find or create a quote in a book (by normalized text)
+ */
+export const useCreateQuote = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createQuote>>, TError,{bookId: number;data: BodyType<CreateQuoteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createQuote>>,
+        TError,
+        {bookId: number;data: BodyType<CreateQuoteInput>},
+        TContext
+      > => {
+      return useMutation(getCreateQuoteMutationOptions(options));
+    }
+
+export const getGetQuoteCommentsUrl = (quoteId: number,
+    params?: GetQuoteCommentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/quotes/${quoteId}/comments?${stringifiedParams}` : `/api/quotes/${quoteId}/comments`
+}
+
+/**
+ * @summary Get comments for a quote
+ */
+export const getQuoteComments = async (quoteId: number,
+    params?: GetQuoteCommentsParams, options?: RequestInit): Promise<Comment[]> => {
+
+  return customFetch<Comment[]>(getGetQuoteCommentsUrl(quoteId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetQuoteCommentsQueryKey = (quoteId: number,
+    params?: GetQuoteCommentsParams,) => {
+    return [
+    `/api/quotes/${quoteId}/comments`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetQuoteCommentsQueryOptions = <TData = Awaited<ReturnType<typeof getQuoteComments>>, TError = ErrorType<unknown>>(quoteId: number,
+    params?: GetQuoteCommentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQuoteComments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetQuoteCommentsQueryKey(quoteId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getQuoteComments>>> = ({ signal }) => getQuoteComments(quoteId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(quoteId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getQuoteComments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetQuoteCommentsQueryResult = NonNullable<Awaited<ReturnType<typeof getQuoteComments>>>
+export type GetQuoteCommentsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get comments for a quote
+ */
+
+export function useGetQuoteComments<TData = Awaited<ReturnType<typeof getQuoteComments>>, TError = ErrorType<unknown>>(
+ quoteId: number,
+    params?: GetQuoteCommentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQuoteComments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetQuoteCommentsQueryOptions(quoteId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateCommentUrl = (quoteId: number,) => {
+
+
+
+
+  return `/api/quotes/${quoteId}/comments`
+}
+
+/**
+ * @summary Create a comment on a quote
+ */
+export const createComment = async (quoteId: number,
     commentInput: CommentInput, options?: RequestInit): Promise<Comment> => {
 
-  return customFetch<Comment>(getCreateCommentUrl(passageId),
+  return customFetch<Comment>(getCreateCommentUrl(quoteId),
   {
     ...options,
     method: 'POST',
@@ -409,8 +659,8 @@ export const createComment = async (passageId: number,
 
 
 export const getCreateCommentMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createComment>>, TError,{passageId: number;data: BodyType<CommentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof createComment>>, TError,{passageId: number;data: BodyType<CommentInput>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createComment>>, TError,{quoteId: number;data: BodyType<CommentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createComment>>, TError,{quoteId: number;data: BodyType<CommentInput>}, TContext> => {
 
 const mutationKey = ['createComment'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -422,10 +672,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createComment>>, {passageId: number;data: BodyType<CommentInput>}> = (props) => {
-          const {passageId,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createComment>>, {quoteId: number;data: BodyType<CommentInput>}> = (props) => {
+          const {quoteId,data} = props ?? {};
 
-          return  createComment(passageId,data,requestOptions)
+          return  createComment(quoteId,data,requestOptions)
         }
 
 
@@ -440,17 +690,89 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateCommentMutationError = ErrorType<unknown>
 
     /**
- * @summary Create a comment on a passage
+ * @summary Create a comment on a quote
  */
 export const useCreateComment = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createComment>>, TError,{passageId: number;data: BodyType<CommentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createComment>>, TError,{quoteId: number;data: BodyType<CommentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createComment>>,
         TError,
-        {passageId: number;data: BodyType<CommentInput>},
+        {quoteId: number;data: BodyType<CommentInput>},
         TContext
       > => {
       return useMutation(getCreateCommentMutationOptions(options));
+    }
+
+export const getToggleHighlightUrl = (quoteId: number,) => {
+
+
+
+
+  return `/api/quotes/${quoteId}/highlight`
+}
+
+/**
+ * @summary Toggle the current user's highlight on a quote
+ */
+export const toggleHighlight = async (quoteId: number,
+    highlightInput: HighlightInput, options?: RequestInit): Promise<HighlightResult> => {
+
+  return customFetch<HighlightResult>(getToggleHighlightUrl(quoteId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      highlightInput,)
+  }
+);}
+
+
+
+
+export const getToggleHighlightMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleHighlight>>, TError,{quoteId: number;data: BodyType<HighlightInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof toggleHighlight>>, TError,{quoteId: number;data: BodyType<HighlightInput>}, TContext> => {
+
+const mutationKey = ['toggleHighlight'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof toggleHighlight>>, {quoteId: number;data: BodyType<HighlightInput>}> = (props) => {
+          const {quoteId,data} = props ?? {};
+
+          return  toggleHighlight(quoteId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ToggleHighlightMutationResult = NonNullable<Awaited<ReturnType<typeof toggleHighlight>>>
+    export type ToggleHighlightMutationBody = BodyType<HighlightInput>
+    export type ToggleHighlightMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Toggle the current user's highlight on a quote
+ */
+export const useToggleHighlight = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleHighlight>>, TError,{quoteId: number;data: BodyType<HighlightInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof toggleHighlight>>,
+        TError,
+        {quoteId: number;data: BodyType<HighlightInput>},
+        TContext
+      > => {
+      return useMutation(getToggleHighlightMutationOptions(options));
     }
 
 export const getLikeCommentUrl = (commentId: number,) => {
@@ -596,6 +918,303 @@ export const useSaveComment = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getSaveCommentMutationOptions(options));
     }
+
+export const getCreateLibraryEntryUrl = () => {
+
+
+
+
+  return `/api/library`
+}
+
+/**
+ * @summary Register an uploaded EPUB, extract metadata, and auto-match
+ */
+export const createLibraryEntry = async (createLibraryInput: CreateLibraryInput, options?: RequestInit): Promise<LibraryUploadResult> => {
+
+  return customFetch<LibraryUploadResult>(getCreateLibraryEntryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createLibraryInput,)
+  }
+);}
+
+
+
+
+export const getCreateLibraryEntryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLibraryEntry>>, TError,{data: BodyType<CreateLibraryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLibraryEntry>>, TError,{data: BodyType<CreateLibraryInput>}, TContext> => {
+
+const mutationKey = ['createLibraryEntry'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLibraryEntry>>, {data: BodyType<CreateLibraryInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createLibraryEntry(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLibraryEntryMutationResult = NonNullable<Awaited<ReturnType<typeof createLibraryEntry>>>
+    export type CreateLibraryEntryMutationBody = BodyType<CreateLibraryInput>
+    export type CreateLibraryEntryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Register an uploaded EPUB, extract metadata, and auto-match
+ */
+export const useCreateLibraryEntry = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLibraryEntry>>, TError,{data: BodyType<CreateLibraryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLibraryEntry>>,
+        TError,
+        {data: BodyType<CreateLibraryInput>},
+        TContext
+      > => {
+      return useMutation(getCreateLibraryEntryMutationOptions(options));
+    }
+
+export const getGetLibraryEntryUrl = (libraryId: number,) => {
+
+
+
+
+  return `/api/library/${libraryId}`
+}
+
+/**
+ * @summary Get a library entry (with EPUB url and matched book)
+ */
+export const getLibraryEntry = async (libraryId: number, options?: RequestInit): Promise<LibraryEntry> => {
+
+  return customFetch<LibraryEntry>(getGetLibraryEntryUrl(libraryId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLibraryEntryQueryKey = (libraryId: number,) => {
+    return [
+    `/api/library/${libraryId}`
+    ] as const;
+    }
+
+
+export const getGetLibraryEntryQueryOptions = <TData = Awaited<ReturnType<typeof getLibraryEntry>>, TError = ErrorType<void>>(libraryId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLibraryEntryQueryKey(libraryId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLibraryEntry>>> = ({ signal }) => getLibraryEntry(libraryId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(libraryId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLibraryEntryQueryResult = NonNullable<Awaited<ReturnType<typeof getLibraryEntry>>>
+export type GetLibraryEntryQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a library entry (with EPUB url and matched book)
+ */
+
+export function useGetLibraryEntry<TData = Awaited<ReturnType<typeof getLibraryEntry>>, TError = ErrorType<void>>(
+ libraryId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLibraryEntryQueryOptions(libraryId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getMatchLibraryEntryUrl = (libraryId: number,) => {
+
+
+
+
+  return `/api/library/${libraryId}`
+}
+
+/**
+ * @summary Manually match a library entry to a canonical book
+ */
+export const matchLibraryEntry = async (libraryId: number,
+    manualMatchInput: ManualMatchInput, options?: RequestInit): Promise<LibraryEntry> => {
+
+  return customFetch<LibraryEntry>(getMatchLibraryEntryUrl(libraryId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      manualMatchInput,)
+  }
+);}
+
+
+
+
+export const getMatchLibraryEntryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof matchLibraryEntry>>, TError,{libraryId: number;data: BodyType<ManualMatchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof matchLibraryEntry>>, TError,{libraryId: number;data: BodyType<ManualMatchInput>}, TContext> => {
+
+const mutationKey = ['matchLibraryEntry'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof matchLibraryEntry>>, {libraryId: number;data: BodyType<ManualMatchInput>}> = (props) => {
+          const {libraryId,data} = props ?? {};
+
+          return  matchLibraryEntry(libraryId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MatchLibraryEntryMutationResult = NonNullable<Awaited<ReturnType<typeof matchLibraryEntry>>>
+    export type MatchLibraryEntryMutationBody = BodyType<ManualMatchInput>
+    export type MatchLibraryEntryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Manually match a library entry to a canonical book
+ */
+export const useMatchLibraryEntry = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof matchLibraryEntry>>, TError,{libraryId: number;data: BodyType<ManualMatchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof matchLibraryEntry>>,
+        TError,
+        {libraryId: number;data: BodyType<ManualMatchInput>},
+        TContext
+      > => {
+      return useMutation(getMatchLibraryEntryMutationOptions(options));
+    }
+
+export const getGetUserLibraryUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/library`
+}
+
+/**
+ * @summary List a user's uploaded books
+ */
+export const getUserLibrary = async (userId: number, options?: RequestInit): Promise<LibraryEntry[]> => {
+
+  return customFetch<LibraryEntry[]>(getGetUserLibraryUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUserLibraryQueryKey = (userId: number,) => {
+    return [
+    `/api/users/${userId}/library`
+    ] as const;
+    }
+
+
+export const getGetUserLibraryQueryOptions = <TData = Awaited<ReturnType<typeof getUserLibrary>>, TError = ErrorType<unknown>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserLibrary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUserLibraryQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserLibrary>>> = ({ signal }) => getUserLibrary(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUserLibrary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUserLibraryQueryResult = NonNullable<Awaited<ReturnType<typeof getUserLibrary>>>
+export type GetUserLibraryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List a user's uploaded books
+ */
+
+export function useGetUserLibrary<TData = Awaited<ReturnType<typeof getUserLibrary>>, TError = ErrorType<unknown>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserLibrary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUserLibraryQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getCreateUserUrl = () => {
 

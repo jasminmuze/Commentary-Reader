@@ -1,36 +1,79 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
-import { db, booksTable, passagesTable, commentsTable } from "@workspace/db";
-import { GetBookParams, GetBookQueryParams, ListBooksResponse, GetBookResponse } from "@workspace/api-zod";
+import { asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { db, booksTable, quotesTable, commentsTable } from "@workspace/db";
+import {
+  ListBooksQueryParams,
+  CreateBookBody,
+  GetBookParams,
+  GetBookQueryParams,
+} from "@workspace/api-zod";
+import type { Book, BookDetail, Comment, Quote } from "@workspace/api-zod";
+import {
+  formatBook,
+  getBookCountsMap,
+  toBook,
+  getQuoteCountsMap,
+  toQuote,
+  getHighlightedQuoteIds,
+  formatComment,
+} from "../lib/queries";
+import { normalizeTitle, normalizeAuthor } from "../lib/text";
+
+const COVER_COLORS = [
+  "#8B5E3C", "#1E3A5F", "#4A1942", "#2D4A3E", "#5C3A21",
+  "#3A2F4A", "#1F3A4A", "#4A3A1F", "#42323A", "#2A3A2A",
+];
+
+function randomCover(): string {
+  return COVER_COLORS[Math.floor(Math.random() * COVER_COLORS.length)]!;
+}
 
 const router: IRouter = Router();
 
-function intensityFromCount(count: number): number {
-  if (count === 0) return 0;
-  if (count <= 2) return 0.2;
-  if (count <= 5) return 0.45;
-  if (count <= 10) return 0.65;
-  return 0.85;
-}
+router.get("/books", async (req, res): Promise<void> => {
+  const qp = ListBooksQueryParams.safeParse(req.query);
+  const q = qp.success ? qp.data.q : undefined;
 
-router.get("/books", async (_req, res): Promise<void> => {
-  const books = await db.select().from(booksTable).orderBy(booksTable.id);
+  const rows = q
+    ? await db
+        .select()
+        .from(booksTable)
+        .where(
+          or(
+            ilike(booksTable.title, `%${q}%`),
+            ilike(booksTable.author, `%${q}%`),
+          ),
+        )
+        .orderBy(asc(booksTable.id))
+    : await db.select().from(booksTable).orderBy(asc(booksTable.id));
 
-  const booksWithCounts = await Promise.all(
-    books.map(async (book) => {
-      const passages = await db.select({ id: passagesTable.id }).from(passagesTable).where(eq(passagesTable.bookId, book.id));
-      return {
-        id: book.id,
-        title: book.title,
-        author: book.author,
-        description: book.description,
-        coverColor: book.coverColor,
-        totalPassages: passages.length,
-      };
+  const countsMap = await getBookCountsMap(rows.map((b) => b.id));
+  const result: Book[] = rows.map((b) => toBook(b, countsMap.get(b.id)!));
+  res.json(result);
+});
+
+router.post("/books", async (req, res): Promise<void> => {
+  const body = CreateBookBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const { title, author, description, isbn } = body.data;
+  const [book] = await db
+    .insert(booksTable)
+    .values({
+      title,
+      author,
+      normTitle: normalizeTitle(title),
+      normAuthor: normalizeAuthor(author),
+      description: description ?? "",
+      coverColor: randomCover(),
+      isbn: isbn ?? null,
     })
-  );
+    .returning();
 
-  res.json(ListBooksResponse.parse(booksWithCounts));
+  const result = await formatBook(book!);
+  res.status(201).json(result);
 });
 
 router.get("/books/:bookId", async (req, res): Promise<void> => {
@@ -39,37 +82,59 @@ router.get("/books/:bookId", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const qp = GetBookQueryParams.safeParse(req.query);
+  const userId = qp.success ? qp.data.userId : undefined;
 
-  const queryParams = GetBookQueryParams.safeParse(req.query);
-  const userId = queryParams.success ? queryParams.data.userId : undefined;
-
-  const [book] = await db.select().from(booksTable).where(eq(booksTable.id, params.data.bookId));
+  const [book] = await db
+    .select()
+    .from(booksTable)
+    .where(eq(booksTable.id, params.data.bookId));
   if (!book) {
     res.status(404).json({ error: "Book not found" });
     return;
   }
 
-  const passages = await db.select().from(passagesTable).where(eq(passagesTable.bookId, book.id)).orderBy(passagesTable.orderIndex);
+  const counts = (await getBookCountsMap([book.id])).get(book.id)!;
 
-  const passagesWithCounts = await Promise.all(
-    passages.map(async (passage) => {
-      const [row] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(commentsTable)
-        .where(eq(commentsTable.passageId, passage.id));
-      const count = row?.count ?? 0;
-      return {
-        id: passage.id,
-        bookId: passage.bookId,
-        orderIndex: passage.orderIndex,
-        text: passage.text,
-        commentCount: count,
-        highlightIntensity: intensityFromCount(count),
-      };
-    })
-  );
+  const quotes = await db
+    .select()
+    .from(quotesTable)
+    .where(eq(quotesTable.canonicalBookId, book.id));
+  const quoteIds = quotes.map((q) => q.id);
+  const qCounts = await getQuoteCountsMap(quoteIds);
+  const highlighted = userId
+    ? await getHighlightedQuoteIds(userId, quoteIds)
+    : new Set<number>();
 
-  res.json(GetBookResponse.parse({ ...book, passages: passagesWithCounts }));
+  const topQuotes: Quote[] = quotes
+    .map((q) => toQuote(q, qCounts.get(q.id)!, highlighted.has(q.id)))
+    .sort(
+      (a, b) =>
+        b.highlightCount - a.highlightCount ||
+        b.commentCount - a.commentCount,
+    )
+    .slice(0, 10);
+
+  let bestComments: Comment[] = [];
+  if (quoteIds.length > 0) {
+    const rows = await db
+      .select()
+      .from(commentsTable)
+      .where(inArray(commentsTable.quoteId, quoteIds))
+      .orderBy(desc(commentsTable.likeCount))
+      .limit(10);
+    const quoteTextById = new Map(quotes.map((q) => [q.id, q.text]));
+    bestComments = await Promise.all(
+      rows.map((c) => formatComment(c, userId, quoteTextById.get(c.quoteId))),
+    );
+  }
+
+  const detail: BookDetail = {
+    ...toBook(book, counts),
+    topQuotes,
+    bestComments,
+  };
+  res.json(detail);
 });
 
 export default router;

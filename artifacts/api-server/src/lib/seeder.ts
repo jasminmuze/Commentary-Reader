@@ -1,25 +1,29 @@
 import { db } from "@workspace/db";
 import {
   booksTable,
-  passagesTable,
+  quotesTable,
   usersTable,
   commentsTable,
   commentLikesTable,
+  userHighlightsTable,
 } from "@workspace/db";
+import { asc, eq } from "drizzle-orm";
 import { logger } from "./logger";
-
-const AVATAR_COLORS = [
-  "#E8A020", "#4A9EFF", "#FF6B6B", "#7CB9A8", "#C084FC",
-  "#FB923C", "#34D399", "#F472B6", "#60A5FA", "#A78BFA",
-];
+import {
+  normalizeText,
+  hashText,
+  normalizeTitle,
+  normalizeAuthor,
+} from "./text";
 
 const BOOKS = [
   {
     title: "Pride and Prejudice",
     author: "Jane Austen",
-    description: "A witty and romantic novel following Elizabeth Bennet as she navigates issues of manners, upbringing, morality, and marriage in 19th-century England.",
+    description:
+      "A witty and romantic novel following Elizabeth Bennet as she navigates issues of manners, upbringing, morality, and marriage in 19th-century England.",
     coverColor: "#8B5E3C",
-    passages: [
+    quotes: [
       "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered as the rightful property of some one or other of their daughters.",
       "My dear Mr. Bennet, said his lady to him one day, have you heard that Netherfield Park is let at last? Mr. Bennet replied that he had not. But it is, returned she; for Mrs. Long has just been here, and she told me all about it.",
       "Mr. Bennet was so odd a mixture of quick parts, sarcastic humour, reserve, and caprice, that the experience of three-and-twenty years had been insufficient to make his wife understand his character. Her mind was less difficult to develop. She was a woman of mean understanding, little information, and uncertain temper.",
@@ -37,9 +41,10 @@ const BOOKS = [
   {
     title: "Moby-Dick",
     author: "Herman Melville",
-    description: "The epic tale of Captain Ahab's obsessive quest to hunt the white sperm whale, Moby Dick, exploring themes of fate, free will, and obsession.",
+    description:
+      "The epic tale of Captain Ahab's obsessive quest to hunt the white sperm whale, Moby Dick, exploring themes of fate, free will, and obsession.",
     coverColor: "#1E3A5F",
-    passages: [
+    quotes: [
       "Call me Ishmael. Some years ago—never mind how long precisely—having little money in my pocket and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world.",
       "Whenever I find myself growing grim about the mouth; whenever it is a damp, drizzly November in my soul; whenever I find myself involuntarily pausing before coffin warehouses, and bringing up the rear of every funeral I meet; I account it high time to get to sea as soon as I can.",
       "There is a wisdom that is woe; but there is a woe that is madness. And there is a Catskill eagle in some souls that can alike dive down into the blackest gorges, and soar out of them again and become invisible in the sunny spaces.",
@@ -57,9 +62,10 @@ const BOOKS = [
   {
     title: "The Picture of Dorian Gray",
     author: "Oscar Wilde",
-    description: "A gothic novel in which the beautiful Dorian Gray sells his soul for eternal youth and beauty, while his portrait ages and grows hideous with each sin he commits.",
+    description:
+      "A gothic novel in which the beautiful Dorian Gray sells his soul for eternal youth and beauty, while his portrait ages and grows hideous with each sin he commits.",
     coverColor: "#4A1942",
-    passages: [
+    quotes: [
       "The books that the world calls immoral are books that show the world its own shame. Oscar Wilde's provocative statement on art and morality through Lord Henry.",
       "To define is to limit. The moment you put a definition on something, you make it smaller than it is. Lord Henry's philosophy on the nature of identity and experience.",
       "I don't want to be at the mercy of my emotions. I want to use them, to enjoy them, and to dominate them. Dorian Gray on his desired relationship with his own feelings.",
@@ -67,8 +73,8 @@ const BOOKS = [
       "Nowadays people know the price of everything and the value of nothing. Lord Henry's famous aphorism, a cutting critique of Victorian materialism and moral bankruptcy.",
       "Behind every exquisite thing that existed, there was something tragic. The world had always been like that. Dorian's growing awareness of the dark undercurrent beneath beauty.",
       "You will always be fond of me. I represent to you all the sins you never had the courage to commit. Lord Henry to Dorian, articulating the seductive danger of their friendship.",
-      "The books that the world calls immoral are books that show the world its own shame. There is only one thing in life worse than being talked about, and that is not being talked about.",
-      "Nowadays people know the price of everything and the value of nothing. Lord Henry's philosophy permeating every social encounter in the novel with delightful cynicism.",
+      "There is only one thing in life worse than being talked about, and that is not being talked about. Lord Henry on the social currency of reputation and scandal.",
+      "Experience is merely the name men gave to their mistakes. Lord Henry reframing regret as nothing more than a vocabulary problem.",
       "One can always be kind to people about whom one cares nothing. That is why English society is so unpleasant. It consists of perfectly charming people who are perfectly heartless.",
       "To regret one's own experiences is to arrest one's own development. To deny one's own experiences is to put a lie into the lips of one's own life. It is no less than a denial of the soul.",
       "I am too fond of reading books to care to write them. Lord Henry, the eternal observer, preferring to experience life through others rather than create his own story.",
@@ -82,9 +88,23 @@ const DEMO_USERS = [
   { username: "philosophybird", color: "#34D399" },
   { username: "nightowlreader", color: "#FB923C" },
   { username: "literaturelover", color: "#F472B6" },
+  { username: "marginnotes", color: "#E8A020" },
+  { username: "dogeared", color: "#60A5FA" },
+  { username: "quietpages", color: "#A78BFA" },
+  { username: "inkandpaper", color: "#FF6B6B" },
+  { username: "chapterzero", color: "#7CB9A8" },
+  { username: "footnotefan", color: "#34D399" },
+  { username: "spinecracker", color: "#FB923C" },
+  { username: "prosepoet", color: "#F472B6" },
+  { username: "verseandvale", color: "#4A9EFF" },
+  { username: "latenightlit", color: "#C084FC" },
 ];
 
-const SEED_COMMENTS: Record<number, Record<number, Array<{ userIdx: number; text: string; likes: number }>>> = {
+// bookIdx -> quoteIdx -> comments
+const SEED_COMMENTS: Record<
+  number,
+  Record<number, Array<{ userIdx: number; text: string; likes: number }>>
+> = {
   0: {
     0: [
       { userIdx: 0, text: "The irony in this opening line is so thick you could cut it with a knife. Austen is mocking the very society she's describing.", likes: 47 },
@@ -147,6 +167,14 @@ const SEED_COMMENTS: Record<number, Record<number, Array<{ userIdx: number; text
   },
 };
 
+// bookIdx -> quoteIdx -> number of distinct users who highlighted it (drives the
+// "most highlighted" feature + reader highlight intensity tiers).
+const SEED_HIGHLIGHTS: Record<number, Record<number, number>> = {
+  0: { 0: 14, 2: 2, 3: 9, 5: 12, 6: 5, 8: 6, 10: 4 },
+  1: { 0: 13, 1: 15, 4: 3, 6: 8, 9: 5, 11: 11 },
+  2: { 0: 2, 3: 10, 4: 15, 5: 6, 6: 7, 9: 4 },
+};
+
 export async function seedDatabase(): Promise<void> {
   try {
     const existingBooks = await db.select().from(booksTable).limit(1);
@@ -157,62 +185,99 @@ export async function seedDatabase(): Promise<void> {
 
     logger.info("Seeding database...");
 
-    const insertedUsers = await db.insert(usersTable).values(
-      DEMO_USERS.map((u) => ({ username: u.username, avatarColor: u.color }))
-    ).returning();
+    const insertedUsers = await db
+      .insert(usersTable)
+      .values(DEMO_USERS.map((u) => ({ username: u.username, avatarColor: u.color })))
+      .returning();
 
-    const insertedBooks = [];
-    for (const book of BOOKS) {
-      const [insertedBook] = await db.insert(booksTable).values({
-        title: book.title,
-        author: book.author,
-        description: book.description,
-        coverColor: book.coverColor,
-      }).returning();
-      insertedBooks.push(insertedBook);
+    for (let bookIdx = 0; bookIdx < BOOKS.length; bookIdx++) {
+      const book = BOOKS[bookIdx]!;
+      const [insertedBook] = await db
+        .insert(booksTable)
+        .values({
+          title: book.title,
+          author: book.author,
+          normTitle: normalizeTitle(book.title),
+          normAuthor: normalizeAuthor(book.author),
+          description: book.description,
+          coverColor: book.coverColor,
+        })
+        .returning();
+      if (!insertedBook) continue;
 
-      const passageRows = book.passages.map((text, idx) => ({
-        bookId: insertedBook.id,
-        orderIndex: idx,
-        text,
-      }));
-      await db.insert(passagesTable).values(passageRows);
-    }
+      // Insert quotes for this canonical book.
+      await db.insert(quotesTable).values(
+        book.quotes.map((text) => {
+          const normText = normalizeText(text);
+          return {
+            canonicalBookId: insertedBook.id,
+            text,
+            normText,
+            normTextHash: hashText(normText),
+          };
+        }),
+      );
 
-    const allPassages = await db.select().from(passagesTable);
+      // Re-read in stable (insertion) order so quote index matches the seed arrays.
+      const bookQuotes = await db
+        .select()
+        .from(quotesTable)
+        .where(eq(quotesTable.canonicalBookId, insertedBook.id))
+        .orderBy(asc(quotesTable.id));
 
-    for (let bookIdx = 0; bookIdx < insertedBooks.length; bookIdx++) {
+      // Comments anchored to quotes.
       const bookComments = SEED_COMMENTS[bookIdx];
-      if (!bookComments) continue;
-      const book = insertedBooks[bookIdx];
-      const bookPassages = allPassages
-        .filter((p) => p.bookId === book.id)
-        .sort((a, b) => a.orderIndex - b.orderIndex);
+      if (bookComments) {
+        for (const [quoteIdxStr, commentList] of Object.entries(bookComments)) {
+          const quote = bookQuotes[parseInt(quoteIdxStr, 10)];
+          if (!quote) continue;
 
-      for (const [passageIdxStr, commentList] of Object.entries(bookComments)) {
-        const passageIdx = parseInt(passageIdxStr, 10);
-        const passage = bookPassages[passageIdx];
-        if (!passage) continue;
+          for (const commentData of commentList) {
+            const user = insertedUsers[commentData.userIdx];
+            if (!user) continue;
 
-        for (const commentData of commentList) {
-          const user = insertedUsers[commentData.userIdx];
-          if (!user) continue;
+            const [comment] = await db
+              .insert(commentsTable)
+              .values({
+                quoteId: quote.id,
+                userId: user.id,
+                text: commentData.text,
+                likeCount: commentData.likes,
+              })
+              .returning();
+            if (!comment) continue;
 
-          const [comment] = await db.insert(commentsTable).values({
-            passageId: passage.id,
-            userId: user.id,
-            text: commentData.text,
-            likeCount: commentData.likes,
-          }).returning();
+            const likerIndices = Array.from(
+              { length: Math.min(commentData.likes, insertedUsers.length) },
+              (_, i) => i,
+            ).filter((i) => i !== commentData.userIdx);
 
-          const likerIndices = Array.from({ length: Math.min(commentData.likes, insertedUsers.length) }, (_, i) => i)
-            .filter((i) => i !== commentData.userIdx);
-
-          if (likerIndices.length > 0) {
-            await db.insert(commentLikesTable).values(
-              likerIndices.map((i) => ({ commentId: comment.id, userId: insertedUsers[i]!.id }))
-            );
+            if (likerIndices.length > 0) {
+              await db.insert(commentLikesTable).values(
+                likerIndices.map((i) => ({
+                  commentId: comment.id,
+                  userId: insertedUsers[i]!.id,
+                })),
+              );
+            }
           }
+        }
+      }
+
+      // Community highlights anchored to quotes.
+      const bookHighlights = SEED_HIGHLIGHTS[bookIdx];
+      if (bookHighlights) {
+        for (const [quoteIdxStr, count] of Object.entries(bookHighlights)) {
+          const quote = bookQuotes[parseInt(quoteIdxStr, 10)];
+          if (!quote) continue;
+          const n = Math.min(count, insertedUsers.length);
+          if (n <= 0) continue;
+          await db.insert(userHighlightsTable).values(
+            Array.from({ length: n }, (_, i) => ({
+              userId: insertedUsers[i]!.id,
+              quoteId: quote.id,
+            })),
+          );
         }
       }
     }

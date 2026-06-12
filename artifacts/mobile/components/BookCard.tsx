@@ -51,9 +51,13 @@ export function BookCard({ book, onPress }: Props) {
           {book.description}
         </Text>
         <View style={styles.footer}>
-          <Feather name="message-circle" size={13} color={colors.primary} />
+          <Feather name="edit-3" size={13} color={colors.primary} />
           <Text style={[styles.passages, { color: colors.mutedForeground }]}>
-            {book.totalPassages} passages
+            {book.highlightCount}
+          </Text>
+          <Feather name="message-circle" size={13} color={colors.mutedForeground} style={{ marginLeft: 12 }} />
+          <Text style={[styles.passages, { color: colors.mutedForeground }]}>
+            {book.commentCount}
           </Text>
         </View>
       </View>

@@ -12,5 +12,7 @@ export interface Book {
   author: string;
   description: string;
   coverColor: string;
-  totalPassages: number;
+  quoteCount: number;
+  commentCount: number;
+  highlightCount: number;
 }

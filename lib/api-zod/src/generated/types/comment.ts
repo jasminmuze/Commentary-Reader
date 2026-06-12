@@ -8,11 +8,12 @@
 
 export interface Comment {
   id: number;
-  passageId: number;
+  quoteId: number;
   userId: number;
   username: string;
   avatarColor: string;
   text: string;
+  quoteText?: string;
   likeCount: number;
   likedByMe: boolean;
   savedByMe: boolean;

@@ -14,7 +14,6 @@ import {
   useLikeComment,
   useSaveComment,
   getGetSavedCommentsQueryKey,
-  getGetPassageCommentsQueryKey,
 } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
@@ -31,7 +30,7 @@ export default function SavedScreen() {
 
   const { data: saved, isLoading, refetch, isRefetching } = useGetSavedComments(
     user?.id ?? 0,
-    { query: { enabled: !!user } }
+    { query: { enabled: !!user, queryKey: getGetSavedCommentsQueryKey(user?.id ?? 0) } }
   );
 
   const likeComment = useLikeComment();

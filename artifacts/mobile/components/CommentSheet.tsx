@@ -18,11 +18,11 @@ import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  useGetPassageComments,
+  useGetQuoteComments,
   useCreateComment,
   useLikeComment,
   useSaveComment,
-  getGetPassageCommentsQueryKey,
+  getGetQuoteCommentsQueryKey,
 } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
@@ -35,12 +35,12 @@ type FilterType = "best" | "friends";
 
 interface Props {
   visible: boolean;
-  passageId: number | null;
-  passageText: string;
+  quoteId: number | null;
+  quoteText: string;
   onClose: () => void;
 }
 
-export function CommentSheet({ visible, passageId, passageText, onClose }: Props) {
+export function CommentSheet({ visible, quoteId, quoteText, onClose }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useUser();
@@ -66,13 +66,13 @@ export function CommentSheet({ visible, passageId, passageText, onClose }: Props
     }
   }, [visible, slideAnim]);
 
-  const { data: comments, isLoading } = useGetPassageComments(
-    passageId ?? 0,
+  const { data: comments, isLoading } = useGetQuoteComments(
+    quoteId ?? 0,
     { userId: user?.id, filter },
     {
       query: {
-        enabled: !!passageId && visible,
-        queryKey: getGetPassageCommentsQueryKey(passageId ?? 0, { userId: user?.id, filter }),
+        enabled: !!quoteId && visible,
+        queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { userId: user?.id, filter }),
       },
     }
   );
@@ -87,11 +87,11 @@ export function CommentSheet({ visible, passageId, passageText, onClose }: Props
       { commentId, data: { userId: user.id } },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetPassageCommentsQueryKey(passageId ?? 0, { userId: user.id, filter }) });
+          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { userId: user.id, filter }) });
         },
       }
     );
-  }, [user, likeComment, queryClient, passageId, filter]);
+  }, [user, likeComment, queryClient, quoteId, filter]);
 
   const handleSave = useCallback((commentId: number) => {
     if (!user) return;
@@ -99,27 +99,27 @@ export function CommentSheet({ visible, passageId, passageText, onClose }: Props
       { commentId, data: { userId: user.id } },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetPassageCommentsQueryKey(passageId ?? 0, { userId: user.id, filter }) });
+          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { userId: user.id, filter }) });
         },
       }
     );
-  }, [user, saveComment, queryClient, passageId, filter]);
+  }, [user, saveComment, queryClient, quoteId, filter]);
 
   const handleSubmit = useCallback(() => {
-    if (!user || !passageId || !commentText.trim()) return;
+    if (!user || !quoteId || !commentText.trim()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     createComment.mutate(
-      { passageId, data: { userId: user.id, text: commentText.trim() } },
+      { quoteId, data: { userId: user.id, text: commentText.trim() } },
       {
         onSuccess: () => {
           setCommentText("");
           Keyboard.dismiss();
-          queryClient.invalidateQueries({ queryKey: getGetPassageCommentsQueryKey(passageId, { userId: user.id, filter: "best" }) });
-          queryClient.invalidateQueries({ queryKey: getGetPassageCommentsQueryKey(passageId, { userId: user.id, filter: "friends" }) });
+          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId, { userId: user.id, filter: "best" }) });
+          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId, { userId: user.id, filter: "friends" }) });
         },
       }
     );
-  }, [user, passageId, commentText, createComment, queryClient]);
+  }, [user, quoteId, commentText, createComment, queryClient]);
 
   const translateY = slideAnim.interpolate({
     inputRange: [0, 1],
@@ -154,13 +154,13 @@ export function CommentSheet({ visible, passageId, passageText, onClose }: Props
             <View style={[styles.handle, { backgroundColor: colors.border }]} />
           </View>
 
-          {/* Passage excerpt */}
+          {/* Quote excerpt */}
           <View style={[styles.passageExcerpt, { borderColor: colors.border, borderLeftColor: colors.primary }]}>
             <Text
               style={[styles.passageText, { color: colors.mutedForeground }]}
               numberOfLines={3}
             >
-              {passageText}
+              {quoteText}
             </Text>
           </View>
 
@@ -212,7 +212,7 @@ export function CommentSheet({ visible, passageId, passageText, onClose }: Props
                   title={filter === "friends" ? "No friends' comments" : "No comments yet"}
                   subtitle={
                     filter === "friends"
-                      ? "Add friends to see their thoughts on this passage"
+                      ? "Add friends to see their thoughts on this quote"
                       : "Be the first to share your thoughts"
                   }
                 />

@@ -19,6 +19,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCreateUser } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
+import { apiUrl } from "@/lib/api";
 
 const USER_ID_KEY = "bookmarks_user_id";
 
@@ -160,7 +161,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.getItem(USER_ID_KEY).then(async (storedId) => {
       if (storedId) {
         try {
-          const res = await fetch(`/api/users/${storedId}`);
+          const res = await fetch(apiUrl(`/api/users/${storedId}`));
           if (res.ok) {
             const data = await res.json();
             setUserState({ id: data.id, username: data.username, avatarColor: data.avatarColor });

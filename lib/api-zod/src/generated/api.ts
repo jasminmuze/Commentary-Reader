@@ -17,21 +17,42 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * @summary List all books
+ * @summary List / search canonical books
  */
+export const ListBooksQueryParams = zod.object({
+  "q": zod.coerce.string().optional()
+})
+
 export const ListBooksResponseItem = zod.object({
   "id": zod.number(),
   "title": zod.string(),
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
-  "totalPassages": zod.number()
+  "quoteCount": zod.number(),
+  "commentCount": zod.number(),
+  "highlightCount": zod.number()
 })
 export const ListBooksResponse = zod.array(ListBooksResponseItem)
 
 
 /**
- * @summary Get a book with its passages and highlight intensities
+ * @summary Create a canonical book
+ */
+
+
+
+
+export const CreateBookBody = zod.object({
+  "title": zod.string().min(1),
+  "author": zod.string().min(1),
+  "description": zod.string().optional(),
+  "isbn": zod.string().optional()
+})
+
+
+/**
+ * @summary Get a book with its best comments and most-highlighted quotes
  */
 export const GetBookParams = zod.object({
   "bookId": zod.coerce.number()
@@ -47,51 +68,122 @@ export const GetBookResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
-  "passages": zod.array(zod.object({
-  "id": zod.number(),
-  "bookId": zod.number(),
-  "orderIndex": zod.number(),
-  "text": zod.string(),
+  "quoteCount": zod.number(),
   "commentCount": zod.number(),
-  "highlightIntensity": zod.number().describe('0.0 to 1.0 representing highlight strength')
+  "highlightCount": zod.number(),
+  "topQuotes": zod.array(zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "text": zod.string(),
+  "searchText": zod.string().describe('Distinctive leading substring used to locate the quote in an EPUB'),
+  "highlightCount": zod.number(),
+  "commentCount": zod.number(),
+  "highlightIntensity": zod.number().describe('0.0 to 1.0 representing community highlight strength'),
+  "highlightedByMe": zod.boolean().optional()
+})),
+  "bestComments": zod.array(zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "avatarColor": zod.string(),
+  "text": zod.string(),
+  "quoteText": zod.string().optional(),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "savedByMe": zod.boolean(),
+  "createdAt": zod.coerce.date()
 }))
 })
 
 
 /**
- * @summary Get comments for a passage
+ * @summary Community quotes for a book (reader overlay)
  */
-export const GetPassageCommentsParams = zod.object({
-  "passageId": zod.coerce.number()
+export const GetBookQuotesParams = zod.object({
+  "bookId": zod.coerce.number()
 })
 
-export const getPassageCommentsQueryFilterDefault = `all`;
-
-export const GetPassageCommentsQueryParams = zod.object({
-  "userId": zod.coerce.number().optional(),
-  "filter": zod.enum(['best', 'friends', 'all']).default(getPassageCommentsQueryFilterDefault)
+export const GetBookQuotesQueryParams = zod.object({
+  "userId": zod.coerce.number().optional()
 })
 
-export const GetPassageCommentsResponseItem = zod.object({
+export const GetBookQuotesResponseItem = zod.object({
   "id": zod.number(),
-  "passageId": zod.number(),
+  "canonicalBookId": zod.number(),
+  "text": zod.string(),
+  "searchText": zod.string().describe('Distinctive leading substring used to locate the quote in an EPUB'),
+  "highlightCount": zod.number(),
+  "commentCount": zod.number(),
+  "highlightIntensity": zod.number().describe('0.0 to 1.0 representing community highlight strength'),
+  "highlightedByMe": zod.boolean().optional()
+})
+export const GetBookQuotesResponse = zod.array(GetBookQuotesResponseItem)
+
+
+/**
+ * @summary Find or create a quote in a book (by normalized text)
+ */
+export const CreateQuoteParams = zod.object({
+  "bookId": zod.coerce.number()
+})
+
+export const createQuoteBodyTextMin = 8;
+export const createQuoteBodyTextMax = 1000;
+
+
+
+export const CreateQuoteBody = zod.object({
+  "text": zod.string().min(createQuoteBodyTextMin).max(createQuoteBodyTextMax)
+})
+
+export const CreateQuoteResponse = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "text": zod.string(),
+  "searchText": zod.string().describe('Distinctive leading substring used to locate the quote in an EPUB'),
+  "highlightCount": zod.number(),
+  "commentCount": zod.number(),
+  "highlightIntensity": zod.number().describe('0.0 to 1.0 representing community highlight strength'),
+  "highlightedByMe": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get comments for a quote
+ */
+export const GetQuoteCommentsParams = zod.object({
+  "quoteId": zod.coerce.number()
+})
+
+export const getQuoteCommentsQueryFilterDefault = `all`;
+
+export const GetQuoteCommentsQueryParams = zod.object({
+  "userId": zod.coerce.number().optional(),
+  "filter": zod.enum(['best', 'friends', 'all']).default(getQuoteCommentsQueryFilterDefault)
+})
+
+export const GetQuoteCommentsResponseItem = zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
   "avatarColor": zod.string(),
   "text": zod.string(),
+  "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
   "savedByMe": zod.boolean(),
   "createdAt": zod.coerce.date()
 })
-export const GetPassageCommentsResponse = zod.array(GetPassageCommentsResponseItem)
+export const GetQuoteCommentsResponse = zod.array(GetQuoteCommentsResponseItem)
 
 
 /**
- * @summary Create a comment on a passage
+ * @summary Create a comment on a quote
  */
 export const CreateCommentParams = zod.object({
-  "passageId": zod.coerce.number()
+  "quoteId": zod.coerce.number()
 })
 
 
@@ -100,6 +192,25 @@ export const CreateCommentParams = zod.object({
 export const CreateCommentBody = zod.object({
   "userId": zod.number(),
   "text": zod.string().min(1)
+})
+
+
+/**
+ * @summary Toggle the current user's highlight on a quote
+ */
+export const ToggleHighlightParams = zod.object({
+  "quoteId": zod.coerce.number()
+})
+
+export const ToggleHighlightBody = zod.object({
+  "userId": zod.number(),
+  "userLibraryId": zod.number().optional(),
+  "cfiRange": zod.string().optional()
+})
+
+export const ToggleHighlightResponse = zod.object({
+  "highlighted": zod.boolean(),
+  "highlightCount": zod.number()
 })
 
 
@@ -134,6 +245,110 @@ export const SaveCommentBody = zod.object({
 export const SaveCommentResponse = zod.object({
   "saved": zod.boolean()
 })
+
+
+/**
+ * @summary Register an uploaded EPUB, extract metadata, and auto-match
+ */
+export const CreateLibraryEntryBody = zod.object({
+  "userId": zod.number(),
+  "uploadURL": zod.string().describe('The presigned upload URL (or object path) returned after upload')
+})
+
+
+/**
+ * @summary Get a library entry (with EPUB url and matched book)
+ */
+export const GetLibraryEntryParams = zod.object({
+  "libraryId": zod.coerce.number()
+})
+
+export const GetLibraryEntryResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "canonicalBookId": zod.number().nullable(),
+  "epubObjectPath": zod.string(),
+  "epubUrl": zod.string(),
+  "originalTitle": zod.string().nullable(),
+  "originalAuthor": zod.string().nullable(),
+  "originalIsbn": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "book": zod.union([zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "author": zod.string(),
+  "description": zod.string(),
+  "coverColor": zod.string(),
+  "quoteCount": zod.number(),
+  "commentCount": zod.number(),
+  "highlightCount": zod.number()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Manually match a library entry to a canonical book
+ */
+export const MatchLibraryEntryParams = zod.object({
+  "libraryId": zod.coerce.number()
+})
+
+export const MatchLibraryEntryBody = zod.object({
+  "canonicalBookId": zod.number()
+})
+
+export const MatchLibraryEntryResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "canonicalBookId": zod.number().nullable(),
+  "epubObjectPath": zod.string(),
+  "epubUrl": zod.string(),
+  "originalTitle": zod.string().nullable(),
+  "originalAuthor": zod.string().nullable(),
+  "originalIsbn": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "book": zod.union([zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "author": zod.string(),
+  "description": zod.string(),
+  "coverColor": zod.string(),
+  "quoteCount": zod.number(),
+  "commentCount": zod.number(),
+  "highlightCount": zod.number()
+}),zod.null()])
+})
+
+
+/**
+ * @summary List a user's uploaded books
+ */
+export const GetUserLibraryParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetUserLibraryResponseItem = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "canonicalBookId": zod.number().nullable(),
+  "epubObjectPath": zod.string(),
+  "epubUrl": zod.string(),
+  "originalTitle": zod.string().nullable(),
+  "originalAuthor": zod.string().nullable(),
+  "originalIsbn": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "book": zod.union([zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "author": zod.string(),
+  "description": zod.string(),
+  "coverColor": zod.string(),
+  "quoteCount": zod.number(),
+  "commentCount": zod.number(),
+  "highlightCount": zod.number()
+}),zod.null()])
+})
+export const GetUserLibraryResponse = zod.array(GetUserLibraryResponseItem)
 
 
 /**
@@ -241,11 +456,12 @@ export const GetSavedCommentsParams = zod.object({
 
 export const GetSavedCommentsResponseItem = zod.object({
   "id": zod.number(),
-  "passageId": zod.number(),
+  "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
   "avatarColor": zod.string(),
   "text": zod.string(),
+  "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
   "savedByMe": zod.boolean(),

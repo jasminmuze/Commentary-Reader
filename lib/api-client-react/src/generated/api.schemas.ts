@@ -15,17 +15,36 @@ export interface Book {
   author: string;
   description: string;
   coverColor: string;
-  totalPassages: number;
+  quoteCount: number;
+  commentCount: number;
+  highlightCount: number;
 }
 
-export interface Passage {
+export interface Quote {
   id: number;
-  bookId: number;
-  orderIndex: number;
+  canonicalBookId: number;
   text: string;
+  /** Distinctive leading substring used to locate the quote in an EPUB */
+  searchText: string;
+  highlightCount: number;
   commentCount: number;
-  /** 0.0 to 1.0 representing highlight strength */
+  /** 0.0 to 1.0 representing community highlight strength */
   highlightIntensity: number;
+  highlightedByMe?: boolean;
+}
+
+export interface Comment {
+  id: number;
+  quoteId: number;
+  userId: number;
+  username: string;
+  avatarColor: string;
+  text: string;
+  quoteText?: string;
+  likeCount: number;
+  likedByMe: boolean;
+  savedByMe: boolean;
+  createdAt: string;
 }
 
 export interface BookDetail {
@@ -34,26 +53,92 @@ export interface BookDetail {
   author: string;
   description: string;
   coverColor: string;
-  passages: Passage[];
-}
-
-export interface Comment {
-  id: number;
-  passageId: number;
-  userId: number;
-  username: string;
-  avatarColor: string;
-  text: string;
-  likeCount: number;
-  likedByMe: boolean;
-  savedByMe: boolean;
-  createdAt: string;
+  quoteCount: number;
+  commentCount: number;
+  highlightCount: number;
+  topQuotes: Quote[];
+  bestComments: Comment[];
 }
 
 export interface CommentInput {
   userId: number;
   /** @minLength 1 */
   text: string;
+}
+
+export interface CreateQuoteInput {
+  /**
+     * @minLength 8
+     * @maxLength 1000
+     */
+  text: string;
+}
+
+export interface HighlightInput {
+  userId: number;
+  userLibraryId?: number;
+  cfiRange?: string;
+}
+
+export interface HighlightResult {
+  highlighted: boolean;
+  highlightCount: number;
+}
+
+export interface CreateBookInput {
+  /** @minLength 1 */
+  title: string;
+  /** @minLength 1 */
+  author: string;
+  description?: string;
+  isbn?: string;
+}
+
+export interface CreateLibraryInput {
+  userId: number;
+  /** The presigned upload URL (or object path) returned after upload */
+  uploadURL: string;
+}
+
+export interface ManualMatchInput {
+  canonicalBookId: number;
+}
+
+export interface LibraryEntry {
+  id: number;
+  userId: number;
+  /** @nullable */
+  canonicalBookId: number | null;
+  epubObjectPath: string;
+  epubUrl: string;
+  /** @nullable */
+  originalTitle: string | null;
+  /** @nullable */
+  originalAuthor: string | null;
+  /** @nullable */
+  originalIsbn: string | null;
+  createdAt: string;
+  book: Book | null;
+}
+
+export type MatchResultStatus = typeof MatchResultStatus[keyof typeof MatchResultStatus];
+
+
+export const MatchResultStatus = {
+  matched: 'matched',
+  candidates: 'candidates',
+  none: 'none',
+} as const;
+
+export interface MatchResult {
+  status: MatchResultStatus;
+  book: Book | null;
+  candidates: Book[];
+}
+
+export interface LibraryUploadResult {
+  entry: LibraryEntry;
+  match: MatchResult;
 }
 
 export interface LikeResult {
@@ -93,19 +178,27 @@ export interface FriendInput {
   friendId: number;
 }
 
+export type ListBooksParams = {
+q?: string;
+};
+
 export type GetBookParams = {
 userId?: number;
 };
 
-export type GetPassageCommentsParams = {
+export type GetBookQuotesParams = {
 userId?: number;
-filter?: GetPassageCommentsFilter;
 };
 
-export type GetPassageCommentsFilter = typeof GetPassageCommentsFilter[keyof typeof GetPassageCommentsFilter];
+export type GetQuoteCommentsParams = {
+userId?: number;
+filter?: GetQuoteCommentsFilter;
+};
+
+export type GetQuoteCommentsFilter = typeof GetQuoteCommentsFilter[keyof typeof GetQuoteCommentsFilter];
 
 
-export const GetPassageCommentsFilter = {
+export const GetQuoteCommentsFilter = {
   best: 'best',
   friends: 'friends',
   all: 'all',

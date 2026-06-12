@@ -1,15 +1,26 @@
 export * from "./generated/api";
-// Re-export types individually, skipping getBookParams and getPassageCommentsParams
-// which collide with the same-named Zod schemas in ./generated/api
+// Re-export TS types individually, skipping getBookParams and getQuoteCommentsParams
+// whose type names collide with same-named Zod schemas in ./generated/api.
 export * from "./generated/types/book";
 export * from "./generated/types/bookDetail";
 export * from "./generated/types/comment";
 export * from "./generated/types/commentInput";
+export * from "./generated/types/createBookInput";
+export * from "./generated/types/createLibraryInput";
+export * from "./generated/types/createQuoteInput";
 export * from "./generated/types/friendInput";
-export * from "./generated/types/getPassageCommentsFilter";
+export * from "./generated/types/getQuoteCommentsFilter";
 export * from "./generated/types/healthStatus";
+export * from "./generated/types/highlightInput";
+export * from "./generated/types/highlightResult";
+export * from "./generated/types/libraryEntry";
+export * from "./generated/types/libraryUploadResult";
 export * from "./generated/types/likeResult";
-export * from "./generated/types/passage";
+export * from "./generated/types/listBooksParams";
+export * from "./generated/types/manualMatchInput";
+export * from "./generated/types/matchResult";
+export * from "./generated/types/matchResultStatus";
+export * from "./generated/types/quote";
 export * from "./generated/types/saveResult";
 export * from "./generated/types/searchUsersParams";
 export * from "./generated/types/user";

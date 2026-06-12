@@ -1,2 +1,4 @@
 - [API Zod barrel exports](api-zod-barrel.md) — collision fix: never `export * from "./generated/types"` wholesale; list individual type files to skip colliders.
 - [Orval params naming](orval-params-naming.md) — path-param Zod schemas use `GetBookParams`; query-param-only Zod schemas use `SearchUsersQueryParams` (not `SearchUsersParams` which is a TS type only).
+- [Orval query hooks need queryKey](orval-query-options-querykey.md) — passing any `query` options to a generated `useGetX` requires an explicit `queryKey`; use the `getGetXQueryKey(...)` helper.
+- [epubjs-react-native on Expo SDK 54](epubjs-react-native-expo.md) — don't install its file-system/expo-file-system pkgs; write a local useFileSystem on `expo-file-system/legacy`; reader is device-only, guard off web.

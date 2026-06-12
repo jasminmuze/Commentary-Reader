@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetPassageCommentsFilter = typeof GetPassageCommentsFilter[keyof typeof GetPassageCommentsFilter];
+export type GetQuoteCommentsFilter = typeof GetQuoteCommentsFilter[keyof typeof GetQuoteCommentsFilter];
 
 
-export const GetPassageCommentsFilter = {
+export const GetQuoteCommentsFilter = {
   best: 'best',
   friends: 'friends',
   all: 'all',
