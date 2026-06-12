@@ -308,6 +308,12 @@ paths:
           required: true
           schema:
             type: integer
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Caller's userId — must match the entry owner
       responses:
         "200":
           description: Library entry
@@ -717,10 +723,13 @@ components:
 
     ManualMatchInput:
       type: object
-      required: [canonicalBookId]
+      required: [canonicalBookId, userId]
       properties:
         canonicalBookId:
           type: integer
+        userId:
+          type: integer
+          description: Caller's userId — must match the entry owner
 
     LibraryEntry:
       type: object
@@ -754,11 +763,14 @@ components:
 
     UpdateReadingLocationInput:
       type: object
-      required: [location]
+      required: [location, userId]
       properties:
         location:
           type: string
           minLength: 1
+        userId:
+          type: integer
+          description: Caller's userId — must match the entry owner
 
     MatchResult:
       type: object

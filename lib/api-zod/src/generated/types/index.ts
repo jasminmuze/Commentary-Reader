@@ -16,6 +16,7 @@ export * from './createQuoteInput';
 export * from './friendInput';
 export * from './getBookParams';
 export * from './getBookQuotesParams';
+export * from './getLibraryEntryParams';
 export * from './getQuoteCommentsFilter';
 export * from './getQuoteCommentsParams';
 export * from './healthStatus';

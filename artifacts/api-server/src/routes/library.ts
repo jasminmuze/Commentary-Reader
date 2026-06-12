@@ -4,6 +4,7 @@ import { db, booksTable, userLibraryTable } from "@workspace/db";
 import {
   CreateLibraryEntryBody,
   GetLibraryEntryParams,
+  GetLibraryEntryQueryParams,
   MatchLibraryEntryParams,
   MatchLibraryEntryBody,
   UpdateReadingLocationParams,
@@ -43,7 +44,7 @@ async function formatLibraryEntry(
     userId: entry.userId,
     canonicalBookId: entry.canonicalBookId ?? null,
     epubObjectPath: entry.epubObjectPath,
-    epubUrl: `/api${entry.epubObjectPath}?userId=${entry.userId}`,
+    epubUrl: `/api${entry.epubObjectPath}`,
     originalTitle: entry.originalTitle ?? null,
     originalAuthor: entry.originalAuthor ?? null,
     originalIsbn: entry.originalIsbn ?? null,
@@ -143,12 +144,21 @@ router.get("/library/:libraryId", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const qp = GetLibraryEntryQueryParams.safeParse(req.query);
+  if (!qp.success) {
+    res.status(400).json({ error: qp.error.message });
+    return;
+  }
   const [entry] = await db
     .select()
     .from(userLibraryTable)
     .where(eq(userLibraryTable.id, params.data.libraryId));
   if (!entry) {
     res.status(404).json({ error: "Library entry not found" });
+    return;
+  }
+  if (entry.userId !== qp.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
   res.json(await formatLibraryEntry(entry));
@@ -163,6 +173,19 @@ router.patch("/library/:libraryId", async (req, res): Promise<void> => {
   const body = MatchLibraryEntryBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(userLibraryTable)
+    .where(eq(userLibraryTable.id, params.data.libraryId));
+  if (!existing) {
+    res.status(404).json({ error: "Library entry not found" });
+    return;
+  }
+  if (existing.userId !== body.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
 
@@ -199,6 +222,19 @@ router.put("/library/:libraryId/location", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
+  const [existing] = await db
+    .select()
+    .from(userLibraryTable)
+    .where(eq(userLibraryTable.id, params.data.libraryId));
+  if (!existing) {
+    res.status(404).json({ error: "Library entry not found" });
+    return;
+  }
+  if (existing.userId !== body.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
   const [entry] = await db
     .update(userLibraryTable)
     .set({ lastReadingLocation: body.data.location })

@@ -6,8 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ManualMatchInput {
-  canonicalBookId: number;
-  /** Caller's userId — must match the entry owner */
-  userId: number;
-}
+export type GetLibraryEntryParams = {
+/**
+ * Caller's userId — must match the entry owner
+ */
+userId: number;
+};

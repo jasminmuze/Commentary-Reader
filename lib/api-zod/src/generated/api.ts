@@ -263,6 +263,10 @@ export const GetLibraryEntryParams = zod.object({
   "libraryId": zod.coerce.number()
 })
 
+export const GetLibraryEntryQueryParams = zod.object({
+  "userId": zod.coerce.number().describe('Caller\'s userId — must match the entry owner')
+})
+
 export const GetLibraryEntryResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
@@ -295,7 +299,8 @@ export const MatchLibraryEntryParams = zod.object({
 })
 
 export const MatchLibraryEntryBody = zod.object({
-  "canonicalBookId": zod.number()
+  "canonicalBookId": zod.number(),
+  "userId": zod.number().describe('Caller\'s userId — must match the entry owner')
 })
 
 export const MatchLibraryEntryResponse = zod.object({
@@ -333,7 +338,8 @@ export const UpdateReadingLocationParams = zod.object({
 
 
 export const UpdateReadingLocationBody = zod.object({
-  "location": zod.string().min(1)
+  "location": zod.string().min(1),
+  "userId": zod.number().describe('Caller\'s userId — must match the entry owner')
 })
 
 export const UpdateReadingLocationResponse = zod.object({

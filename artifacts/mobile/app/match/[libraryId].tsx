@@ -34,9 +34,16 @@ export default function MatchScreen() {
   const { libraryId: libraryIdParam } = useLocalSearchParams<{ libraryId: string }>();
   const libraryId = parseInt(libraryIdParam ?? "0", 10);
 
-  const { data: entry, isLoading: entryLoading } = useGetLibraryEntry(libraryId, {
-    query: { enabled: !!libraryId, queryKey: getGetLibraryEntryQueryKey(libraryId) },
-  });
+  const { data: entry, isLoading: entryLoading } = useGetLibraryEntry(
+    libraryId,
+    { userId: user?.id ?? 0 },
+    {
+      query: {
+        enabled: !!libraryId && !!user?.id,
+        queryKey: getGetLibraryEntryQueryKey(libraryId, { userId: user?.id ?? 0 }),
+      },
+    }
+  );
 
   const [query, setQuery] = useState("");
   const [initialized, setInitialized] = useState(false);
@@ -56,14 +63,14 @@ export default function MatchScreen() {
   const createBook = useCreateBook();
 
   const goToReader = () => {
-    queryClient.invalidateQueries({ queryKey: getGetLibraryEntryQueryKey(libraryId) });
+    queryClient.invalidateQueries({ queryKey: getGetLibraryEntryQueryKey(libraryId, { userId: user?.id ?? 0 }) });
     if (user) queryClient.invalidateQueries({ queryKey: getGetUserLibraryQueryKey(user.id) });
     router.replace(`/read/${libraryId}`);
   };
 
   const handleMatch = (bookId: number) => {
     matchEntry.mutate(
-      { libraryId, data: { canonicalBookId: bookId } },
+      { libraryId, data: { canonicalBookId: bookId, userId: user?.id ?? 0 } },
       {
         onSuccess: goToReader,
         onError: () => Alert.alert("매칭 실패", "다시 시도해 주세요."),

@@ -205,7 +205,7 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
       if (!cfi) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        updateLocation.mutate({ libraryId, data: { location: cfi } });
+        updateLocation.mutate({ libraryId, data: { location: cfi, userId } });
       }, 1500);
     },
     [updateLocation, libraryId]
@@ -218,11 +218,12 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
   }, []);
 
   const topPad = insets.top;
-  const raw = apiUrl(entry.epubUrl);
-  // @epubjs-react-native/core detects SourceType.EPUB by checking source.includes('.epub').
-  // New uploads already have .epub in the path; for older entries without it, append a
-  // harmless query hint so the library can identify the source type correctly.
-  const src = raw.includes('.epub') ? raw : `${raw}${raw.includes('?') ? '&' : '?'}x=.epub`;
+  const rawUrl = apiUrl(entry.epubUrl);
+  // Append caller's userId so the server ACL check can verify ownership.
+  const withUserId = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}userId=${userId}`;
+  // @epubjs-react-native/core getSourceType checks source.includes('.epub') for SourceType.EPUB.
+  // New uploads include .epub in the path; older entries get a harmless query hint.
+  const src = withUserId.includes('.epub') ? withUserId : `${withUserId}&x=.epub`;
   const subtitle = canonicalBookId
     ? anchoring
       ? "커뮤니티 하이라이트 표시 중…"
@@ -282,9 +283,16 @@ export default function ReaderScreen() {
   const { libraryId: libraryIdParam } = useLocalSearchParams<{ libraryId: string }>();
   const libraryId = parseInt(libraryIdParam ?? "0", 10);
 
-  const { data: entry, isLoading } = useGetLibraryEntry(libraryId, {
-    query: { enabled: !!libraryId, queryKey: getGetLibraryEntryQueryKey(libraryId) },
-  });
+  const { data: entry, isLoading } = useGetLibraryEntry(
+    libraryId,
+    { userId: user?.id ?? 0 },
+    {
+      query: {
+        enabled: !!libraryId && !!user?.id,
+        queryKey: getGetLibraryEntryQueryKey(libraryId, { userId: user?.id ?? 0 }),
+      },
+    }
+  );
   const canonicalBookId = entry?.canonicalBookId ?? null;
   const { data: quotes } = useGetBookQuotes(
     canonicalBookId ?? 0,

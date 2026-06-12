@@ -30,6 +30,7 @@ import type {
   FriendInput,
   GetBookParams,
   GetBookQuotesParams,
+  GetLibraryEntryParams,
   GetQuoteCommentsParams,
   HealthStatus,
   HighlightInput,
@@ -991,20 +992,29 @@ export const useCreateLibraryEntry = <TError = ErrorType<unknown>,
       return useMutation(getCreateLibraryEntryMutationOptions(options));
     }
 
-export const getGetLibraryEntryUrl = (libraryId: number,) => {
+export const getGetLibraryEntryUrl = (libraryId: number,
+    params: GetLibraryEntryParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/library/${libraryId}`
+  return stringifiedParams.length > 0 ? `/api/library/${libraryId}?${stringifiedParams}` : `/api/library/${libraryId}`
 }
 
 /**
  * @summary Get a library entry (with EPUB url and matched book)
  */
-export const getLibraryEntry = async (libraryId: number, options?: RequestInit): Promise<LibraryEntry> => {
+export const getLibraryEntry = async (libraryId: number,
+    params: GetLibraryEntryParams, options?: RequestInit): Promise<LibraryEntry> => {
 
-  return customFetch<LibraryEntry>(getGetLibraryEntryUrl(libraryId),
+  return customFetch<LibraryEntry>(getGetLibraryEntryUrl(libraryId,params),
   {
     ...options,
     method: 'GET'
@@ -1017,23 +1027,25 @@ export const getLibraryEntry = async (libraryId: number, options?: RequestInit):
 
 
 
-export const getGetLibraryEntryQueryKey = (libraryId: number,) => {
+export const getGetLibraryEntryQueryKey = (libraryId: number,
+    params?: GetLibraryEntryParams,) => {
     return [
-    `/api/library/${libraryId}`
+    `/api/library/${libraryId}`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetLibraryEntryQueryOptions = <TData = Awaited<ReturnType<typeof getLibraryEntry>>, TError = ErrorType<void>>(libraryId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetLibraryEntryQueryOptions = <TData = Awaited<ReturnType<typeof getLibraryEntry>>, TError = ErrorType<void>>(libraryId: number,
+    params: GetLibraryEntryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetLibraryEntryQueryKey(libraryId);
+  const queryKey =  queryOptions?.queryKey ?? getGetLibraryEntryQueryKey(libraryId,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLibraryEntry>>> = ({ signal }) => getLibraryEntry(libraryId, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLibraryEntry>>> = ({ signal }) => getLibraryEntry(libraryId,params, { signal, ...requestOptions });
 
 
 
@@ -1051,11 +1063,12 @@ export type GetLibraryEntryQueryError = ErrorType<void>
  */
 
 export function useGetLibraryEntry<TData = Awaited<ReturnType<typeof getLibraryEntry>>, TError = ErrorType<void>>(
- libraryId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ libraryId: number,
+    params: GetLibraryEntryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetLibraryEntryQueryOptions(libraryId,options)
+  const queryOptions = getGetLibraryEntryQueryOptions(libraryId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

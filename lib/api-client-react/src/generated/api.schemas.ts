@@ -102,6 +102,8 @@ export interface CreateLibraryInput {
 
 export interface ManualMatchInput {
   canonicalBookId: number;
+  /** Caller's userId — must match the entry owner */
+  userId: number;
 }
 
 export interface LibraryEntry {
@@ -126,6 +128,8 @@ export interface LibraryEntry {
 export interface UpdateReadingLocationInput {
   /** @minLength 1 */
   location: string;
+  /** Caller's userId — must match the entry owner */
+  userId: number;
 }
 
 export type MatchResultStatus = typeof MatchResultStatus[keyof typeof MatchResultStatus];
@@ -210,6 +214,13 @@ export const GetQuoteCommentsFilter = {
   friends: 'friends',
   all: 'all',
 } as const;
+
+export type GetLibraryEntryParams = {
+/**
+ * Caller's userId — must match the entry owner
+ */
+userId: number;
+};
 
 export type SearchUsersParams = {
 q: string;
