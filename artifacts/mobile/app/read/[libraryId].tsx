@@ -29,6 +29,7 @@ import { useUser } from "@/context/UserContext";
 import { useFileSystem } from "@/hooks/useFileSystem";
 import { CommentSheet } from "@/components/CommentSheet";
 import { ReaderSettingsPanel } from "@/components/ReaderSettingsPanel";
+import { TocPanel } from "@/components/TocPanel";
 import { apiUrl } from "@/lib/api";
 import {
   useReaderSettings,
@@ -52,7 +53,7 @@ function ReaderInner({
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { addAnnotation, search, injectJavascript, changeTheme } = useReader();
+  const { addAnnotation, search, injectJavascript, changeTheme, toc, goToLocation } = useReader();
   const createQuote = useCreateQuote();
   const toggleHighlight = useToggleHighlight();
   const updateLocation = useUpdateReadingLocation();
@@ -65,6 +66,7 @@ function ReaderInner({
 
   const { settings, settingsRef, update: updateSettings, reset: resetSettings, loaded } = useReaderSettings();
   const [settingsPanelVisible, setSettingsPanelVisible] = useState(false);
+  const [tocVisible, setTocVisible] = useState(false);
 
   const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string; cfiRange?: string } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
@@ -344,6 +346,9 @@ function ReaderInner({
             <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}>매칭</Text>
           </Pressable>
         ) : null}
+        <Pressable style={styles.settingsBtn} onPress={() => setTocVisible(true)}>
+          <Text style={[styles.settingsBtnText, { color: colors.foreground }]}>☰</Text>
+        </Pressable>
         <Pressable style={styles.settingsBtn} onPress={() => setSettingsPanelVisible(true)}>
           <Text style={[styles.settingsBtnText, { color: colors.foreground }]}>Aa</Text>
         </Pressable>
@@ -401,6 +406,13 @@ function ReaderInner({
           setSettingsPanelVisible(false);
         }}
         onClose={() => setSettingsPanelVisible(false)}
+      />
+
+      <TocPanel
+        visible={tocVisible}
+        toc={toc}
+        onSelect={(href) => goToLocation(href)}
+        onClose={() => setTocVisible(false)}
       />
 
       <CommentSheet
