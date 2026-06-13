@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -263,6 +263,12 @@ function ReaderInner({
     [updateSettings, settingsRef]
   );
 
+  const readerTheme = useMemo(
+    () => buildReaderTheme(settings),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [settings.theme, settings.font, settings.fontSize, settings.lineSpacing, settings.margin]
+  );
+
   const topPad = insets.top;
 
   if (dlError) {
@@ -337,7 +343,7 @@ function ReaderInner({
           enableSelection
           flow={flow}
           manager={manager}
-          defaultTheme={buildReaderTheme(settings)}
+          defaultTheme={readerTheme}
           initialLocation={entry.lastReadingLocation ?? undefined}
           onReady={handleReady}
           onLocationChange={handleLocationChange}
