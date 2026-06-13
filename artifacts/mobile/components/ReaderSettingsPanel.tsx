@@ -17,14 +17,12 @@ import {
   THEME_CONFIGS,
   FONT_CONFIGS,
   LINE_SPACING_LABELS,
-  MARGIN_LABELS,
   HIGHLIGHT_STYLE_CONFIGS,
   FONT_SIZES,
   type ReaderSettings,
   type ReaderTheme,
   type ReaderFont,
   type LineSpacing,
-  type MarginSize,
   type HighlightStyle,
   type ScrollMode,
 } from "@/hooks/useReaderSettings";
@@ -33,7 +31,6 @@ const PANEL_WIDTH = Math.min(Dimensions.get("window").width * 0.82, 320);
 const THEMES = Object.keys(THEME_CONFIGS) as ReaderTheme[];
 const FONTS = Object.keys(FONT_CONFIGS) as ReaderFont[];
 const LINE_SPACINGS: LineSpacing[] = ["compact", "normal", "wide"];
-const MARGINS: MarginSize[] = ["narrow", "normal", "wide"];
 const HIGHLIGHT_STYLES = Object.keys(HIGHLIGHT_STYLE_CONFIGS) as HighlightStyle[];
 
 interface Props {
@@ -223,16 +220,6 @@ export function ReaderSettingsPanel({
                 labels={LINE_SPACINGS.map((k) => LINE_SPACING_LABELS[k])}
                 selected={settings.lineSpacing}
                 onSelect={(v) => onChange({ lineSpacing: v as LineSpacing })}
-                colors={colors}
-              />
-            </Section>
-
-            <Section label="여백" colors={colors}>
-              <SegmentedControl
-                options={MARGINS}
-                labels={MARGINS.map((k) => MARGIN_LABELS[k])}
-                selected={settings.margin}
-                onSelect={(v) => onChange({ margin: v as MarginSize })}
                 colors={colors}
               />
             </Section>

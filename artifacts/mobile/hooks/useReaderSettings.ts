@@ -104,6 +104,28 @@ export function buildReaderTheme(s: ReaderSettings) {
   };
 }
 
+export function buildApplyStyleScript(s: ReaderSettings): string {
+  const theme = THEME_CONFIGS[s.theme];
+  const font = FONT_CONFIGS[s.font];
+  const line = LINE_SPACING_VALUES[s.lineSpacing];
+  return (
+    "(function(){" +
+    "try{" +
+    "if(typeof rendition==='undefined'){true;return;}" +
+    `rendition.themes.font(${JSON.stringify(font.css)});` +
+    `rendition.themes.override("font-size",${JSON.stringify(s.fontSize + "px")},true);` +
+    `rendition.themes.override("line-height",${JSON.stringify(line)},true);` +
+    `rendition.themes.override("color",${JSON.stringify(theme.fg)},true);` +
+    `rendition.themes.override("background",${JSON.stringify(theme.bg)},true);` +
+    `console.log("[Reader] styles applied: font=${s.font} size=${s.fontSize}px line=${line} theme=${s.theme}");` +
+    "}catch(e){" +
+    `console.error("[Reader] style error: "+e.message);` +
+    "}" +
+    "true;" +
+    "})();"
+  );
+}
+
 export function buildCssScript(s: ReaderSettings): string {
   const theme = THEME_CONFIGS[s.theme];
   const font = FONT_CONFIGS[s.font];

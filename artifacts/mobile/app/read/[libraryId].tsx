@@ -33,6 +33,7 @@ import { apiUrl } from "@/lib/api";
 import {
   useReaderSettings,
   buildReaderTheme,
+  buildApplyStyleScript,
   HIGHLIGHT_STYLE_CONFIGS,
 } from "@/hooks/useReaderSettings";
 
@@ -51,7 +52,7 @@ function ReaderInner({
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { addAnnotation, search } = useReader();
+  const { addAnnotation, search, injectJavascript, changeTheme } = useReader();
   const createQuote = useCreateQuote();
   const toggleHighlight = useToggleHighlight();
   const updateLocation = useUpdateReadingLocation();
@@ -93,8 +94,11 @@ function ReaderInner({
 
   const handleReady = useCallback(() => {
     readyRef.current = true;
+    const script = buildApplyStyleScript(settingsRef.current);
+    console.log("[Reader] onReady - applying initial styles");
+    injectJavascript(script);
     startAnchoring();
-  }, [startAnchoring]);
+  }, [startAnchoring, injectJavascript, settingsRef]);
 
   useEffect(() => {
     if (readyRef.current && quotes.length > 0) startAnchoring();
@@ -255,24 +259,22 @@ function ReaderInner({
   const handleSettingsChange = useCallback(
     (patch: Partial<typeof settings>) => {
       updateSettings(patch);
+      if (!("scrollMode" in patch) && readyRef.current) {
+        const next = { ...settingsRef.current, ...patch };
+        console.log("[Reader] settings changed:", Object.keys(patch).join(","), "- injecting styles");
+        injectJavascript(buildApplyStyleScript(next));
+      }
     },
-    [updateSettings]
+    [updateSettings, settingsRef, injectJavascript]
   );
 
   const readerTheme = useMemo(
     () => buildReaderTheme(settings),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [settings.theme, settings.font, settings.fontSize, settings.lineSpacing, settings.margin]
+    [settings.theme]
   );
 
-  const readerKey = [
-    settings.scrollMode,
-    settings.theme,
-    settings.font,
-    settings.fontSize,
-    settings.lineSpacing,
-    settings.margin,
-  ].join("_");
+  const readerKey = settings.scrollMode;
 
   const topPad = insets.top;
 
