@@ -44,6 +44,18 @@ export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
 }
 
+/**
+ * Retrieve the current auth token via the registered getter.
+ * Returns null when no getter is registered or the getter returns null.
+ * Intended for out-of-band auth needs such as FileSystem.downloadAsync headers.
+ */
+export async function getAuthToken(): Promise<string | null> {
+  if (!_authTokenGetter) return null;
+  const result = _authTokenGetter();
+  const resolved = result instanceof Promise ? await result : result;
+  return resolved ?? null;
+}
+
 function isRequest(input: RequestInfo | URL): input is Request {
   return typeof Request !== "undefined" && input instanceof Request;
 }

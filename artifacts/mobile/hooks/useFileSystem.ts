@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import * as FileSystem from "expo-file-system/legacy";
+import { getAuthToken } from "@workspace/api-client-react";
 
 /**
  * Local re-implementation of `@epubjs-react-native/expo-file-system`'s
@@ -23,7 +24,9 @@ export function useFileSystem() {
       setDownloading(true);
       setError(null);
       setSuccess(false);
-      const result = await FileSystem.downloadAsync(fromUrl, toFile);
+      const token = await getAuthToken();
+      const downloadOpts = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      const result = await FileSystem.downloadAsync(fromUrl, toFile, downloadOpts);
       if (result.status >= 400) {
         throw new Error(`Download failed with status ${result.status}`);
       }
