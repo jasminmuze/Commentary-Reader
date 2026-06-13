@@ -30,6 +30,7 @@ import { useFileSystem } from "@/hooks/useFileSystem";
 import { CommentSheet } from "@/components/CommentSheet";
 import { ReaderSettingsPanel } from "@/components/ReaderSettingsPanel";
 import { TocPanel } from "@/components/TocPanel";
+import { UserNotesPanel } from "@/components/UserNotesPanel";
 import { apiUrl } from "@/lib/api";
 import {
   useReaderSettings,
@@ -64,9 +65,11 @@ function ReaderInner({
   const [localSrc, setLocalSrc] = useState<string | null>(null);
   const [dlError, setDlError] = useState<string | null>(null);
 
+  const { user } = useUser();
   const { settings, settingsRef, update: updateSettings, reset: resetSettings, loaded } = useReaderSettings();
   const [settingsPanelVisible, setSettingsPanelVisible] = useState(false);
   const [tocVisible, setTocVisible] = useState(false);
+  const [notesVisible, setNotesVisible] = useState(false);
 
   const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string; cfiRange?: string } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
@@ -80,6 +83,7 @@ function ReaderInner({
   const idxRef = useRef(0);
   const readyRef = useRef(false);
   const runningRef = useRef(false);
+  const cfiByQuoteIdRef = useRef<Map<number, string>>(new Map());
 
   useEffect(() => { quotesRef.current = quotes; }, [quotes]);
 
@@ -118,6 +122,7 @@ function ReaderInner({
       if (results && results.length > 0) {
         console.log("[ANCHOR] 인용:", q.text.slice(0, 80));
         console.log("[ANCHOR] CFI:", results[0].cfi);
+        cfiByQuoteIdRef.current.set(q.id, results[0].cfi);
         try {
           addAnnotation(
             "highlight",
@@ -180,6 +185,7 @@ function ReaderInner({
       {
         onSuccess: (quote) => {
           anchoredRef.current.add(quote.id);
+          cfiByQuoteIdRef.current.set(quote.id, cfiRange);
           try {
             addAnnotation(
               hlStyle.annotationType,
@@ -285,6 +291,11 @@ function ReaderInner({
 
   const readerKey = settings.scrollMode;
 
+  const myHighlightedQuotes = useMemo(
+    () => quotes.filter((q) => q.highlightedByMe === true),
+    [quotes]
+  );
+
   const topPad = insets.top;
 
   if (dlError) {
@@ -346,6 +357,9 @@ function ReaderInner({
             <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}>매칭</Text>
           </Pressable>
         ) : null}
+        <Pressable style={styles.settingsBtn} onPress={() => setNotesVisible(true)}>
+          <Feather name="bookmark" size={18} color={colors.foreground} />
+        </Pressable>
         <Pressable style={styles.settingsBtn} onPress={() => setTocVisible(true)}>
           <Text style={[styles.settingsBtnText, { color: colors.foreground }]}>☰</Text>
         </Pressable>
@@ -413,6 +427,15 @@ function ReaderInner({
         toc={toc}
         onSelect={(href) => goToLocation(href)}
         onClose={() => setTocVisible(false)}
+      />
+
+      <UserNotesPanel
+        visible={notesVisible}
+        quotes={myHighlightedQuotes}
+        userId={user?.id ?? 0}
+        cfiByQuoteId={cfiByQuoteIdRef.current}
+        onNavigate={(cfi) => goToLocation(cfi)}
+        onClose={() => setNotesVisible(false)}
       />
 
       <CommentSheet
