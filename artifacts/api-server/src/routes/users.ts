@@ -19,6 +19,7 @@ import {
   SearchUsersQueryParams,
 } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
+import { createToken } from "../lib/auth.js";
 
 const AVATAR_COLORS = [
   "#E8A020", "#4A9EFF", "#FF6B6B", "#7CB9A8", "#C084FC",
@@ -41,7 +42,7 @@ router.post("/users", async (req, res): Promise<void> => {
   const existing = await db.select().from(usersTable).where(eq(usersTable.username, body.data.username));
   if (existing.length > 0) {
     const user = existing[0]!;
-    res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, createdAt: user.createdAt.toISOString() });
+    res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, createdAt: user.createdAt.toISOString(), token: createToken(user.id) });
     return;
   }
 
@@ -50,7 +51,7 @@ router.post("/users", async (req, res): Promise<void> => {
     avatarColor: randomAvatarColor(),
   }).returning();
 
-  res.json({ id: user!.id, username: user!.username, avatarColor: user!.avatarColor, createdAt: user!.createdAt.toISOString() });
+  res.json({ id: user!.id, username: user!.username, avatarColor: user!.avatarColor, createdAt: user!.createdAt.toISOString(), token: createToken(user!.id) });
 });
 
 router.get("/users/search", async (req, res): Promise<void> => {
@@ -101,7 +102,7 @@ router.get("/users/:userId", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, createdAt: user.createdAt.toISOString() });
+  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, createdAt: user.createdAt.toISOString(), token: createToken(user.id) });
 });
 
 router.get("/users/:userId/friends", async (req, res): Promise<void> => {

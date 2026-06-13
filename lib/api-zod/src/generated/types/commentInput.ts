@@ -7,7 +7,6 @@
  */
 
 export interface CommentInput {
-  userId: number;
   /** @minLength 1 */
   text: string;
 }

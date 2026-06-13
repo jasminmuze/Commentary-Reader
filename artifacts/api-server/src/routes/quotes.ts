@@ -8,7 +8,6 @@ import {
 } from "@workspace/db";
 import {
   GetBookQuotesParams,
-  GetBookQuotesQueryParams,
   CreateQuoteParams,
   CreateQuoteBody,
   ToggleHighlightParams,
@@ -21,18 +20,18 @@ import {
   getHighlightedQuoteIds,
   toQuote,
 } from "../lib/queries";
+import { authenticate } from "../middlewares/authenticate.js";
 
 const router: IRouter = Router();
 
 // Community quotes for a book — drives the reader's highlight overlay.
-router.get("/books/:bookId/quotes", async (req, res): Promise<void> => {
+router.get("/books/:bookId/quotes", authenticate, async (req, res): Promise<void> => {
   const params = GetBookQuotesParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const qp = GetBookQuotesQueryParams.safeParse(req.query);
-  const userId = qp.success ? qp.data.userId : undefined;
+  const userId = req.userId;
 
   const quotes = await db
     .select()
@@ -41,9 +40,7 @@ router.get("/books/:bookId/quotes", async (req, res): Promise<void> => {
     .orderBy(asc(quotesTable.id));
   const quoteIds = quotes.map((q) => q.id);
   const counts = await getQuoteCountsMap(quoteIds);
-  const highlighted = userId
-    ? await getHighlightedQuoteIds(userId, quoteIds)
-    : new Set<number>();
+  const highlighted = await getHighlightedQuoteIds(userId, quoteIds);
 
   const result: Quote[] = quotes.map((q) =>
     toQuote(q, counts.get(q.id)!, highlighted.has(q.id)),
@@ -52,7 +49,7 @@ router.get("/books/:bookId/quotes", async (req, res): Promise<void> => {
 });
 
 // Find-or-create a quote in a book (anchored by normalized text).
-router.post("/books/:bookId/quotes", async (req, res): Promise<void> => {
+router.post("/books/:bookId/quotes", authenticate, async (req, res): Promise<void> => {
   const params = CreateQuoteParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -79,7 +76,7 @@ router.post("/books/:bookId/quotes", async (req, res): Promise<void> => {
 });
 
 // Toggle the current user's highlight on a quote.
-router.post("/quotes/:quoteId/highlight", async (req, res): Promise<void> => {
+router.post("/quotes/:quoteId/highlight", authenticate, async (req, res): Promise<void> => {
   const params = ToggleHighlightParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -92,7 +89,8 @@ router.post("/quotes/:quoteId/highlight", async (req, res): Promise<void> => {
   }
 
   const { quoteId } = params.data;
-  const { userId, userLibraryId, cfiRange } = body.data;
+  const userId = req.userId;
+  const { userLibraryId, cfiRange } = body.data;
 
   const [quote] = await db
     .select()

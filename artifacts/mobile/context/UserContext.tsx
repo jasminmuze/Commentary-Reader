@@ -17,11 +17,16 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useCreateUser } from "@workspace/api-client-react";
+import { useCreateUser, setAuthTokenGetter } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { apiUrl } from "@/lib/api";
 
 const USER_ID_KEY = "bookmarks_user_id";
+const TOKEN_KEY = "bookmarks_token";
+
+// Register the token getter once at module load so all customFetch calls
+// automatically include the Authorization: Bearer header.
+setAuthTokenGetter(() => AsyncStorage.getItem(TOKEN_KEY));
 
 interface CurrentUser {
   id: number;
@@ -73,6 +78,9 @@ function OnboardingScreen({ onComplete }: { onComplete: (user: CurrentUser) => v
       {
         onSuccess: async (user) => {
           await AsyncStorage.setItem(USER_ID_KEY, String(user.id));
+          if (user.token) {
+            await AsyncStorage.setItem(TOKEN_KEY, user.token);
+          }
           onComplete({ id: user.id, username: user.username, avatarColor: user.avatarColor });
         },
         onError: () => {
@@ -161,9 +169,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.getItem(USER_ID_KEY).then(async (storedId) => {
       if (storedId) {
         try {
-          const res = await fetch(apiUrl(`/api/users/${storedId}`));
+          const storedToken = await AsyncStorage.getItem(TOKEN_KEY);
+          const headers: Record<string, string> = {};
+          if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+          const res = await fetch(apiUrl(`/api/users/${storedId}`), { headers });
           if (res.ok) {
             const data = await res.json();
+            // Refresh the token on each login to extend session.
+            if (data.token) {
+              await AsyncStorage.setItem(TOKEN_KEY, data.token);
+            }
             setUserState({ id: data.id, username: data.username, avatarColor: data.avatarColor });
           }
         } catch {

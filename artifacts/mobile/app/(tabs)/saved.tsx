@@ -39,7 +39,7 @@ export default function SavedScreen() {
   const handleLike = (commentId: number) => {
     if (!user) return;
     likeComment.mutate(
-      { commentId, data: { userId: user.id } },
+      { commentId },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetSavedCommentsQueryKey(user.id) });
@@ -51,7 +51,7 @@ export default function SavedScreen() {
   const handleSave = (commentId: number) => {
     if (!user) return;
     saveComment.mutate(
-      { commentId, data: { userId: user.id } },
+      { commentId },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetSavedCommentsQueryKey(user.id) });

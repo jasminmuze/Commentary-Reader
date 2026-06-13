@@ -8,6 +8,5 @@
 import type { GetQuoteCommentsFilter } from './getQuoteCommentsFilter';
 
 export type GetQuoteCommentsParams = {
-userId?: number;
 filter?: GetQuoteCommentsFilter;
 };

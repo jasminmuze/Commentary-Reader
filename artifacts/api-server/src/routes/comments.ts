@@ -14,15 +14,14 @@ import {
   CreateCommentParams,
   CreateCommentBody,
   LikeCommentParams,
-  LikeCommentBody,
   SaveCommentParams,
-  SaveCommentBody,
 } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
+import { authenticate } from "../middlewares/authenticate.js";
 
 const router: IRouter = Router();
 
-router.get("/quotes/:quoteId/comments", async (req, res): Promise<void> => {
+router.get("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<void> => {
   const params = GetQuoteCommentsParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -30,7 +29,7 @@ router.get("/quotes/:quoteId/comments", async (req, res): Promise<void> => {
   }
 
   const queryParams = GetQuoteCommentsQueryParams.safeParse(req.query);
-  const userId = queryParams.success ? queryParams.data.userId : undefined;
+  const userId = req.userId;
   const filter = queryParams.success
     ? (queryParams.data.filter ?? "all")
     : "all";
@@ -38,7 +37,7 @@ router.get("/quotes/:quoteId/comments", async (req, res): Promise<void> => {
   const { quoteId } = params.data;
   let comments;
 
-  if (filter === "friends" && userId) {
+  if (filter === "friends") {
     const friendships = await db
       .select({ friendId: friendshipsTable.friendId })
       .from(friendshipsTable)
@@ -79,7 +78,7 @@ router.get("/quotes/:quoteId/comments", async (req, res): Promise<void> => {
   res.json(formatted);
 });
 
-router.post("/quotes/:quoteId/comments", async (req, res): Promise<void> => {
+router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<void> => {
   const params = CreateCommentParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -101,35 +100,30 @@ router.post("/quotes/:quoteId/comments", async (req, res): Promise<void> => {
     return;
   }
 
+  const userId = req.userId;
   const [comment] = await db
     .insert(commentsTable)
     .values({
       quoteId: params.data.quoteId,
-      userId: body.data.userId,
+      userId,
       text: body.data.text,
       likeCount: 0,
     })
     .returning();
 
-  const formatted = await formatComment(comment!, body.data.userId);
+  const formatted = await formatComment(comment!, userId);
   res.status(201).json(formatted);
 });
 
-router.post("/comments/:commentId/like", async (req, res): Promise<void> => {
+router.post("/comments/:commentId/like", authenticate, async (req, res): Promise<void> => {
   const params = LikeCommentParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
 
-  const body = LikeCommentBody.safeParse(req.body);
-  if (!body.success) {
-    res.status(400).json({ error: body.error.message });
-    return;
-  }
-
   const { commentId } = params.data;
-  const { userId } = body.data;
+  const userId = req.userId;
 
   const existing = await db
     .select()
@@ -167,21 +161,15 @@ router.post("/comments/:commentId/like", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/comments/:commentId/save", async (req, res): Promise<void> => {
+router.post("/comments/:commentId/save", authenticate, async (req, res): Promise<void> => {
   const params = SaveCommentParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
 
-  const body = SaveCommentBody.safeParse(req.body);
-  if (!body.success) {
-    res.status(400).json({ error: body.error.message });
-    return;
-  }
-
   const { commentId } = params.data;
-  const { userId } = body.data;
+  const userId = req.userId;
 
   const existing = await db
     .select()

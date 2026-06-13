@@ -11,4 +11,6 @@ export interface User {
   username: string;
   avatarColor: string;
   createdAt: Date;
+  /** HMAC-signed bearer token — send as Authorization header */
+  token: string;
 }

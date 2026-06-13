@@ -7,7 +7,6 @@
  */
 
 export interface HighlightInput {
-  userId: number;
   userLibraryId?: number;
   cfiRange?: string;
 }

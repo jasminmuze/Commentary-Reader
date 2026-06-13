@@ -83,11 +83,6 @@ paths:
           required: true
           schema:
             type: integer
-        - name: userId
-          in: query
-          required: false
-          schema:
-            type: integer
       responses:
         "200":
           description: Book detail
@@ -107,11 +102,6 @@ paths:
         - name: bookId
           in: path
           required: true
-          schema:
-            type: integer
-        - name: userId
-          in: query
-          required: false
           schema:
             type: integer
       responses:
@@ -156,11 +146,6 @@ paths:
         - name: quoteId
           in: path
           required: true
-          schema:
-            type: integer
-        - name: userId
-          in: query
-          required: false
           schema:
             type: integer
         - name: filter
@@ -239,12 +224,6 @@ paths:
           required: true
           schema:
             type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserRef"
       responses:
         "200":
           description: Like toggled
@@ -264,12 +243,6 @@ paths:
           required: true
           schema:
             type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserRef"
       responses:
         "200":
           description: Save toggled
@@ -308,12 +281,6 @@ paths:
           required: true
           schema:
             type: integer
-        - name: userId
-          in: query
-          required: true
-          schema:
-            type: integer
-          description: Caller's userId — must match the entry owner
       responses:
         "200":
           description: Library entry
@@ -659,10 +626,8 @@ components:
 
     CommentInput:
       type: object
-      required: [userId, text]
+      required: [text]
       properties:
-        userId:
-          type: integer
         text:
           type: string
           minLength: 1
@@ -678,10 +643,7 @@ components:
 
     HighlightInput:
       type: object
-      required: [userId]
       properties:
-        userId:
-          type: integer
         userLibraryId:
           type: integer
         cfiRange:
@@ -713,23 +675,18 @@ components:
 
     CreateLibraryInput:
       type: object
-      required: [userId, uploadURL]
+      required: [uploadURL]
       properties:
-        userId:
-          type: integer
         uploadURL:
           type: string
           description: The presigned upload URL (or object path) returned after upload
 
     ManualMatchInput:
       type: object
-      required: [canonicalBookId, userId]
+      required: [canonicalBookId]
       properties:
         canonicalBookId:
           type: integer
-        userId:
-          type: integer
-          description: Caller's userId — must match the entry owner
 
     LibraryEntry:
       type: object
@@ -763,14 +720,11 @@ components:
 
     UpdateReadingLocationInput:
       type: object
-      required: [location, userId]
+      required: [location]
       properties:
         location:
           type: string
           minLength: 1
-        userId:
-          type: integer
-          description: Caller's userId — must match the entry owner
 
     MatchResult:
       type: object
@@ -822,7 +776,7 @@ components:
 
     User:
       type: object
-      required: [id, username, avatarColor, createdAt]
+      required: [id, username, avatarColor, createdAt, token]
       properties:
         id:
           type: integer
@@ -833,6 +787,9 @@ components:
         createdAt:
           type: string
           format: date-time
+        token:
+          type: string
+          description: HMAC-signed bearer token — send as Authorization header
 
     UserWithFriendStatus:
       type: object

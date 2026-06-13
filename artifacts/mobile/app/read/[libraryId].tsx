@@ -36,10 +36,9 @@ function intensityToOpacity(intensity: number): number {
   return Math.max(0.18, Math.min(0.85, intensity));
 }
 
-function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
+function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
   entry: LibraryEntry;
   quotes: Quote[];
-  userId: number;
   libraryId: number;
   canonicalBookId: number | null;
 }) {
@@ -65,8 +64,6 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
 
   useEffect(() => { quotesRef.current = quotes; }, [quotes]);
 
-  // Anchor only quotes not yet painted; snapshot the working list so a refetch
-  // mid-loop can't shift indices out from under an in-flight search.
   const startAnchoring = useCallback(() => {
     if (runningRef.current || !readyRef.current || !canonicalBookId) return;
     const pending = quotesRef.current.filter(
@@ -116,7 +113,6 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
     } else {
       runningRef.current = false;
       setAnchoring(false);
-      // Drain any quotes that arrived while this pass was running.
       startAnchoring();
     }
   }, [addAnnotation, search, startAnchoring]);
@@ -156,7 +152,6 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
       { bookId: canonicalBookId, data: { text: trimmed.slice(0, 1000) } },
       {
         onSuccess: (quote) => {
-          // Mark as anchored so the post-toggle refetch doesn't search + repaint it.
           anchoredRef.current.add(quote.id);
           try {
             addAnnotation("highlight", cfiRange, { quoteId: quote.id }, { color: AMBER, opacity: 0.45 });
@@ -164,10 +159,10 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
             // ignore
           }
           toggleHighlight.mutate(
-            { quoteId: quote.id, data: { userId, userLibraryId: libraryId, cfiRange } },
+            { quoteId: quote.id, data: { userLibraryId: libraryId, cfiRange } },
             {
               onSuccess: () => {
-                queryClient.invalidateQueries({ queryKey: getGetBookQuotesQueryKey(canonicalBookId, { userId }) });
+                queryClient.invalidateQueries({ queryKey: getGetBookQuotesQueryKey(canonicalBookId) });
               },
             }
           );
@@ -176,7 +171,7 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
       }
     );
     return true;
-  }, [ensureMatched, canonicalBookId, createQuote, addAnnotation, toggleHighlight, userId, libraryId, queryClient]);
+  }, [ensureMatched, canonicalBookId, createQuote, addAnnotation, toggleHighlight, libraryId, queryClient]);
 
   const handleComment = useCallback((_cfiRange: string, text: string): boolean => {
     if (!ensureMatched() || !canonicalBookId) return true;
@@ -198,14 +193,13 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
     return true;
   }, [ensureMatched, canonicalBookId, createQuote]);
 
-  // Debounce-persist the reading position so the book reopens where it was left.
   const handleLocationChange = useCallback(
     (_total: number, location: Location) => {
       const cfi = location?.start?.cfi;
       if (!cfi) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        updateLocation.mutate({ libraryId, data: { location: cfi, userId } });
+        updateLocation.mutate({ libraryId, data: { location: cfi } });
       }, 1500);
     },
     [updateLocation, libraryId]
@@ -218,12 +212,7 @@ function ReaderInner({ entry, quotes, userId, libraryId, canonicalBookId }: {
   }, []);
 
   const topPad = insets.top;
-  const rawUrl = apiUrl(entry.epubUrl);
-  // Append caller's userId so the server ACL check can verify ownership.
-  const withUserId = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}userId=${userId}`;
-  // @epubjs-react-native/core getSourceType checks source.includes('.epub') for SourceType.EPUB.
-  // New uploads include .epub in the path; older entries get a harmless query hint.
-  const src = withUserId.includes('.epub') ? withUserId : `${withUserId}&x=.epub`;
+  const src = apiUrl(entry.epubUrl);
   const subtitle = canonicalBookId
     ? anchoring
       ? "커뮤니티 하이라이트 표시 중…"
@@ -285,22 +274,20 @@ export default function ReaderScreen() {
 
   const { data: entry, isLoading } = useGetLibraryEntry(
     libraryId,
-    { userId: user?.id ?? 0 },
     {
       query: {
         enabled: !!libraryId && !!user?.id,
-        queryKey: getGetLibraryEntryQueryKey(libraryId, { userId: user?.id ?? 0 }),
+        queryKey: getGetLibraryEntryQueryKey(libraryId),
       },
     }
   );
   const canonicalBookId = entry?.canonicalBookId ?? null;
   const { data: quotes } = useGetBookQuotes(
     canonicalBookId ?? 0,
-    { userId: user?.id },
     {
       query: {
         enabled: !!canonicalBookId,
-        queryKey: getGetBookQuotesQueryKey(canonicalBookId ?? 0, { userId: user?.id }),
+        queryKey: getGetBookQuotesQueryKey(canonicalBookId ?? 0),
       },
     }
   );
@@ -333,7 +320,6 @@ export default function ReaderScreen() {
       <ReaderInner
         entry={entry}
         quotes={quotes ?? []}
-        userId={user?.id ?? 0}
         libraryId={libraryId}
         canonicalBookId={canonicalBookId}
       />

@@ -5,7 +5,6 @@ import {
   ListBooksQueryParams,
   CreateBookBody,
   GetBookParams,
-  GetBookQueryParams,
 } from "@workspace/api-zod";
 import type { Book, BookDetail, Comment, Quote } from "@workspace/api-zod";
 import {
@@ -18,6 +17,7 @@ import {
   formatComment,
 } from "../lib/queries";
 import { normalizeTitle, normalizeAuthor } from "../lib/text";
+import { authenticate } from "../middlewares/authenticate.js";
 
 const COVER_COLORS = [
   "#8B5E3C", "#1E3A5F", "#4A1942", "#2D4A3E", "#5C3A21",
@@ -76,14 +76,13 @@ router.post("/books", async (req, res): Promise<void> => {
   res.status(201).json(result);
 });
 
-router.get("/books/:bookId", async (req, res): Promise<void> => {
+router.get("/books/:bookId", authenticate, async (req, res): Promise<void> => {
   const params = GetBookParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const qp = GetBookQueryParams.safeParse(req.query);
-  const userId = qp.success ? qp.data.userId : undefined;
+  const userId = req.userId;
 
   const [book] = await db
     .select()

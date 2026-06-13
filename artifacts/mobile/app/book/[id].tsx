@@ -65,26 +65,24 @@ export default function BookDetailScreen() {
   const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
 
-  const { data: book, isLoading } = useGetBook(bookId, { userId: user?.id }, {
-    query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId, { userId: user?.id }) },
+  const { data: book, isLoading } = useGetBook(bookId, {
+    query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) },
   });
 
   const likeComment = useLikeComment();
   const saveComment = useSaveComment();
 
   const invalidate = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: getGetBookQueryKey(bookId, { userId: user?.id }) });
-  }, [queryClient, bookId, user?.id]);
+    queryClient.invalidateQueries({ queryKey: getGetBookQueryKey(bookId) });
+  }, [queryClient, bookId]);
 
   const handleLike = useCallback((commentId: number) => {
-    if (!user) return;
-    likeComment.mutate({ commentId, data: { userId: user.id } }, { onSuccess: invalidate });
-  }, [user, likeComment, invalidate]);
+    likeComment.mutate({ commentId }, { onSuccess: invalidate });
+  }, [likeComment, invalidate]);
 
   const handleSave = useCallback((commentId: number) => {
-    if (!user) return;
-    saveComment.mutate({ commentId, data: { userId: user.id } }, { onSuccess: invalidate });
-  }, [user, saveComment, invalidate]);
+    saveComment.mutate({ commentId }, { onSuccess: invalidate });
+  }, [saveComment, invalidate]);
 
   const openQuote = useCallback((quoteId: number, text: string) => {
     setSelectedQuote({ id: quoteId, text });

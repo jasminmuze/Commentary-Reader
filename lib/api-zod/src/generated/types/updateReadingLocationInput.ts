@@ -9,6 +9,4 @@
 export interface UpdateReadingLocationInput {
   /** @minLength 1 */
   location: string;
-  /** Caller's userId — must match the entry owner */
-  userId: number;
 }

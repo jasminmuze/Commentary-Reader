@@ -36,11 +36,10 @@ export default function MatchScreen() {
 
   const { data: entry, isLoading: entryLoading } = useGetLibraryEntry(
     libraryId,
-    { userId: user?.id ?? 0 },
     {
       query: {
         enabled: !!libraryId && !!user?.id,
-        queryKey: getGetLibraryEntryQueryKey(libraryId, { userId: user?.id ?? 0 }),
+        queryKey: getGetLibraryEntryQueryKey(libraryId),
       },
     }
   );
@@ -63,14 +62,14 @@ export default function MatchScreen() {
   const createBook = useCreateBook();
 
   const goToReader = () => {
-    queryClient.invalidateQueries({ queryKey: getGetLibraryEntryQueryKey(libraryId, { userId: user?.id ?? 0 }) });
+    queryClient.invalidateQueries({ queryKey: getGetLibraryEntryQueryKey(libraryId) });
     if (user) queryClient.invalidateQueries({ queryKey: getGetUserLibraryQueryKey(user.id) });
     router.replace(`/read/${libraryId}`);
   };
 
   const handleMatch = (bookId: number) => {
     matchEntry.mutate(
-      { libraryId, data: { canonicalBookId: bookId, userId: user?.id ?? 0 } },
+      { libraryId, data: { canonicalBookId: bookId } },
       {
         onSuccess: goToReader,
         onError: () => Alert.alert("매칭 실패", "다시 시도해 주세요."),

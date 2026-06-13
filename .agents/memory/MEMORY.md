@@ -3,3 +3,4 @@
 - [Orval query hooks need queryKey](orval-query-options-querykey.md) — passing any `query` options to a generated `useGetX` requires an explicit `queryKey`; use the `getGetXQueryKey(...)` helper.
 - [epubjs-react-native on Expo SDK 54](epubjs-react-native-expo.md) — don't install its file-system/expo-file-system pkgs; write a local useFileSystem on `expo-file-system/legacy`; reader is device-only, guard off web.
 - [epubjs source type detection](epubjs-source-type.md) — getSourceType only matches .epub/.opf/base64 by substring; object keys MUST include .epub extension or the Reader throws "Invalid source type".
+- [HMAC auth pattern](hmac-auth.md) — Bearer token auth via SESSION_SECRET; authenticate middleware sets req.userId; zero client-supplied userId anywhere in API or mobile.

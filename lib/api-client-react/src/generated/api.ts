@@ -28,9 +28,6 @@ import type {
   CreateLibraryInput,
   CreateQuoteInput,
   FriendInput,
-  GetBookParams,
-  GetBookQuotesParams,
-  GetLibraryEntryParams,
   GetQuoteCommentsParams,
   HealthStatus,
   HighlightInput,
@@ -46,7 +43,6 @@ import type {
   UpdateReadingLocationInput,
   User,
   UserInput,
-  UserRef,
   UserWithFriendStatus
 } from './api.schemas';
 
@@ -294,29 +290,20 @@ export const useCreateBook = <TError = ErrorType<unknown>,
       return useMutation(getCreateBookMutationOptions(options));
     }
 
-export const getGetBookUrl = (bookId: number,
-    params?: GetBookParams,) => {
-  const normalizedParams = new URLSearchParams();
+export const getGetBookUrl = (bookId: number,) => {
 
-  Object.entries(params || {}).forEach(([key, value]) => {
 
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
 
-  const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/books/${bookId}?${stringifiedParams}` : `/api/books/${bookId}`
+  return `/api/books/${bookId}`
 }
 
 /**
  * @summary Get a book with its best comments and most-highlighted quotes
  */
-export const getBook = async (bookId: number,
-    params?: GetBookParams, options?: RequestInit): Promise<BookDetail> => {
+export const getBook = async (bookId: number, options?: RequestInit): Promise<BookDetail> => {
 
-  return customFetch<BookDetail>(getGetBookUrl(bookId,params),
+  return customFetch<BookDetail>(getGetBookUrl(bookId),
   {
     ...options,
     method: 'GET'
@@ -329,25 +316,23 @@ export const getBook = async (bookId: number,
 
 
 
-export const getGetBookQueryKey = (bookId: number,
-    params?: GetBookParams,) => {
+export const getGetBookQueryKey = (bookId: number,) => {
     return [
-    `/api/books/${bookId}`, ...(params ? [params] : [])
+    `/api/books/${bookId}`
     ] as const;
     }
 
 
-export const getGetBookQueryOptions = <TData = Awaited<ReturnType<typeof getBook>>, TError = ErrorType<void>>(bookId: number,
-    params?: GetBookParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBook>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetBookQueryOptions = <TData = Awaited<ReturnType<typeof getBook>>, TError = ErrorType<void>>(bookId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBook>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetBookQueryKey(bookId,params);
+  const queryKey =  queryOptions?.queryKey ?? getGetBookQueryKey(bookId);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBook>>> = ({ signal }) => getBook(bookId,params, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBook>>> = ({ signal }) => getBook(bookId, { signal, ...requestOptions });
 
 
 
@@ -365,12 +350,11 @@ export type GetBookQueryError = ErrorType<void>
  */
 
 export function useGetBook<TData = Awaited<ReturnType<typeof getBook>>, TError = ErrorType<void>>(
- bookId: number,
-    params?: GetBookParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBook>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ bookId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBook>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetBookQueryOptions(bookId,params,options)
+  const queryOptions = getGetBookQueryOptions(bookId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -383,29 +367,20 @@ export function useGetBook<TData = Awaited<ReturnType<typeof getBook>>, TError =
 
 
 
-export const getGetBookQuotesUrl = (bookId: number,
-    params?: GetBookQuotesParams,) => {
-  const normalizedParams = new URLSearchParams();
+export const getGetBookQuotesUrl = (bookId: number,) => {
 
-  Object.entries(params || {}).forEach(([key, value]) => {
 
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
 
-  const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/books/${bookId}/quotes?${stringifiedParams}` : `/api/books/${bookId}/quotes`
+  return `/api/books/${bookId}/quotes`
 }
 
 /**
  * @summary Community quotes for a book (reader overlay)
  */
-export const getBookQuotes = async (bookId: number,
-    params?: GetBookQuotesParams, options?: RequestInit): Promise<Quote[]> => {
+export const getBookQuotes = async (bookId: number, options?: RequestInit): Promise<Quote[]> => {
 
-  return customFetch<Quote[]>(getGetBookQuotesUrl(bookId,params),
+  return customFetch<Quote[]>(getGetBookQuotesUrl(bookId),
   {
     ...options,
     method: 'GET'
@@ -418,25 +393,23 @@ export const getBookQuotes = async (bookId: number,
 
 
 
-export const getGetBookQuotesQueryKey = (bookId: number,
-    params?: GetBookQuotesParams,) => {
+export const getGetBookQuotesQueryKey = (bookId: number,) => {
     return [
-    `/api/books/${bookId}/quotes`, ...(params ? [params] : [])
+    `/api/books/${bookId}/quotes`
     ] as const;
     }
 
 
-export const getGetBookQuotesQueryOptions = <TData = Awaited<ReturnType<typeof getBookQuotes>>, TError = ErrorType<unknown>>(bookId: number,
-    params?: GetBookQuotesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBookQuotes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetBookQuotesQueryOptions = <TData = Awaited<ReturnType<typeof getBookQuotes>>, TError = ErrorType<unknown>>(bookId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBookQuotes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetBookQuotesQueryKey(bookId,params);
+  const queryKey =  queryOptions?.queryKey ?? getGetBookQuotesQueryKey(bookId);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBookQuotes>>> = ({ signal }) => getBookQuotes(bookId,params, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBookQuotes>>> = ({ signal }) => getBookQuotes(bookId, { signal, ...requestOptions });
 
 
 
@@ -454,12 +427,11 @@ export type GetBookQuotesQueryError = ErrorType<unknown>
  */
 
 export function useGetBookQuotes<TData = Awaited<ReturnType<typeof getBookQuotes>>, TError = ErrorType<unknown>>(
- bookId: number,
-    params?: GetBookQuotesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBookQuotes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ bookId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBookQuotes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetBookQuotesQueryOptions(bookId,params,options)
+  const queryOptions = getGetBookQuotesQueryOptions(bookId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -788,16 +760,14 @@ export const getLikeCommentUrl = (commentId: number,) => {
 /**
  * @summary Like a comment
  */
-export const likeComment = async (commentId: number,
-    userRef: UserRef, options?: RequestInit): Promise<LikeResult> => {
+export const likeComment = async (commentId: number, options?: RequestInit): Promise<LikeResult> => {
 
   return customFetch<LikeResult>(getLikeCommentUrl(commentId),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      userRef,)
+    method: 'POST'
+
+
   }
 );}
 
@@ -805,8 +775,8 @@ export const likeComment = async (commentId: number,
 
 
 export const getLikeCommentMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof likeComment>>, TError,{commentId: number;data: BodyType<UserRef>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof likeComment>>, TError,{commentId: number;data: BodyType<UserRef>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof likeComment>>, TError,{commentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof likeComment>>, TError,{commentId: number}, TContext> => {
 
 const mutationKey = ['likeComment'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -818,10 +788,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof likeComment>>, {commentId: number;data: BodyType<UserRef>}> = (props) => {
-          const {commentId,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof likeComment>>, {commentId: number}> = (props) => {
+          const {commentId} = props ?? {};
 
-          return  likeComment(commentId,data,requestOptions)
+          return  likeComment(commentId,requestOptions)
         }
 
 
@@ -832,18 +802,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type LikeCommentMutationResult = NonNullable<Awaited<ReturnType<typeof likeComment>>>
-    export type LikeCommentMutationBody = BodyType<UserRef>
+
     export type LikeCommentMutationError = ErrorType<unknown>
 
     /**
  * @summary Like a comment
  */
 export const useLikeComment = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof likeComment>>, TError,{commentId: number;data: BodyType<UserRef>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof likeComment>>, TError,{commentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof likeComment>>,
         TError,
-        {commentId: number;data: BodyType<UserRef>},
+        {commentId: number},
         TContext
       > => {
       return useMutation(getLikeCommentMutationOptions(options));
@@ -860,16 +830,14 @@ export const getSaveCommentUrl = (commentId: number,) => {
 /**
  * @summary Save/unsave a comment
  */
-export const saveComment = async (commentId: number,
-    userRef: UserRef, options?: RequestInit): Promise<SaveResult> => {
+export const saveComment = async (commentId: number, options?: RequestInit): Promise<SaveResult> => {
 
   return customFetch<SaveResult>(getSaveCommentUrl(commentId),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      userRef,)
+    method: 'POST'
+
+
   }
 );}
 
@@ -877,8 +845,8 @@ export const saveComment = async (commentId: number,
 
 
 export const getSaveCommentMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveComment>>, TError,{commentId: number;data: BodyType<UserRef>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof saveComment>>, TError,{commentId: number;data: BodyType<UserRef>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveComment>>, TError,{commentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveComment>>, TError,{commentId: number}, TContext> => {
 
 const mutationKey = ['saveComment'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -890,10 +858,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveComment>>, {commentId: number;data: BodyType<UserRef>}> = (props) => {
-          const {commentId,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveComment>>, {commentId: number}> = (props) => {
+          const {commentId} = props ?? {};
 
-          return  saveComment(commentId,data,requestOptions)
+          return  saveComment(commentId,requestOptions)
         }
 
 
@@ -904,18 +872,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type SaveCommentMutationResult = NonNullable<Awaited<ReturnType<typeof saveComment>>>
-    export type SaveCommentMutationBody = BodyType<UserRef>
+
     export type SaveCommentMutationError = ErrorType<unknown>
 
     /**
  * @summary Save/unsave a comment
  */
 export const useSaveComment = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveComment>>, TError,{commentId: number;data: BodyType<UserRef>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveComment>>, TError,{commentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof saveComment>>,
         TError,
-        {commentId: number;data: BodyType<UserRef>},
+        {commentId: number},
         TContext
       > => {
       return useMutation(getSaveCommentMutationOptions(options));
@@ -992,29 +960,20 @@ export const useCreateLibraryEntry = <TError = ErrorType<unknown>,
       return useMutation(getCreateLibraryEntryMutationOptions(options));
     }
 
-export const getGetLibraryEntryUrl = (libraryId: number,
-    params: GetLibraryEntryParams,) => {
-  const normalizedParams = new URLSearchParams();
+export const getGetLibraryEntryUrl = (libraryId: number,) => {
 
-  Object.entries(params || {}).forEach(([key, value]) => {
 
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
 
-  const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/library/${libraryId}?${stringifiedParams}` : `/api/library/${libraryId}`
+  return `/api/library/${libraryId}`
 }
 
 /**
  * @summary Get a library entry (with EPUB url and matched book)
  */
-export const getLibraryEntry = async (libraryId: number,
-    params: GetLibraryEntryParams, options?: RequestInit): Promise<LibraryEntry> => {
+export const getLibraryEntry = async (libraryId: number, options?: RequestInit): Promise<LibraryEntry> => {
 
-  return customFetch<LibraryEntry>(getGetLibraryEntryUrl(libraryId,params),
+  return customFetch<LibraryEntry>(getGetLibraryEntryUrl(libraryId),
   {
     ...options,
     method: 'GET'
@@ -1027,25 +986,23 @@ export const getLibraryEntry = async (libraryId: number,
 
 
 
-export const getGetLibraryEntryQueryKey = (libraryId: number,
-    params?: GetLibraryEntryParams,) => {
+export const getGetLibraryEntryQueryKey = (libraryId: number,) => {
     return [
-    `/api/library/${libraryId}`, ...(params ? [params] : [])
+    `/api/library/${libraryId}`
     ] as const;
     }
 
 
-export const getGetLibraryEntryQueryOptions = <TData = Awaited<ReturnType<typeof getLibraryEntry>>, TError = ErrorType<void>>(libraryId: number,
-    params: GetLibraryEntryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetLibraryEntryQueryOptions = <TData = Awaited<ReturnType<typeof getLibraryEntry>>, TError = ErrorType<void>>(libraryId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetLibraryEntryQueryKey(libraryId,params);
+  const queryKey =  queryOptions?.queryKey ?? getGetLibraryEntryQueryKey(libraryId);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLibraryEntry>>> = ({ signal }) => getLibraryEntry(libraryId,params, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLibraryEntry>>> = ({ signal }) => getLibraryEntry(libraryId, { signal, ...requestOptions });
 
 
 
@@ -1063,12 +1020,11 @@ export type GetLibraryEntryQueryError = ErrorType<void>
  */
 
 export function useGetLibraryEntry<TData = Awaited<ReturnType<typeof getLibraryEntry>>, TError = ErrorType<void>>(
- libraryId: number,
-    params: GetLibraryEntryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ libraryId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryEntry>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetLibraryEntryQueryOptions(libraryId,params,options)
+  const queryOptions = getGetLibraryEntryQueryOptions(libraryId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

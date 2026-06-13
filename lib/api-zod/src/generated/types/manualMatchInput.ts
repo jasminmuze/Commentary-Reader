@@ -8,6 +8,4 @@
 
 export interface ManualMatchInput {
   canonicalBookId: number;
-  /** Caller's userId — must match the entry owner */
-  userId: number;
 }

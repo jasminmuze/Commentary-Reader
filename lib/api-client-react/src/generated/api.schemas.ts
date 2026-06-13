@@ -61,7 +61,6 @@ export interface BookDetail {
 }
 
 export interface CommentInput {
-  userId: number;
   /** @minLength 1 */
   text: string;
 }
@@ -75,7 +74,6 @@ export interface CreateQuoteInput {
 }
 
 export interface HighlightInput {
-  userId: number;
   userLibraryId?: number;
   cfiRange?: string;
 }
@@ -95,15 +93,12 @@ export interface CreateBookInput {
 }
 
 export interface CreateLibraryInput {
-  userId: number;
   /** The presigned upload URL (or object path) returned after upload */
   uploadURL: string;
 }
 
 export interface ManualMatchInput {
   canonicalBookId: number;
-  /** Caller's userId — must match the entry owner */
-  userId: number;
 }
 
 export interface LibraryEntry {
@@ -128,8 +123,6 @@ export interface LibraryEntry {
 export interface UpdateReadingLocationInput {
   /** @minLength 1 */
   location: string;
-  /** Caller's userId — must match the entry owner */
-  userId: number;
 }
 
 export type MatchResultStatus = typeof MatchResultStatus[keyof typeof MatchResultStatus];
@@ -170,6 +163,8 @@ export interface User {
   username: string;
   avatarColor: string;
   createdAt: string;
+  /** HMAC-signed bearer token — send as Authorization header */
+  token: string;
 }
 
 export interface UserWithFriendStatus {
@@ -193,16 +188,7 @@ export type ListBooksParams = {
 q?: string;
 };
 
-export type GetBookParams = {
-userId?: number;
-};
-
-export type GetBookQuotesParams = {
-userId?: number;
-};
-
 export type GetQuoteCommentsParams = {
-userId?: number;
 filter?: GetQuoteCommentsFilter;
 };
 
@@ -214,13 +200,6 @@ export const GetQuoteCommentsFilter = {
   friends: 'friends',
   all: 'all',
 } as const;
-
-export type GetLibraryEntryParams = {
-/**
- * Caller's userId — must match the entry owner
- */
-userId: number;
-};
 
 export type SearchUsersParams = {
 q: string;

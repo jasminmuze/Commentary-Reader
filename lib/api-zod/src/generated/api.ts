@@ -58,10 +58,6 @@ export const GetBookParams = zod.object({
   "bookId": zod.coerce.number()
 })
 
-export const GetBookQueryParams = zod.object({
-  "userId": zod.coerce.number().optional()
-})
-
 export const GetBookResponse = zod.object({
   "id": zod.number(),
   "title": zod.string(),
@@ -102,10 +98,6 @@ export const GetBookResponse = zod.object({
  */
 export const GetBookQuotesParams = zod.object({
   "bookId": zod.coerce.number()
-})
-
-export const GetBookQuotesQueryParams = zod.object({
-  "userId": zod.coerce.number().optional()
 })
 
 export const GetBookQuotesResponseItem = zod.object({
@@ -159,7 +151,6 @@ export const GetQuoteCommentsParams = zod.object({
 export const getQuoteCommentsQueryFilterDefault = `all`;
 
 export const GetQuoteCommentsQueryParams = zod.object({
-  "userId": zod.coerce.number().optional(),
   "filter": zod.enum(['best', 'friends', 'all']).default(getQuoteCommentsQueryFilterDefault)
 })
 
@@ -190,7 +181,6 @@ export const CreateCommentParams = zod.object({
 
 
 export const CreateCommentBody = zod.object({
-  "userId": zod.number(),
   "text": zod.string().min(1)
 })
 
@@ -203,7 +193,6 @@ export const ToggleHighlightParams = zod.object({
 })
 
 export const ToggleHighlightBody = zod.object({
-  "userId": zod.number(),
   "userLibraryId": zod.number().optional(),
   "cfiRange": zod.string().optional()
 })
@@ -221,10 +210,6 @@ export const LikeCommentParams = zod.object({
   "commentId": zod.coerce.number()
 })
 
-export const LikeCommentBody = zod.object({
-  "userId": zod.number()
-})
-
 export const LikeCommentResponse = zod.object({
   "liked": zod.boolean(),
   "likeCount": zod.number()
@@ -238,10 +223,6 @@ export const SaveCommentParams = zod.object({
   "commentId": zod.coerce.number()
 })
 
-export const SaveCommentBody = zod.object({
-  "userId": zod.number()
-})
-
 export const SaveCommentResponse = zod.object({
   "saved": zod.boolean()
 })
@@ -251,7 +232,6 @@ export const SaveCommentResponse = zod.object({
  * @summary Register an uploaded EPUB, extract metadata, and auto-match
  */
 export const CreateLibraryEntryBody = zod.object({
-  "userId": zod.number(),
   "uploadURL": zod.string().describe('The presigned upload URL (or object path) returned after upload')
 })
 
@@ -261,10 +241,6 @@ export const CreateLibraryEntryBody = zod.object({
  */
 export const GetLibraryEntryParams = zod.object({
   "libraryId": zod.coerce.number()
-})
-
-export const GetLibraryEntryQueryParams = zod.object({
-  "userId": zod.coerce.number().describe('Caller\'s userId — must match the entry owner')
 })
 
 export const GetLibraryEntryResponse = zod.object({
@@ -299,8 +275,7 @@ export const MatchLibraryEntryParams = zod.object({
 })
 
 export const MatchLibraryEntryBody = zod.object({
-  "canonicalBookId": zod.number(),
-  "userId": zod.number().describe('Caller\'s userId — must match the entry owner')
+  "canonicalBookId": zod.number()
 })
 
 export const MatchLibraryEntryResponse = zod.object({
@@ -338,8 +313,7 @@ export const UpdateReadingLocationParams = zod.object({
 
 
 export const UpdateReadingLocationBody = zod.object({
-  "location": zod.string().min(1),
-  "userId": zod.number().describe('Caller\'s userId — must match the entry owner')
+  "location": zod.string().min(1)
 })
 
 export const UpdateReadingLocationResponse = zod.object({
@@ -413,7 +387,8 @@ export const CreateUserResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "avatarColor": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().describe('HMAC-signed bearer token — send as Authorization header')
 })
 
 
@@ -428,7 +403,8 @@ export const GetUserResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "avatarColor": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().describe('HMAC-signed bearer token — send as Authorization header')
 })
 
 
@@ -461,7 +437,8 @@ export const GetFriendsResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "avatarColor": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().describe('HMAC-signed bearer token — send as Authorization header')
 })
 export const GetFriendsResponse = zod.array(GetFriendsResponseItem)
 
@@ -481,7 +458,8 @@ export const AddFriendResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "avatarColor": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().describe('HMAC-signed bearer token — send as Authorization header')
 })
 
 

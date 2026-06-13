@@ -4,7 +4,6 @@ import { db, booksTable, userLibraryTable } from "@workspace/db";
 import {
   CreateLibraryEntryBody,
   GetLibraryEntryParams,
-  GetLibraryEntryQueryParams,
   MatchLibraryEntryParams,
   MatchLibraryEntryBody,
   UpdateReadingLocationParams,
@@ -21,6 +20,7 @@ import { ObjectStorageService } from "../lib/objectStorage";
 import { extractEpubMetadata } from "../lib/epubMetadata";
 import { formatBook } from "../lib/queries";
 import { normalizeTitle, normalizeAuthor } from "../lib/text";
+import { authenticate } from "../middlewares/authenticate.js";
 
 const router: IRouter = Router();
 
@@ -56,13 +56,14 @@ async function formatLibraryEntry(
 
 // Register an uploaded EPUB: normalize path, set private owner-only ACL,
 // download, extract metadata, then auto-match against canonical books.
-router.post("/library", async (req, res): Promise<void> => {
+router.post("/library", authenticate, async (req, res): Promise<void> => {
   const body = CreateLibraryEntryBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const { userId, uploadURL } = body.data;
+  const userId = req.userId;
+  const { uploadURL } = body.data;
 
   const svc = new ObjectStorageService();
   let normalizedPath: string;
@@ -138,15 +139,10 @@ router.post("/library", async (req, res): Promise<void> => {
   res.status(201).json(result);
 });
 
-router.get("/library/:libraryId", async (req, res): Promise<void> => {
+router.get("/library/:libraryId", authenticate, async (req, res): Promise<void> => {
   const params = GetLibraryEntryParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
-    return;
-  }
-  const qp = GetLibraryEntryQueryParams.safeParse(req.query);
-  if (!qp.success) {
-    res.status(400).json({ error: qp.error.message });
     return;
   }
   const [entry] = await db
@@ -157,14 +153,14 @@ router.get("/library/:libraryId", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Library entry not found" });
     return;
   }
-  if (entry.userId !== qp.data.userId) {
+  if (entry.userId !== req.userId) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
   res.json(await formatLibraryEntry(entry));
 });
 
-router.patch("/library/:libraryId", async (req, res): Promise<void> => {
+router.patch("/library/:libraryId", authenticate, async (req, res): Promise<void> => {
   const params = MatchLibraryEntryParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -184,7 +180,7 @@ router.patch("/library/:libraryId", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Library entry not found" });
     return;
   }
-  if (existing.userId !== body.data.userId) {
+  if (existing.userId !== req.userId) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -211,7 +207,7 @@ router.patch("/library/:libraryId", async (req, res): Promise<void> => {
 });
 
 // Persist the reader's last reading location (EPUB CFI) for resume-on-reopen.
-router.put("/library/:libraryId/location", async (req, res): Promise<void> => {
+router.put("/library/:libraryId/location", authenticate, async (req, res): Promise<void> => {
   const params = UpdateReadingLocationParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -222,6 +218,7 @@ router.put("/library/:libraryId/location", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
+
   const [existing] = await db
     .select()
     .from(userLibraryTable)
@@ -230,7 +227,7 @@ router.put("/library/:libraryId/location", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Library entry not found" });
     return;
   }
-  if (existing.userId !== body.data.userId) {
+  if (existing.userId !== req.userId) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -247,10 +244,14 @@ router.put("/library/:libraryId/location", async (req, res): Promise<void> => {
   res.json(await formatLibraryEntry(entry));
 });
 
-router.get("/users/:userId/library", async (req, res): Promise<void> => {
+router.get("/users/:userId/library", authenticate, async (req, res): Promise<void> => {
   const params = GetUserLibraryParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
   const entries = await db

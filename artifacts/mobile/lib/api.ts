@@ -1,6 +1,8 @@
 import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
+const TOKEN_KEY = "bookmarks_token";
 const domain = process.env.EXPO_PUBLIC_DOMAIN;
 
 /** Absolute base URL for the API server (Expo runs outside the web proxy). */
@@ -13,9 +15,15 @@ export function apiUrl(path: string): string {
   return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/** Returns Authorization header for direct fetch calls. */
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await AsyncStorage.getItem(TOKEN_KEY);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 /**
  * Upload an EPUB file using the two-step presigned URL flow:
- * 1. Ask the API server for a presigned PUT URL.
+ * 1. Ask the API server for a presigned PUT URL (requires auth).
  * 2. PUT the file bytes directly to that URL (Google Cloud Storage).
  *
  * Returns the presigned upload URL, which the caller passes to POST /api/library
@@ -25,7 +33,11 @@ export function apiUrl(path: string): string {
  * On native, use FileSystem.uploadAsync (expo-file-system).
  */
 export async function uploadEpub(fileUri: string): Promise<string> {
-  const res = await fetch(apiUrl("/api/objects/upload"), { method: "POST" });
+  const auth = await authHeaders();
+  const res = await fetch(apiUrl("/api/objects/upload"), {
+    method: "POST",
+    headers: auth,
+  });
   if (!res.ok) {
     throw new Error(`Failed to request upload URL (${res.status})`);
   }

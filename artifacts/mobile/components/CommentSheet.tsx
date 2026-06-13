@@ -68,11 +68,11 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose }: Props) {
 
   const { data: comments, isLoading } = useGetQuoteComments(
     quoteId ?? 0,
-    { userId: user?.id, filter },
+    { filter },
     {
       query: {
         enabled: !!quoteId && visible,
-        queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { userId: user?.id, filter }),
+        queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { filter }),
       },
     }
   );
@@ -82,40 +82,38 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose }: Props) {
   const saveComment = useSaveComment();
 
   const handleLike = useCallback((commentId: number) => {
-    if (!user) return;
     likeComment.mutate(
-      { commentId, data: { userId: user.id } },
+      { commentId },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { userId: user.id, filter }) });
+          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { filter }) });
         },
       }
     );
-  }, [user, likeComment, queryClient, quoteId, filter]);
+  }, [likeComment, queryClient, quoteId, filter]);
 
   const handleSave = useCallback((commentId: number) => {
-    if (!user) return;
     saveComment.mutate(
-      { commentId, data: { userId: user.id } },
+      { commentId },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { userId: user.id, filter }) });
+          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { filter }) });
         },
       }
     );
-  }, [user, saveComment, queryClient, quoteId, filter]);
+  }, [saveComment, queryClient, quoteId, filter]);
 
   const handleSubmit = useCallback(() => {
     if (!user || !quoteId || !commentText.trim()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     createComment.mutate(
-      { quoteId, data: { userId: user.id, text: commentText.trim() } },
+      { quoteId, data: { text: commentText.trim() } },
       {
         onSuccess: () => {
           setCommentText("");
           Keyboard.dismiss();
-          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId, { userId: user.id, filter: "best" }) });
-          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId, { userId: user.id, filter: "friends" }) });
+          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "best" }) });
+          queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "friends" }) });
         },
       }
     );
@@ -149,12 +147,10 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose }: Props) {
             },
           ]}
         >
-          {/* Handle */}
           <View style={styles.handleRow}>
             <View style={[styles.handle, { backgroundColor: colors.border }]} />
           </View>
 
-          {/* Quote excerpt */}
           <View style={[styles.passageExcerpt, { borderColor: colors.border, borderLeftColor: colors.primary }]}>
             <Text
               style={[styles.passageText, { color: colors.mutedForeground }]}
@@ -164,7 +160,6 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose }: Props) {
             </Text>
           </View>
 
-          {/* Tabs */}
           <View style={[styles.tabs, { borderColor: colors.border }]}>
             {(["best", "friends"] as FilterType[]).map((f) => (
               <Pressable
@@ -187,7 +182,6 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose }: Props) {
             ))}
           </View>
 
-          {/* Comments */}
           <FlatList<Comment>
             style={styles.list}
             data={comments ?? []}
@@ -222,7 +216,6 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose }: Props) {
             keyboardShouldPersistTaps="handled"
           />
 
-          {/* Input */}
           <View
             style={[
               styles.inputRow,

@@ -108,7 +108,7 @@ export default function LibraryScreen() {
       setUploading(true);
       const uploadURL = await uploadEpub(asset.uri);
       createLibraryEntry.mutate(
-        { data: { userId: user.id, uploadURL } },
+        { data: { uploadURL } },
         {
           onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: getGetUserLibraryQueryKey(user.id) });

@@ -7,7 +7,6 @@
  */
 
 export interface CreateLibraryInput {
-  userId: number;
   /** The presigned upload URL (or object path) returned after upload */
   uploadURL: string;
 }
