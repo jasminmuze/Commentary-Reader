@@ -28,29 +28,22 @@ import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { useFileSystem } from "@/hooks/useFileSystem";
 import { CommentSheet } from "@/components/CommentSheet";
+import { ReaderSettingsPanel } from "@/components/ReaderSettingsPanel";
 import { apiUrl } from "@/lib/api";
-
-const HIGHLIGHT_COLOR = "#F9E04B";
-
-const READER_THEME = {
-  body: {
-    background: "#FAF7F2",
-    "font-family": "Georgia, 'Times New Roman', serif",
-    "font-size": "19px",
-    "line-height": "1.85",
-    color: "#221A10",
-    padding: "0 6px",
-  },
-  p: {
-    "margin-bottom": "0.6em",
-  },
-};
+import {
+  useReaderSettings,
+  buildReaderTheme,
+  buildCssScript,
+  HIGHLIGHT_STYLE_CONFIGS,
+} from "@/hooks/useReaderSettings";
 
 function intensityToOpacity(intensity: number): number {
   return Math.max(0.15, Math.min(0.50, intensity));
 }
 
-function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
+function ReaderInner({
+  entry, quotes, libraryId, canonicalBookId,
+}: {
   entry: LibraryEntry;
   quotes: Quote[];
   libraryId: number;
@@ -64,10 +57,14 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
   const toggleHighlight = useToggleHighlight();
   const updateLocation = useUpdateReadingLocation();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const injectJsRef = useRef<((script: string) => void) | null>(null);
 
   const fs = useFileSystem();
   const [localSrc, setLocalSrc] = useState<string | null>(null);
   const [dlError, setDlError] = useState<string | null>(null);
+
+  const { settings, settingsRef, update: updateSettings, reset: resetSettings, loaded } = useReaderSettings();
+  const [settingsPanelVisible, setSettingsPanelVisible] = useState(false);
 
   const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
@@ -119,7 +116,7 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
             "highlight",
             results[0].cfi,
             { quoteId: q.id },
-            { color: HIGHLIGHT_COLOR, opacity: intensityToOpacity(q.highlightIntensity) }
+            { color: "#F9E04B", opacity: intensityToOpacity(q.highlightIntensity) }
           );
         } catch {
           // ignore annotation failures for individual quotes
@@ -170,13 +167,19 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
       Alert.alert("너무 짧아요", "최소 8자 이상 선택해 주세요.");
       return true;
     }
+    const hlStyle = HIGHLIGHT_STYLE_CONFIGS[settingsRef.current.highlightStyle];
     createQuote.mutate(
       { bookId: canonicalBookId, data: { text: trimmed.slice(0, 1000) } },
       {
         onSuccess: (quote) => {
           anchoredRef.current.add(quote.id);
           try {
-            addAnnotation("highlight", cfiRange, { quoteId: quote.id }, { color: HIGHLIGHT_COLOR, opacity: 0.35 });
+            addAnnotation(
+              hlStyle.annotationType,
+              cfiRange,
+              { quoteId: quote.id },
+              { color: hlStyle.color, opacity: 0.35 }
+            );
           } catch {
             // ignore
           }
@@ -193,7 +196,7 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
       }
     );
     return true;
-  }, [ensureMatched, canonicalBookId, createQuote, addAnnotation, toggleHighlight, libraryId, queryClient]);
+  }, [ensureMatched, canonicalBookId, settingsRef, createQuote, addAnnotation, toggleHighlight, libraryId, queryClient]);
 
   const handleComment = useCallback((_cfiRange: string, text: string): boolean => {
     if (!ensureMatched() || !canonicalBookId) return true;
@@ -241,15 +244,24 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
     fs.downloadFile(remote, dest).then((result) => {
       console.log("[EPUB] 로컬 URI:", result.uri);
       if (result.uri) {
-        console.log("[EPUB] Reader src:", result.uri);
         setLocalSrc(result.uri);
       } else {
         setDlError("EPUB 다운로드에 실패했어요");
       }
     });
-  // entry.epubUrl 또는 libraryId가 바뀔 때만 재다운로드
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry.epubUrl, libraryId]);
+
+  const handleSettingsChange = useCallback(
+    (patch: Partial<typeof settings>) => {
+      updateSettings(patch);
+      if (!("scrollMode" in patch) && injectJsRef.current) {
+        const next = { ...settingsRef.current, ...patch };
+        injectJsRef.current(buildCssScript(next));
+      }
+    },
+    [updateSettings, settingsRef]
+  );
 
   const topPad = insets.top;
 
@@ -261,12 +273,12 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
     );
   }
 
-  if (!localSrc) {
+  if (!loaded || !localSrc) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
         <ActivityIndicator color={colors.primary} />
         <Text style={{ color: colors.mutedForeground, marginTop: 10, fontSize: 13 }}>
-          EPUB 다운로드 중…
+          {!loaded ? "설정 불러오는 중…" : "EPUB 다운로드 중…"}
         </Text>
       </View>
     );
@@ -278,9 +290,21 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
       : `커뮤니티 하이라이트 ${quotes.length}개`
     : "매칭되지 않음 · 텍스트를 길게 눌러 선택하세요";
 
+  const flow = settings.scrollMode === "vertical" ? "scrolled-doc" : "paginated";
+  const manager = settings.scrollMode === "vertical" ? "continuous" : "default";
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={[styles.header, { paddingTop: topPad + 10, borderBottomColor: colors.border + "80", backgroundColor: colors.background }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: topPad + 10,
+            borderBottomColor: colors.border + "80",
+            backgroundColor: colors.background,
+          },
+        ]}
+      >
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </Pressable>
@@ -288,34 +312,57 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
           <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
             {entry.book?.title ?? entry.originalTitle ?? "내 책"}
           </Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]} numberOfLines={1}>{subtitle}</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]} numberOfLines={1}>
+            {subtitle}
+          </Text>
         </View>
         {!canonicalBookId ? (
-          <Pressable onPress={() => router.push(`/match/${libraryId}`)} style={[styles.matchBtn, { borderColor: colors.primary }]}>
+          <Pressable
+            onPress={() => router.push(`/match/${libraryId}`)}
+            style={[styles.matchBtn, { borderColor: colors.primary }]}
+          >
             <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}>매칭</Text>
           </Pressable>
         ) : null}
+        <Pressable style={styles.settingsBtn} onPress={() => setSettingsPanelVisible(true)}>
+          <Text style={[styles.settingsBtnText, { color: colors.foreground }]}>Aa</Text>
+        </Pressable>
       </View>
 
       <View style={{ flex: 1 }}>
         <Reader
+          key={settings.scrollMode}
           src={localSrc}
           fileSystem={useFileSystem}
           enableSelection
-          flow="scrolled-doc"
-          manager="continuous"
-          defaultTheme={READER_THEME}
+          flow={flow}
+          manager={manager}
+          defaultTheme={buildReaderTheme(settings)}
           initialLocation={entry.lastReadingLocation ?? undefined}
           onReady={handleReady}
           onLocationChange={handleLocationChange}
           onSearch={handleSearch}
           onPressAnnotation={handlePressAnnotation}
+          getInjectionJavascriptFn={(fn) => {
+            injectJsRef.current = fn;
+          }}
           menuItems={[
             { label: "하이라이트", action: (cfiRange, text) => handleHighlight(cfiRange, text) },
             { label: "코멘트", action: (cfiRange, text) => handleComment(cfiRange, text) },
           ]}
         />
       </View>
+
+      <ReaderSettingsPanel
+        visible={settingsPanelVisible}
+        settings={settings}
+        onChange={handleSettingsChange}
+        onReset={() => {
+          resetSettings();
+          setSettingsPanelVisible(false);
+        }}
+        onClose={() => setSettingsPanelVisible(false)}
+      />
 
       <CommentSheet
         visible={sheetVisible}
@@ -334,35 +381,38 @@ export default function ReaderScreen() {
   const { libraryId: libraryIdParam } = useLocalSearchParams<{ libraryId: string }>();
   const libraryId = parseInt(libraryIdParam ?? "0", 10);
 
-  const { data: entry, isLoading } = useGetLibraryEntry(
-    libraryId,
-    {
-      query: {
-        enabled: !!libraryId && !!user?.id,
-        queryKey: getGetLibraryEntryQueryKey(libraryId),
-      },
-    }
-  );
+  const { data: entry, isLoading } = useGetLibraryEntry(libraryId, {
+    query: {
+      enabled: !!libraryId && !!user?.id,
+      queryKey: getGetLibraryEntryQueryKey(libraryId),
+    },
+  });
   const canonicalBookId = entry?.canonicalBookId ?? null;
-  const { data: quotes } = useGetBookQuotes(
-    canonicalBookId ?? 0,
-    {
-      query: {
-        enabled: !!canonicalBookId,
-        queryKey: getGetBookQuotesQueryKey(canonicalBookId ?? 0),
-      },
-    }
-  );
+  const { data: quotes } = useGetBookQuotes(canonicalBookId ?? 0, {
+    query: {
+      enabled: !!canonicalBookId,
+      queryKey: getGetBookQuotesQueryKey(canonicalBookId ?? 0),
+    },
+  });
 
   if (Platform.OS === "web") {
     return (
-      <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top + 40, padding: 24 }]}>
+      <View
+        style={[
+          styles.center,
+          { backgroundColor: colors.background, paddingTop: insets.top + 40, padding: 24 },
+        ]}
+      >
         <Feather name="smartphone" size={40} color={colors.primary} />
         <Text style={[styles.webTitle, { color: colors.foreground }]}>모바일에서 읽어주세요</Text>
         <Text style={[styles.webBody, { color: colors.mutedForeground }]}>
-          EPUB 리더는 원본 출판 서식을 그대로 보여주기 위해 기기에서만 동작해요. Expo Go 앱이나 빌드된 기기에서 이 책을 열어 주세요.
+          EPUB 리더는 원본 출판 서식을 그대로 보여주기 위해 기기에서만 동작해요. Expo Go 앱이나
+          빌드된 기기에서 이 책을 열어 주세요.
         </Text>
-        <Pressable onPress={() => router.back()} style={[styles.webBtn, { backgroundColor: colors.primary }]}>
+        <Pressable
+          onPress={() => router.back()}
+          style={[styles.webBtn, { backgroundColor: colors.primary }]}
+        >
           <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>돌아가기</Text>
         </Pressable>
       </View>
@@ -397,17 +447,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 12,
+    gap: 10,
   },
-  backBtn: { padding: 4 },
+  backBtn: {
+    padding: 4,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   titleWrap: { flex: 1 },
-  title: { fontSize: 16, fontWeight: "700", letterSpacing: -0.3 },
-  subtitle: { fontSize: 12, marginTop: 1 },
+  title: { fontSize: 15, fontWeight: "700", letterSpacing: -0.3 },
+  subtitle: { fontSize: 11, marginTop: 1 },
   matchBtn: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
     borderWidth: 1,
+  },
+  settingsBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  settingsBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: -0.5,
   },
   webTitle: { fontSize: 20, fontWeight: "700", marginTop: 16, marginBottom: 8 },
   webBody: { fontSize: 14, lineHeight: 21, textAlign: "center" },
