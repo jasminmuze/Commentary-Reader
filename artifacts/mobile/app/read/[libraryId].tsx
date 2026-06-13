@@ -51,6 +51,10 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
   const updateLocation = useUpdateReadingLocation();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const fs = useFileSystem();
+  const [localSrc, setLocalSrc] = useState<string | null>(null);
+  const [dlError, setDlError] = useState<string | null>(null);
+
   const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [anchoring, setAnchoring] = useState(false);
@@ -211,8 +215,45 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
     };
   }, []);
 
+  useEffect(() => {
+    if (!fs.cacheDirectory) return;
+    const remote = apiUrl(entry.epubUrl);
+    const dest = `${fs.cacheDirectory}epub_${libraryId}.epub`;
+    console.log("[EPUB] 원격 URL:", remote);
+    fs.downloadFile(remote, dest).then((result) => {
+      console.log("[EPUB] 로컬 URI:", result.uri);
+      if (result.uri) {
+        console.log("[EPUB] Reader src:", result.uri);
+        setLocalSrc(result.uri);
+      } else {
+        setDlError("EPUB 다운로드에 실패했어요");
+      }
+    });
+  // entry.epubUrl 또는 libraryId가 바뀔 때만 재다운로드
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.epubUrl, libraryId]);
+
   const topPad = insets.top;
-  const src = apiUrl(entry.epubUrl);
+
+  if (dlError) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background, padding: 24 }]}>
+        <Text style={{ color: "#FF6B6B", fontSize: 14, textAlign: "center" }}>{dlError}</Text>
+      </View>
+    );
+  }
+
+  if (!localSrc) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={{ color: colors.mutedForeground, marginTop: 10, fontSize: 13 }}>
+          EPUB 다운로드 중…
+        </Text>
+      </View>
+    );
+  }
+
   const subtitle = canonicalBookId
     ? anchoring
       ? "커뮤니티 하이라이트 표시 중…"
@@ -240,7 +281,7 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
 
       <View style={{ flex: 1 }}>
         <Reader
-          src={src}
+          src={localSrc}
           fileSystem={useFileSystem}
           enableSelection
           initialLocation={entry.lastReadingLocation ?? undefined}
