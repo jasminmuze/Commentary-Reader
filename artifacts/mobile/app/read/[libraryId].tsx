@@ -61,6 +61,15 @@ function ReaderInner({
   const updateLocation = useUpdateReadingLocation();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
+  const firstLocationChangeLoggedRef = useRef(false);
+
+  // 로그 A: entry.lastReadingLocation (마운트 시 1회)
+  const entryLocationLogRef = useRef(false);
+  if (!entryLocationLogRef.current) {
+    entryLocationLogRef.current = true;
+    console.log('[RESTORE-A] entry.lastReadingLocation =', entry.lastReadingLocation ?? '(null)');
+    console.log('[RESTORE-B] currentLocationRef.current(초기값) =', currentLocationRef.current ?? '(undefined)');
+  }
 
   const fs = useFileSystem();
   const [localSrc, setLocalSrc] = useState<string | null>(null);
@@ -236,6 +245,12 @@ function ReaderInner({
     (_total: number, location: Location, progress: number) => {
       const cfi = location?.start?.cfi;
       if (!cfi) return;
+      if (!firstLocationChangeLoggedRef.current) {
+        firstLocationChangeLoggedRef.current = true;
+        console.log('[RESTORE-F] onLocationChange 첫 발화 CFI =', cfi);
+        console.log('[RESTORE-F] 발화 시점 currentLocationRef.current =', currentLocationRef.current ?? '(undefined)');
+        console.log('[RESTORE-F] 이 값이 덮어쓰기됩니다 →', cfi);
+      }
       currentLocationRef.current = cfi;
       setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
       const disp = location?.start?.displayed;
