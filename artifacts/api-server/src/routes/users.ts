@@ -20,6 +20,7 @@ import {
 } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
 import { createToken } from "../lib/auth.js";
+import { authenticate } from "../middlewares/authenticate.js";
 
 const AVATAR_COLORS = [
   "#E8A020", "#4A9EFF", "#FF6B6B", "#7CB9A8", "#C084FC",
@@ -89,10 +90,15 @@ router.get("/users/search", async (req, res): Promise<void> => {
   res.json(results);
 });
 
-router.get("/users/:userId", async (req, res): Promise<void> => {
+router.get("/users/:userId", authenticate, async (req, res): Promise<void> => {
   const params = GetUserParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
 
@@ -102,7 +108,7 @@ router.get("/users/:userId", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, createdAt: user.createdAt.toISOString(), token: createToken(user.id) });
+  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, createdAt: user.createdAt.toISOString() });
 });
 
 router.get("/users/:userId/friends", async (req, res): Promise<void> => {

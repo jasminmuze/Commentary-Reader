@@ -388,7 +388,7 @@ export const CreateUserResponse = zod.object({
   "username": zod.string(),
   "avatarColor": zod.string(),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().describe('HMAC-signed bearer token — send as Authorization header')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
 })
 
 
@@ -404,7 +404,7 @@ export const GetUserResponse = zod.object({
   "username": zod.string(),
   "avatarColor": zod.string(),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().describe('HMAC-signed bearer token — send as Authorization header')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
 })
 
 
@@ -438,7 +438,7 @@ export const GetFriendsResponseItem = zod.object({
   "username": zod.string(),
   "avatarColor": zod.string(),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().describe('HMAC-signed bearer token — send as Authorization header')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
 })
 export const GetFriendsResponse = zod.array(GetFriendsResponseItem)
 
@@ -459,7 +459,7 @@ export const AddFriendResponse = zod.object({
   "username": zod.string(),
   "avatarColor": zod.string(),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().describe('HMAC-signed bearer token — send as Authorization header')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
 })
 
 

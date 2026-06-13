@@ -776,7 +776,7 @@ components:
 
     User:
       type: object
-      required: [id, username, avatarColor, createdAt, token]
+      required: [id, username, avatarColor, createdAt]
       properties:
         id:
           type: integer
@@ -789,7 +789,7 @@ components:
           format: date-time
         token:
           type: string
-          description: HMAC-signed bearer token — send as Authorization header
+          description: HMAC-signed bearer token — only present in POST /users response
 
     UserWithFriendStatus:
       type: object

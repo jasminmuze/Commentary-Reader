@@ -163,8 +163,8 @@ export interface User {
   username: string;
   avatarColor: string;
   createdAt: string;
-  /** HMAC-signed bearer token — send as Authorization header */
-  token: string;
+  /** HMAC-signed bearer token — only present in POST /users response */
+  token?: string;
 }
 
 export interface UserWithFriendStatus {

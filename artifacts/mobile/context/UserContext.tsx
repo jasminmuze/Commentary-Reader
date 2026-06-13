@@ -175,10 +175,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           const res = await fetch(apiUrl(`/api/users/${storedId}`), { headers });
           if (res.ok) {
             const data = await res.json();
-            // Refresh the token on each login to extend session.
-            if (data.token) {
-              await AsyncStorage.setItem(TOKEN_KEY, data.token);
-            }
             setUserState({ id: data.id, username: data.username, avatarColor: data.avatarColor });
           }
         } catch {
