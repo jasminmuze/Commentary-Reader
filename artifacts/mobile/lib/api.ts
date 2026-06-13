@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 
 const domain = process.env.EXPO_PUBLIC_DOMAIN;
@@ -19,6 +20,9 @@ export function apiUrl(path: string): string {
  *
  * Returns the presigned upload URL, which the caller passes to POST /api/library
  * (the server normalizes it into a stable object path).
+ *
+ * On web, asset.uri is a blob URL — use fetch+PUT directly.
+ * On native, use FileSystem.uploadAsync (expo-file-system).
  */
 export async function uploadEpub(fileUri: string): Promise<string> {
   const res = await fetch(apiUrl("/api/objects/upload"), { method: "POST" });
@@ -27,13 +31,26 @@ export async function uploadEpub(fileUri: string): Promise<string> {
   }
   const { uploadURL } = (await res.json()) as { uploadURL: string };
 
-  const result = await FileSystem.uploadAsync(uploadURL, fileUri, {
-    httpMethod: "PUT",
-    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-    headers: { "Content-Type": "application/epub+zip" },
-  });
-  if (result.status < 200 || result.status >= 300) {
-    throw new Error(`Upload failed (${result.status})`);
+  if (Platform.OS === "web") {
+    const blob = await (await fetch(fileUri)).blob();
+    const putRes = await fetch(uploadURL, {
+      method: "PUT",
+      body: blob,
+      headers: { "Content-Type": "application/epub+zip" },
+    });
+    if (!putRes.ok) {
+      throw new Error(`Upload failed (${putRes.status})`);
+    }
+  } else {
+    const result = await FileSystem.uploadAsync(uploadURL, fileUri, {
+      httpMethod: "PUT",
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      headers: { "Content-Type": "application/epub+zip" },
+    });
+    if (result.status < 200 || result.status >= 300) {
+      throw new Error(`Upload failed (${result.status})`);
+    }
   }
+
   return uploadURL;
 }
