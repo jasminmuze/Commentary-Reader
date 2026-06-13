@@ -44,12 +44,13 @@ function intensityToOpacity(intensity: number): number {
 }
 
 function ReaderInner({
-  entry, quotes, libraryId, canonicalBookId,
+  entry, quotes, libraryId, canonicalBookId, isFetching,
 }: {
   entry: LibraryEntry;
   quotes: Quote[];
   libraryId: number;
   canonicalBookId: number | null;
+  isFetching: boolean;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -270,15 +271,23 @@ function ReaderInner({
     if (!fs.cacheDirectory) return;
     const remote = apiUrl(entry.epubUrl);
     const dest = `${fs.cacheDirectory}epub_${libraryId}.epub`;
-    console.log("[EPUB] 원격 URL:", remote);
-    fs.downloadFile(remote, dest).then((result) => {
-      console.log("[EPUB] 로컬 URI:", result.uri);
+    console.log("[EPUB] 캐시 경로:", dest);
+    (async () => {
+      const info = await fs.getFileInfo(dest);
+      if (info.exists) {
+        console.log("[EPUB] 캐시 히트 → 즉시 사용");
+        setLocalSrc(dest);
+        return;
+      }
+      console.log("[EPUB] 캐시 미스 → 다운로드 시작:", remote);
+      const result = await fs.downloadFile(remote, dest);
+      console.log("[EPUB] 다운로드 완료 → 로컬 URI:", result.uri);
       if (result.uri) {
         setLocalSrc(result.uri);
       } else {
         setDlError("EPUB 다운로드에 실패했어요");
       }
-    });
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry.epubUrl, libraryId]);
 
@@ -324,7 +333,9 @@ function ReaderInner({
     currentLocationRef.current = entry.lastReadingLocation;
   }
 
-  if (!loaded || !localSrc) {
+  // localSrc가 준비됐지만 아직 refetch 중이고 location도 없으면 잠깐 더 기다린다.
+  // (EPUB 캐시 히트로 localSrc가 즉시 설정될 때 React Query refetch보다 빠를 수 있음)
+  if (!loaded || !localSrc || (isFetching && !currentLocationRef.current)) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
         <ActivityIndicator color={colors.primary} />
@@ -387,6 +398,7 @@ function ReaderInner({
       </View>
 
       <View style={{ flex: 1 }}>
+        {console.log("[READER] 마운트 → initialLocation:", currentLocationRef.current ?? "(없음 — 처음부터)") as unknown as null}
         <Reader
           key={readerKey}
           src={localSrc}
@@ -492,7 +504,7 @@ export default function ReaderScreen() {
   const { libraryId: libraryIdParam } = useLocalSearchParams<{ libraryId: string }>();
   const libraryId = parseInt(libraryIdParam ?? "0", 10);
 
-  const { data: entry, isLoading } = useGetLibraryEntry(libraryId, {
+  const { data: entry, isLoading, isFetching } = useGetLibraryEntry(libraryId, {
     query: {
       enabled: !!libraryId && !!user?.id,
       queryKey: getGetLibraryEntryQueryKey(libraryId),
@@ -545,6 +557,7 @@ export default function ReaderScreen() {
         quotes={quotes ?? []}
         libraryId={libraryId}
         canonicalBookId={canonicalBookId}
+        isFetching={isFetching}
       />
     </ReaderProvider>
   );
