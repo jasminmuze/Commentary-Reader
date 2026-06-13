@@ -60,6 +60,12 @@ function ReaderInner({
   const updateLocation = useUpdateReadingLocation();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
+  useEffect(() => {
+    console.log('[RESTORE] ReaderInner mounted');
+    console.log('[RESTORE]   entry.lastReadingLocation =', entry.lastReadingLocation);
+    console.log('[RESTORE]   currentLocationRef.current =', currentLocationRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fs = useFileSystem();
   const [localSrc, setLocalSrc] = useState<string | null>(null);
@@ -244,10 +250,18 @@ function ReaderInner({
       const clampedProgress = Math.min(100, Math.max(0, Math.round(progress)));
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        updateLocation.mutate({
-          libraryId,
-          data: { location: cfi, readingProgress: clampedProgress },
-        });
+        console.log('[RESTORE] saving location:', cfi, 'progress:', clampedProgress);
+        updateLocation.mutate(
+          { libraryId, data: { location: cfi, readingProgress: clampedProgress } },
+          {
+            onSuccess: (updated) => {
+              console.log('[RESTORE] save success → returned lastReadingLocation:', updated.lastReadingLocation);
+            },
+            onError: (err) => {
+              console.log('[RESTORE] save error:', err);
+            },
+          }
+        );
       }, 1500);
     },
     [updateLocation, libraryId]
@@ -523,6 +537,8 @@ export default function ReaderScreen() {
       </View>
     );
   }
+
+  console.log('[RESTORE] ReaderScreen rendering entry, lastReadingLocation =', entry.lastReadingLocation);
 
   return (
     <ReaderProvider>
