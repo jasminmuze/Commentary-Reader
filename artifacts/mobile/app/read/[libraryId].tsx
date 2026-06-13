@@ -33,7 +33,6 @@ import { apiUrl } from "@/lib/api";
 import {
   useReaderSettings,
   buildReaderTheme,
-  buildCssScript,
   HIGHLIGHT_STYLE_CONFIGS,
 } from "@/hooks/useReaderSettings";
 
@@ -57,7 +56,7 @@ function ReaderInner({
   const toggleHighlight = useToggleHighlight();
   const updateLocation = useUpdateReadingLocation();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const injectJsRef = useRef<((script: string) => void) | null>(null);
+  const currentLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
 
   const fs = useFileSystem();
   const [localSrc, setLocalSrc] = useState<string | null>(null);
@@ -222,6 +221,7 @@ function ReaderInner({
     (_total: number, location: Location) => {
       const cfi = location?.start?.cfi;
       if (!cfi) return;
+      currentLocationRef.current = cfi;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         updateLocation.mutate({ libraryId, data: { location: cfi } });
@@ -255,12 +255,8 @@ function ReaderInner({
   const handleSettingsChange = useCallback(
     (patch: Partial<typeof settings>) => {
       updateSettings(patch);
-      if (!("scrollMode" in patch) && injectJsRef.current) {
-        const next = { ...settingsRef.current, ...patch };
-        injectJsRef.current(buildCssScript(next));
-      }
     },
-    [updateSettings, settingsRef]
+    [updateSettings]
   );
 
   const readerTheme = useMemo(
@@ -268,6 +264,15 @@ function ReaderInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [settings.theme, settings.font, settings.fontSize, settings.lineSpacing, settings.margin]
   );
+
+  const readerKey = [
+    settings.scrollMode,
+    settings.theme,
+    settings.font,
+    settings.fontSize,
+    settings.lineSpacing,
+    settings.margin,
+  ].join("_");
 
   const topPad = insets.top;
 
@@ -337,21 +342,18 @@ function ReaderInner({
 
       <View style={{ flex: 1 }}>
         <Reader
-          key={settings.scrollMode}
+          key={readerKey}
           src={localSrc}
           fileSystem={useFileSystem}
           enableSelection
           flow={flow}
           manager={manager}
           defaultTheme={readerTheme}
-          initialLocation={entry.lastReadingLocation ?? undefined}
+          initialLocation={currentLocationRef.current}
           onReady={handleReady}
           onLocationChange={handleLocationChange}
           onSearch={handleSearch}
           onPressAnnotation={handlePressAnnotation}
-          getInjectionJavascriptFn={(fn) => {
-            injectJsRef.current = fn;
-          }}
           menuItems={[
             { label: "하이라이트", action: (cfiRange, text) => handleHighlight(cfiRange, text) },
             { label: "코멘트", action: (cfiRange, text) => handleComment(cfiRange, text) },
