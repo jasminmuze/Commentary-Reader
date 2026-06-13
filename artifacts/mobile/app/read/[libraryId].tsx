@@ -60,12 +60,6 @@ function ReaderInner({
   const updateLocation = useUpdateReadingLocation();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
-  useEffect(() => {
-    console.log('[RESTORE] ReaderInner mounted');
-    console.log('[RESTORE]   entry.lastReadingLocation =', entry.lastReadingLocation);
-    console.log('[RESTORE]   currentLocationRef.current =', currentLocationRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const fs = useFileSystem();
   const [localSrc, setLocalSrc] = useState<string | null>(null);
@@ -250,21 +244,20 @@ function ReaderInner({
       const clampedProgress = Math.min(100, Math.max(0, Math.round(progress)));
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        console.log('[RESTORE] saving location:', cfi, 'progress:', clampedProgress);
         updateLocation.mutate(
           { libraryId, data: { location: cfi, readingProgress: clampedProgress } },
           {
             onSuccess: (updated) => {
-              console.log('[RESTORE] save success → returned lastReadingLocation:', updated.lastReadingLocation);
-            },
-            onError: (err) => {
-              console.log('[RESTORE] save error:', err);
+              queryClient.setQueryData(
+                getGetLibraryEntryQueryKey(libraryId),
+                updated
+              );
             },
           }
         );
       }, 1500);
     },
-    [updateLocation, libraryId]
+    [updateLocation, libraryId, queryClient]
   );
 
   useEffect(() => {
@@ -322,6 +315,13 @@ function ReaderInner({
         <Text style={{ color: "#FF6B6B", fontSize: 14, textAlign: "center" }}>{dlError}</Text>
       </View>
     );
+  }
+
+  // Reader가 아직 마운트되지 않은 로딩 구간에서 fresh entry가 도착하면 ref를 업데이트한다.
+  // useRef 초기값은 최초 마운트 시 1회만 평가되므로, 캐시 stale 데이터로 마운트될 때
+  // lastReadingLocation이 null이었다가 refetch 이후 CFI로 바뀌면 여기서 보정한다.
+  if (!currentLocationRef.current && entry.lastReadingLocation) {
+    currentLocationRef.current = entry.lastReadingLocation;
   }
 
   if (!loaded || !localSrc) {
@@ -537,8 +537,6 @@ export default function ReaderScreen() {
       </View>
     );
   }
-
-  console.log('[RESTORE] ReaderScreen rendering entry, lastReadingLocation =', entry.lastReadingLocation);
 
   return (
     <ReaderProvider>
