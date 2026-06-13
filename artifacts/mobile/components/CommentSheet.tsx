@@ -38,9 +38,10 @@ interface Props {
   quoteId: number | null;
   quoteText: string;
   onClose: () => void;
+  onCommentSaved?: () => void;
 }
 
-export function CommentSheet({ visible, quoteId, quoteText, onClose }: Props) {
+export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSaved }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useUser();
@@ -114,10 +115,11 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose }: Props) {
           Keyboard.dismiss();
           queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "best" }) });
           queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "friends" }) });
+          onCommentSaved?.();
         },
       }
     );
-  }, [user, quoteId, commentText, createComment, queryClient]);
+  }, [user, quoteId, commentText, createComment, queryClient, onCommentSaved]);
 
   const translateY = slideAnim.interpolate({
     inputRange: [0, 1],

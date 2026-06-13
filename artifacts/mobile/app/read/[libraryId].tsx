@@ -65,7 +65,7 @@ function ReaderInner({
   const { settings, settingsRef, update: updateSettings, reset: resetSettings, loaded } = useReaderSettings();
   const [settingsPanelVisible, setSettingsPanelVisible] = useState(false);
 
-  const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string } | null>(null);
+  const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string; cfiRange?: string } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [anchoring, setAnchoring] = useState(false);
 
@@ -197,7 +197,7 @@ function ReaderInner({
     return true;
   }, [ensureMatched, canonicalBookId, settingsRef, createQuote, addAnnotation, toggleHighlight, libraryId, queryClient]);
 
-  const handleComment = useCallback((_cfiRange: string, text: string): boolean => {
+  const handleComment = useCallback((cfiRange: string, text: string): boolean => {
     if (!ensureMatched() || !canonicalBookId) return true;
     const trimmed = text.trim();
     if (trimmed.length < 8) {
@@ -208,7 +208,7 @@ function ReaderInner({
       { bookId: canonicalBookId, data: { text: trimmed.slice(0, 1000) } },
       {
         onSuccess: (quote) => {
-          setSelectedQuote({ id: quote.id, text: quote.text });
+          setSelectedQuote({ id: quote.id, text: quote.text, cfiRange });
           setSheetVisible(true);
         },
         onError: () => Alert.alert("실패", "다시 시도해 주세요."),
@@ -377,6 +377,25 @@ function ReaderInner({
         quoteId={selectedQuote?.id ?? null}
         quoteText={selectedQuote?.text ?? ""}
         onClose={() => setSheetVisible(false)}
+        onCommentSaved={() => {
+          const cfi = selectedQuote?.cfiRange;
+          const qId = selectedQuote?.id;
+          if (!cfi || !qId || !canonicalBookId) return;
+          if (anchoredRef.current.has(qId)) return;
+          const hlStyle = HIGHLIGHT_STYLE_CONFIGS[settingsRef.current.highlightStyle];
+          anchoredRef.current.add(qId);
+          try {
+            addAnnotation(hlStyle.annotationType, cfi, { quoteId: qId }, { color: hlStyle.color, opacity: 0.35 });
+          } catch {}
+          toggleHighlight.mutate(
+            { quoteId: qId, data: { userLibraryId: libraryId, cfiRange: cfi } },
+            {
+              onSuccess: () => {
+                queryClient.invalidateQueries({ queryKey: getGetBookQuotesQueryKey(canonicalBookId) });
+              },
+            }
+          );
+        }}
       />
     </View>
   );
