@@ -111,10 +111,15 @@ router.get("/users/:userId", authenticate, async (req, res): Promise<void> => {
   res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, createdAt: user.createdAt.toISOString() });
 });
 
-router.get("/users/:userId/friends", async (req, res): Promise<void> => {
+router.get("/users/:userId/friends", authenticate, async (req, res): Promise<void> => {
   const params = GetFriendsParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
 
@@ -130,10 +135,15 @@ router.get("/users/:userId/friends", async (req, res): Promise<void> => {
   res.json(filtered.map((u) => ({ id: u.id, username: u.username, avatarColor: u.avatarColor, createdAt: u.createdAt.toISOString() })));
 });
 
-router.post("/users/:userId/friends", async (req, res): Promise<void> => {
+router.post("/users/:userId/friends", authenticate, async (req, res): Promise<void> => {
   const params = AddFriendParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
 
@@ -161,10 +171,15 @@ router.post("/users/:userId/friends", async (req, res): Promise<void> => {
   res.json({ id: friend.id, username: friend.username, avatarColor: friend.avatarColor, createdAt: friend.createdAt.toISOString() });
 });
 
-router.delete("/users/:userId/friends/:friendId", async (req, res): Promise<void> => {
+router.delete("/users/:userId/friends/:friendId", authenticate, async (req, res): Promise<void> => {
   const params = RemoveFriendParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
 
@@ -174,10 +189,15 @@ router.delete("/users/:userId/friends/:friendId", async (req, res): Promise<void
   res.sendStatus(204);
 });
 
-router.get("/users/:userId/saved-comments", async (req, res): Promise<void> => {
+router.get("/users/:userId/saved-comments", authenticate, async (req, res): Promise<void> => {
   const params = GetSavedCommentsParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
 

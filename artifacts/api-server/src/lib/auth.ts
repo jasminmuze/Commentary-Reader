@@ -1,6 +1,13 @@
 import crypto from "node:crypto";
 
-const SECRET = process.env.SESSION_SECRET ?? "dev-secret-change-in-prod";
+const rawSecret = process.env.SESSION_SECRET;
+if (!rawSecret) {
+  throw new Error(
+    "SESSION_SECRET environment variable must be set. " +
+    "Generate a strong random value and add it as a secret before starting the server."
+  );
+}
+const SECRET = rawSecret;
 
 /**
  * Create a short-lived HMAC-signed bearer token encoding the userId.
