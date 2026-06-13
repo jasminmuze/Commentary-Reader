@@ -116,6 +116,12 @@ export interface LibraryEntry {
   originalIsbn: string | null;
   /** @nullable */
   lastReadingLocation: string | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     * @nullable
+     */
+  readingProgress?: number | null;
   createdAt: string;
   book: Book | null;
 }
@@ -123,6 +129,11 @@ export interface LibraryEntry {
 export interface UpdateReadingLocationInput {
   /** @minLength 1 */
   location: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  readingProgress?: number;
 }
 
 export type MatchResultStatus = typeof MatchResultStatus[keyof typeof MatchResultStatus];

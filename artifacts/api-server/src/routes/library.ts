@@ -49,6 +49,7 @@ async function formatLibraryEntry(
     originalAuthor: entry.originalAuthor ?? null,
     originalIsbn: entry.originalIsbn ?? null,
     lastReadingLocation: entry.lastReadingLocation ?? null,
+    readingProgress: entry.readingProgress ?? null,
     createdAt: entry.createdAt,
     book,
   };
@@ -232,9 +233,15 @@ router.put("/library/:libraryId/location", authenticate, async (req, res): Promi
     return;
   }
 
+  const progressValue = body.data.readingProgress ?? null;
   const [entry] = await db
     .update(userLibraryTable)
-    .set({ lastReadingLocation: body.data.location })
+    .set({
+      lastReadingLocation: body.data.location,
+      ...(progressValue !== null && {
+        readingProgress: Math.min(100, Math.max(0, progressValue)),
+      }),
+    })
     .where(eq(userLibraryTable.id, params.data.libraryId))
     .returning();
   if (!entry) {

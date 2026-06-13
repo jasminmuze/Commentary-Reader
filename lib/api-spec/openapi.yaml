@@ -710,6 +710,10 @@ components:
           type: [string, "null"]
         lastReadingLocation:
           type: [string, "null"]
+        readingProgress:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
         createdAt:
           type: string
           format: date-time
@@ -725,6 +729,10 @@ components:
         location:
           type: string
           minLength: 1
+        readingProgress:
+          type: integer
+          minimum: 0
+          maximum: 100
 
     MatchResult:
       type: object

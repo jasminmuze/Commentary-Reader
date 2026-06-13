@@ -14,6 +14,8 @@ export const userLibraryTable = pgTable("user_library", {
   originalIsbn: text("original_isbn"),
   // Last reading position (EPUB CFI) for the owning user, saved as they read.
   lastReadingLocation: text("last_reading_location"),
+  // Reading progress as a percentage 0–100, saved alongside lastReadingLocation.
+  readingProgress: integer("reading_progress"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

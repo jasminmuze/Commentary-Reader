@@ -71,6 +71,25 @@ function LibraryCard({ entry, onOpen, onMatch }: {
             <Text style={[styles.chipText, { color: colors.primary }]}>커뮤니티 책과 매칭하기</Text>
           </Pressable>
         )}
+
+        {entry.readingProgress != null && (
+          <View style={styles.progressWrap}>
+            <View style={[styles.progressTrack, { backgroundColor: colors.border + "60" }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    backgroundColor: colors.primary,
+                    width: `${entry.readingProgress}%`,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>
+              {entry.readingProgress}% 읽음
+            </Text>
+          </View>
+        )}
       </View>
       <View style={styles.openIcon}>
         <Feather name="chevron-right" size={20} color={colors.mutedForeground} />
@@ -267,4 +286,8 @@ const styles = StyleSheet.create({
   },
   chipText: { fontSize: 11, fontWeight: "700" },
   openIcon: { paddingRight: 10 },
+  progressWrap: { marginTop: 8, gap: 4 },
+  progressTrack: { height: 3, borderRadius: 2, overflow: "hidden" },
+  progressFill: { height: 3, borderRadius: 2 },
+  progressLabel: { fontSize: 11, letterSpacing: -0.2 },
 });

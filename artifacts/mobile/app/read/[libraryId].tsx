@@ -241,9 +241,13 @@ function ReaderInner({
       if (disp && disp.total > 1) {
         setPageInfo({ page: disp.page, total: disp.total });
       }
+      const clampedProgress = Math.min(100, Math.max(0, Math.round(progress)));
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        updateLocation.mutate({ libraryId, data: { location: cfi } });
+        updateLocation.mutate({
+          libraryId,
+          data: { location: cfi, readingProgress: clampedProgress },
+        });
       }, 1500);
     },
     [updateLocation, libraryId]

@@ -243,6 +243,11 @@ export const GetLibraryEntryParams = zod.object({
   "libraryId": zod.coerce.number()
 })
 
+export const getLibraryEntryResponseReadingProgressMin = 0;
+export const getLibraryEntryResponseReadingProgressMax = 100;
+
+
+
 export const GetLibraryEntryResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
@@ -253,6 +258,7 @@ export const GetLibraryEntryResponse = zod.object({
   "originalAuthor": zod.string().nullable(),
   "originalIsbn": zod.string().nullable(),
   "lastReadingLocation": zod.string().nullable(),
+  "readingProgress": zod.number().min(getLibraryEntryResponseReadingProgressMin).max(getLibraryEntryResponseReadingProgressMax).nullish(),
   "createdAt": zod.coerce.date(),
   "book": zod.union([zod.object({
   "id": zod.number(),
@@ -278,6 +284,11 @@ export const MatchLibraryEntryBody = zod.object({
   "canonicalBookId": zod.number()
 })
 
+export const matchLibraryEntryResponseReadingProgressMin = 0;
+export const matchLibraryEntryResponseReadingProgressMax = 100;
+
+
+
 export const MatchLibraryEntryResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
@@ -288,6 +299,7 @@ export const MatchLibraryEntryResponse = zod.object({
   "originalAuthor": zod.string().nullable(),
   "originalIsbn": zod.string().nullable(),
   "lastReadingLocation": zod.string().nullable(),
+  "readingProgress": zod.number().min(matchLibraryEntryResponseReadingProgressMin).max(matchLibraryEntryResponseReadingProgressMax).nullish(),
   "createdAt": zod.coerce.date(),
   "book": zod.union([zod.object({
   "id": zod.number(),
@@ -310,11 +322,20 @@ export const UpdateReadingLocationParams = zod.object({
 })
 
 
+export const updateReadingLocationBodyReadingProgressMin = 0;
+export const updateReadingLocationBodyReadingProgressMax = 100;
+
 
 
 export const UpdateReadingLocationBody = zod.object({
-  "location": zod.string().min(1)
+  "location": zod.string().min(1),
+  "readingProgress": zod.number().min(updateReadingLocationBodyReadingProgressMin).max(updateReadingLocationBodyReadingProgressMax).optional()
 })
+
+export const updateReadingLocationResponseReadingProgressMin = 0;
+export const updateReadingLocationResponseReadingProgressMax = 100;
+
+
 
 export const UpdateReadingLocationResponse = zod.object({
   "id": zod.number(),
@@ -326,6 +347,7 @@ export const UpdateReadingLocationResponse = zod.object({
   "originalAuthor": zod.string().nullable(),
   "originalIsbn": zod.string().nullable(),
   "lastReadingLocation": zod.string().nullable(),
+  "readingProgress": zod.number().min(updateReadingLocationResponseReadingProgressMin).max(updateReadingLocationResponseReadingProgressMax).nullish(),
   "createdAt": zod.coerce.date(),
   "book": zod.union([zod.object({
   "id": zod.number(),
@@ -347,6 +369,11 @@ export const GetUserLibraryParams = zod.object({
   "userId": zod.coerce.number()
 })
 
+export const getUserLibraryResponseReadingProgressMin = 0;
+export const getUserLibraryResponseReadingProgressMax = 100;
+
+
+
 export const GetUserLibraryResponseItem = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
@@ -357,6 +384,7 @@ export const GetUserLibraryResponseItem = zod.object({
   "originalAuthor": zod.string().nullable(),
   "originalIsbn": zod.string().nullable(),
   "lastReadingLocation": zod.string().nullable(),
+  "readingProgress": zod.number().min(getUserLibraryResponseReadingProgressMin).max(getUserLibraryResponseReadingProgressMax).nullish(),
   "createdAt": zod.coerce.date(),
   "book": zod.union([zod.object({
   "id": zod.number(),

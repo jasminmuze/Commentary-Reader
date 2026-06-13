@@ -22,6 +22,12 @@ export interface LibraryEntry {
   originalIsbn: string | null;
   /** @nullable */
   lastReadingLocation: string | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     * @nullable
+     */
+  readingProgress?: number | null;
   createdAt: Date;
   book: Book | null;
 }

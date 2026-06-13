@@ -9,4 +9,9 @@
 export interface UpdateReadingLocationInput {
   /** @minLength 1 */
   location: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  readingProgress?: number;
 }
