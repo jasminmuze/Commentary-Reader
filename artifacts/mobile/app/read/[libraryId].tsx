@@ -69,6 +69,8 @@ function ReaderInner({
   const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string; cfiRange?: string } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [anchoring, setAnchoring] = useState(false);
+  const [readProgress, setReadProgress] = useState<number | null>(null);
+  const [pageInfo, setPageInfo] = useState<{ page: number; total: number } | null>(null);
 
   const quotesRef = useRef<Quote[]>([]);
   const pendingRef = useRef<Quote[]>([]);
@@ -222,10 +224,15 @@ function ReaderInner({
   }, [ensureMatched, canonicalBookId, createQuote]);
 
   const handleLocationChange = useCallback(
-    (_total: number, location: Location) => {
+    (_total: number, location: Location, progress: number) => {
       const cfi = location?.start?.cfi;
       if (!cfi) return;
       currentLocationRef.current = cfi;
+      setReadProgress(Math.round(progress * 100));
+      const disp = location?.start?.displayed;
+      if (disp && disp.total > 1) {
+        setPageInfo({ page: disp.page, total: disp.total });
+      }
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         updateLocation.mutate({ libraryId, data: { location: cfi } });
@@ -362,6 +369,28 @@ function ReaderInner({
           ]}
         />
       </View>
+
+      {readProgress !== null && (
+        <View
+          style={[
+            styles.progressWrap,
+            { backgroundColor: colors.background, paddingBottom: insets.bottom + 4 },
+          ]}
+        >
+          <View style={[styles.progressTrack, { backgroundColor: colors.border + "50" }]}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${readProgress}%` as `${number}%`, backgroundColor: colors.primary },
+              ]}
+            />
+          </View>
+          <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>
+            {readProgress}%
+            {pageInfo ? `  ·  ${pageInfo.page} / ${pageInfo.total}페이지` : ""}
+          </Text>
+        </View>
+      )}
 
       <ReaderSettingsPanel
         visible={settingsPanelVisible}
@@ -514,4 +543,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
   },
+  progressWrap: { paddingHorizontal: 18, paddingTop: 6 },
+  progressTrack: { height: 2, borderRadius: 1, overflow: "hidden" },
+  progressFill: { height: 2, borderRadius: 1 },
+  progressLabel: { fontSize: 11, textAlign: "center", marginTop: 4, letterSpacing: -0.2 },
 });
