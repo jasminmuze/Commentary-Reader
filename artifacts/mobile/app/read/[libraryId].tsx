@@ -61,15 +61,12 @@ function ReaderInner({
   const updateLocation = useUpdateReadingLocation();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
-  const firstLocationChangeLoggedRef = useRef(false);
-
-  // 로그 A: entry.lastReadingLocation (마운트 시 1회)
-  const entryLocationLogRef = useRef(false);
-  if (!entryLocationLogRef.current) {
-    entryLocationLogRef.current = true;
-    console.log('[RESTORE-A] entry.lastReadingLocation =', entry.lastReadingLocation ?? '(null)');
-    console.log('[RESTORE-B] currentLocationRef.current(초기값) =', currentLocationRef.current ?? '(undefined)');
-  }
+  // 복원할 대상 CFI — 마운트 시 한 번만 캡처 (refetch로 변경되면 안 됨)
+  const initialLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
+  // 복원 모드: initialLocation이 있을 때 true, 복원 완료 시 false
+  const isRestoringRef = useRef<boolean>(!!entry.lastReadingLocation);
+  const restoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstSaveLoggedRef = useRef(false);
 
   const fs = useFileSystem();
   const [localSrc, setLocalSrc] = useState<string | null>(null);
@@ -115,6 +112,17 @@ function ReaderInner({
     const script = buildApplyStyleScript(settingsRef.current);
     console.log("[Reader] onReady - applying initial styles");
     injectJavascript(script);
+    // initialLocation이 있으면 라이브러리 내부에서 goToLocation을 비동기로 호출한다.
+    // 그 전에 page-1 onLocationChange가 먼저 발화하므로 복원 타임아웃을 건다.
+    if (isRestoringRef.current) {
+      console.log('[RESTORE] 복원 모드 시작 — initialLocation:', initialLocationRef.current);
+      restoreTimeoutRef.current = setTimeout(() => {
+        if (isRestoringRef.current) {
+          isRestoringRef.current = false;
+          console.log('[RESTORE] 복원 모드 종료 (2000ms 타임아웃)');
+        }
+      }, 2000);
+    }
     startAnchoring();
   }, [startAnchoring, injectJavascript, settingsRef]);
 
@@ -245,11 +253,26 @@ function ReaderInner({
     (_total: number, location: Location, progress: number) => {
       const cfi = location?.start?.cfi;
       if (!cfi) return;
-      if (!firstLocationChangeLoggedRef.current) {
-        firstLocationChangeLoggedRef.current = true;
-        console.log('[RESTORE-F] onLocationChange 첫 발화 CFI =', cfi);
-        console.log('[RESTORE-F] 발화 시점 currentLocationRef.current =', currentLocationRef.current ?? '(undefined)');
-        console.log('[RESTORE-F] 이 값이 덮어쓰기됩니다 →', cfi);
+
+      // 복원 모드: goToLocation이 완료되기 전 page-1 이벤트를 무시한다
+      if (isRestoringRef.current) {
+        if (cfi === initialLocationRef.current) {
+          // 목적지 CFI와 정확히 일치 → 즉시 복원 완료
+          isRestoringRef.current = false;
+          if (restoreTimeoutRef.current) {
+            clearTimeout(restoreTimeoutRef.current);
+            restoreTimeoutRef.current = null;
+          }
+          console.log('[RESTORE] 복원 모드 종료 (CFI 일치):', cfi);
+        } else {
+          console.log('[RESTORE] 초기 위치 무시 (복원 중):', cfi);
+          return; // currentLocationRef 업데이트 및 서버 저장 건너뜀
+        }
+      }
+
+      if (!firstSaveLoggedRef.current) {
+        firstSaveLoggedRef.current = true;
+        console.log('[RESTORE] 복원 후 첫 저장 위치:', cfi);
       }
       currentLocationRef.current = cfi;
       setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
@@ -279,6 +302,7 @@ function ReaderInner({
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (restoreTimeoutRef.current) clearTimeout(restoreTimeoutRef.current);
     };
   }, []);
 
