@@ -236,7 +236,7 @@ function ReaderInner({
       const cfi = location?.start?.cfi;
       if (!cfi) return;
       currentLocationRef.current = cfi;
-      setReadProgress(Math.round(progress * 100));
+      setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
       const disp = location?.start?.displayed;
       if (disp && disp.total > 1) {
         setPageInfo({ page: disp.page, total: disp.total });
@@ -406,7 +406,7 @@ function ReaderInner({
           </View>
           <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>
             {readProgress}%
-            {pageInfo ? `  ·  ${pageInfo.page} / ${pageInfo.total}페이지` : ""}
+            {pageInfo ? `  ·  챕터 ${pageInfo.page} / ${pageInfo.total}쪽` : ""}
           </Text>
         </View>
       )}

@@ -88,7 +88,7 @@ export function TocPanel({ visible, toc, onSelect, onClose }: Props) {
                   },
                 ]}
                 onPress={() => {
-                  onSelect(item.href);
+                  onSelect(item.href.split('#')[0]);
                   onClose();
                 }}
               >
