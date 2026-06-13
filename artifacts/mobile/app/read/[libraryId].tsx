@@ -30,10 +30,24 @@ import { useFileSystem } from "@/hooks/useFileSystem";
 import { CommentSheet } from "@/components/CommentSheet";
 import { apiUrl } from "@/lib/api";
 
-const AMBER = "#D4891A";
+const HIGHLIGHT_COLOR = "#F9E04B";
+
+const READER_THEME = {
+  body: {
+    background: "#FAF7F2",
+    "font-family": "Georgia, 'Times New Roman', serif",
+    "font-size": "19px",
+    "line-height": "1.85",
+    color: "#221A10",
+    padding: "0 6px",
+  },
+  p: {
+    "margin-bottom": "0.6em",
+  },
+};
 
 function intensityToOpacity(intensity: number): number {
-  return Math.max(0.18, Math.min(0.85, intensity));
+  return Math.max(0.15, Math.min(0.50, intensity));
 }
 
 function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
@@ -78,7 +92,7 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
     idxRef.current = 0;
     runningRef.current = true;
     setAnchoring(true);
-    search(pending[0].searchText);
+    search(pending[0].text);
   }, [canonicalBookId, search]);
 
   const handleReady = useCallback(() => {
@@ -98,22 +112,26 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
       const q = pending[idx];
       anchoredRef.current.add(q.id);
       if (results && results.length > 0) {
+        console.log("[ANCHOR] 인용:", q.text.slice(0, 80));
+        console.log("[ANCHOR] CFI:", results[0].cfi);
         try {
           addAnnotation(
             "highlight",
             results[0].cfi,
             { quoteId: q.id },
-            { color: AMBER, opacity: intensityToOpacity(q.highlightIntensity) }
+            { color: HIGHLIGHT_COLOR, opacity: intensityToOpacity(q.highlightIntensity) }
           );
         } catch {
           // ignore annotation failures for individual quotes
         }
+      } else {
+        console.log("[ANCHOR] 매칭 없음:", q.text.slice(0, 60));
       }
     }
     const next = idx + 1;
     idxRef.current = next;
     if (next < pending.length) {
-      search(pending[next].searchText);
+      search(pending[next].text);
     } else {
       runningRef.current = false;
       setAnchoring(false);
@@ -158,7 +176,7 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
         onSuccess: (quote) => {
           anchoredRef.current.add(quote.id);
           try {
-            addAnnotation("highlight", cfiRange, { quoteId: quote.id }, { color: AMBER, opacity: 0.45 });
+            addAnnotation("highlight", cfiRange, { quoteId: quote.id }, { color: HIGHLIGHT_COLOR, opacity: 0.35 });
           } catch {
             // ignore
           }
@@ -262,7 +280,7 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={[styles.header, { paddingTop: topPad + 8, borderBottomColor: colors.border, backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: topPad + 10, borderBottomColor: colors.border + "80", backgroundColor: colors.background }]}>
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </Pressable>
@@ -284,6 +302,9 @@ function ReaderInner({ entry, quotes, libraryId, canonicalBookId }: {
           src={localSrc}
           fileSystem={useFileSystem}
           enableSelection
+          flow="scrolled-doc"
+          manager="continuous"
+          defaultTheme={READER_THEME}
           initialLocation={entry.lastReadingLocation ?? undefined}
           onReady={handleReady}
           onLocationChange={handleLocationChange}
@@ -373,9 +394,9 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 12,
   },
   backBtn: { padding: 4 },
