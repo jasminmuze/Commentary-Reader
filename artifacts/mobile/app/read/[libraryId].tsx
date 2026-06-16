@@ -112,9 +112,22 @@ function ReaderInner({
     console.log("[Reader] onReady - applying initial styles");
     injectJavascript(script);
     if (isRestoringRef.current && initialLocationRef.current) {
-      // initialLocation prop에만 의존하지 않고 onReady에서 직접 goToLocation 강제 호출
-      console.log('[RESTORE] onReady → goToLocation 강제 호출:', initialLocationRef.current);
-      goToLocation(initialLocationRef.current);
+      const savedCfi = initialLocationRef.current;
+      console.log('[RESTORE] savedCfi:', savedCfi);
+      console.log('[GO_TO_LOCATION] target:', savedCfi);
+      // goToLocation 대신 injectJavascript 직접 사용 — WebView 내부 로그 포함
+      const escaped = savedCfi.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      injectJavascript(
+        `(function(){` +
+        `var t='${escaped}';` +
+        `var rn=window.ReactNativeWebView||window;` +
+        `rn.postMessage(JSON.stringify({type:'epubLog',msg:'[WEBVIEW] received goToLocation: '+t}));` +
+        `rendition.display(t).then(function(){` +
+        `  var loc=rendition.currentLocation();` +
+        `  rn.postMessage(JSON.stringify({type:'epubLog',msg:'[WEBVIEW] rendition.display result location: '+JSON.stringify(loc)}));` +
+        `});` +
+        `})(); true`
+      );
       restoreTimeoutRef.current = setTimeout(() => {
         if (isRestoringRef.current) {
           isRestoringRef.current = false;
@@ -123,7 +136,13 @@ function ReaderInner({
       }, 2000);
     }
     startAnchoring();
-  }, [startAnchoring, injectJavascript, settingsRef, goToLocation]);
+  }, [startAnchoring, injectJavascript, settingsRef]);
+
+  const handleWebViewMessage = useCallback((event: Record<string, unknown>) => {
+    if (event.type === 'epubLog') {
+      console.log(event.msg as string);
+    }
+  }, []);
 
   useEffect(() => {
     if (readyRef.current && quotes.length > 0) startAnchoring();
@@ -432,6 +451,7 @@ function ReaderInner({
           onLocationChange={handleLocationChange}
           onSearch={handleSearch}
           onPressAnnotation={handlePressAnnotation}
+          onWebViewMessage={handleWebViewMessage}
           menuItems={[
             { label: "하이라이트", action: (cfiRange, text) => handleHighlight(cfiRange, text) },
             { label: "코멘트", action: (cfiRange, text) => handleComment(cfiRange, text) },
