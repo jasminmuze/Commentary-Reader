@@ -44,13 +44,12 @@ function intensityToOpacity(intensity: number): number {
 }
 
 function ReaderInner({
-  entry, quotes, libraryId, canonicalBookId, isFetching,
+  entry, quotes, libraryId, canonicalBookId,
 }: {
   entry: LibraryEntry;
   quotes: Quote[];
   libraryId: number;
   canonicalBookId: number | null;
-  isFetching: boolean;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -254,31 +253,23 @@ function ReaderInner({
       const cfi = location?.start?.cfi;
       if (!cfi) return;
 
-      // 복원 모드: goToLocation이 완료되기 전 page-1 이벤트를 무시한다
-      if (isRestoringRef.current) {
-        if (cfi === initialLocationRef.current) {
-          // 목적지 CFI와 정확히 일치 → 즉시 복원 완료
-          isRestoringRef.current = false;
-          if (restoreTimeoutRef.current) {
-            clearTimeout(restoreTimeoutRef.current);
-            restoreTimeoutRef.current = null;
-          }
-          console.log('[RESTORE] 복원 모드 종료 (CFI 일치):', cfi);
-        } else {
-          console.log('[RESTORE] 초기 위치 무시 (복원 중):', cfi);
-          return; // currentLocationRef 업데이트 및 서버 저장 건너뜀
-        }
-      }
-
-      if (!firstSaveLoggedRef.current) {
-        firstSaveLoggedRef.current = true;
-        console.log('[RESTORE] 복원 후 첫 저장 위치:', cfi);
-      }
+      // UI는 항상 업데이트 — 복원 모드 중에도 progress/pageInfo/currentLocationRef 유지
       currentLocationRef.current = cfi;
       setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
       const disp = location?.start?.displayed;
       if (disp && disp.total > 1) {
         setPageInfo({ page: disp.page, total: disp.total });
+      }
+
+      // 복원 모드 중이면 서버 저장만 건너뜀
+      if (isRestoringRef.current) {
+        console.log('[RESTORE] 복원 중 저장 건너뜀:', cfi);
+        return;
+      }
+
+      if (!firstSaveLoggedRef.current) {
+        firstSaveLoggedRef.current = true;
+        console.log('[RESTORE] 복원 후 첫 저장 위치:', cfi);
       }
       const clampedProgress = Math.min(100, Math.max(0, Math.round(progress)));
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -365,16 +356,7 @@ function ReaderInner({
     );
   }
 
-  // Reader가 아직 마운트되지 않은 로딩 구간에서 fresh entry가 도착하면 ref를 업데이트한다.
-  // useRef 초기값은 최초 마운트 시 1회만 평가되므로, 캐시 stale 데이터로 마운트될 때
-  // lastReadingLocation이 null이었다가 refetch 이후 CFI로 바뀌면 여기서 보정한다.
-  if (!currentLocationRef.current && entry.lastReadingLocation) {
-    currentLocationRef.current = entry.lastReadingLocation;
-  }
-
-  // localSrc가 준비됐지만 아직 refetch 중이고 location도 없으면 잠깐 더 기다린다.
-  // (EPUB 캐시 히트로 localSrc가 즉시 설정될 때 React Query refetch보다 빠를 수 있음)
-  if (!loaded || !localSrc || (isFetching && !currentLocationRef.current)) {
+  if (!loaded || !localSrc) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
         <ActivityIndicator color={colors.primary} />
@@ -437,7 +419,6 @@ function ReaderInner({
       </View>
 
       <View style={{ flex: 1 }}>
-        {console.log("[READER] 마운트 → initialLocation:", currentLocationRef.current ?? "(없음 — 처음부터)") as unknown as null}
         <Reader
           key={readerKey}
           src={localSrc}
@@ -494,7 +475,14 @@ function ReaderInner({
       <TocPanel
         visible={tocVisible}
         toc={toc}
-        onSelect={(href) => goToLocation(href)}
+        onSelect={(href) => {
+          isRestoringRef.current = false;
+          if (restoreTimeoutRef.current) {
+            clearTimeout(restoreTimeoutRef.current);
+            restoreTimeoutRef.current = null;
+          }
+          goToLocation(href);
+        }}
         onClose={() => setTocVisible(false)}
       />
 
@@ -543,7 +531,7 @@ export default function ReaderScreen() {
   const { libraryId: libraryIdParam } = useLocalSearchParams<{ libraryId: string }>();
   const libraryId = parseInt(libraryIdParam ?? "0", 10);
 
-  const { data: entry, isLoading, isFetching } = useGetLibraryEntry(libraryId, {
+  const { data: entry, isLoading } = useGetLibraryEntry(libraryId, {
     query: {
       enabled: !!libraryId && !!user?.id,
       queryKey: getGetLibraryEntryQueryKey(libraryId),
@@ -596,7 +584,6 @@ export default function ReaderScreen() {
         quotes={quotes ?? []}
         libraryId={libraryId}
         canonicalBookId={canonicalBookId}
-        isFetching={isFetching}
       />
     </ReaderProvider>
   );
