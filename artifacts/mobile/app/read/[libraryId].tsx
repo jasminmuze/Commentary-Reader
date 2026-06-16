@@ -111,10 +111,10 @@ function ReaderInner({
     const script = buildApplyStyleScript(settingsRef.current);
     console.log("[Reader] onReady - applying initial styles");
     injectJavascript(script);
-    // initialLocation이 있으면 라이브러리 내부에서 goToLocation을 비동기로 호출한다.
-    // 그 전에 page-1 onLocationChange가 먼저 발화하므로 복원 타임아웃을 건다.
-    if (isRestoringRef.current) {
-      console.log('[RESTORE] 복원 모드 시작 — initialLocation:', initialLocationRef.current);
+    if (isRestoringRef.current && initialLocationRef.current) {
+      // initialLocation prop에만 의존하지 않고 onReady에서 직접 goToLocation 강제 호출
+      console.log('[RESTORE] onReady → goToLocation 강제 호출:', initialLocationRef.current);
+      goToLocation(initialLocationRef.current);
       restoreTimeoutRef.current = setTimeout(() => {
         if (isRestoringRef.current) {
           isRestoringRef.current = false;
@@ -123,7 +123,7 @@ function ReaderInner({
       }, 2000);
     }
     startAnchoring();
-  }, [startAnchoring, injectJavascript, settingsRef]);
+  }, [startAnchoring, injectJavascript, settingsRef, goToLocation]);
 
   useEffect(() => {
     if (readyRef.current && quotes.length > 0) startAnchoring();
@@ -531,12 +531,19 @@ export default function ReaderScreen() {
   const { libraryId: libraryIdParam } = useLocalSearchParams<{ libraryId: string }>();
   const libraryId = parseInt(libraryIdParam ?? "0", 10);
 
-  const { data: entry, isLoading } = useGetLibraryEntry(libraryId, {
+  const { data: entry, isLoading, isFetching } = useGetLibraryEntry(libraryId, {
     query: {
       enabled: !!libraryId && !!user?.id,
       queryKey: getGetLibraryEntryQueryKey(libraryId),
     },
   });
+  // entry가 최초로 fresh하게 로드됐는지 추적.
+  // 한 번 true가 되면 background refetch 중에도 Reader를 유지한다.
+  const [entryReady, setEntryReady] = useState(false);
+  useEffect(() => {
+    if (!isFetching && entry) setEntryReady(true);
+  }, [isFetching, entry]);
+
   const canonicalBookId = entry?.canonicalBookId ?? null;
   const { data: quotes } = useGetBookQuotes(canonicalBookId ?? 0, {
     query: {
@@ -569,7 +576,7 @@ export default function ReaderScreen() {
     );
   }
 
-  if (isLoading || !entry) {
+  if (!entryReady || !entry) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
         <ActivityIndicator color={colors.primary} />
