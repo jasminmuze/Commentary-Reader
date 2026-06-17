@@ -44,6 +44,9 @@ const PAGE_ONE_CFI = 'epubcfi(/6/2!/4/1:0)';
 // 라이브러리 기본 동작(EPUB 로드·initialLocation·TOC)만 실행.
 // 테스트 완료 후 false 로 되돌릴 것.
 const DEBUG_BARE_READER = true;
+// 로그에서 확인한 실제 CFI 로 교체해서 테스트
+// (DEBUG_BARE_READER = true 일 때만 initialLocation 으로 사용)
+const DEBUG_FORCED_CFI = 'epubcfi(/6/30!/4/188/1:41)';
 
 function intensityToOpacity(intensity: number): number {
   return Math.max(0.15, Math.min(0.50, intensity));
@@ -103,6 +106,14 @@ function ReaderInner({
 
   useEffect(() => { quotesRef.current = quotes; }, [quotes]);
 
+  // [진단] localSrc 세팅 = Reader 렌더 직전. 실제 전달값 확인용
+  useEffect(() => {
+    if (!DEBUG_BARE_READER || !localSrc) return;
+    console.log('[DEBUG_INIT] entry.lastReadingLocation:', entry.lastReadingLocation ?? '(없음)');
+    console.log('[DEBUG_INIT] Reader initialLocation (DEBUG_FORCED_CFI):', DEBUG_FORCED_CFI);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localSrc]);
+
   const startAnchoring = useCallback(() => {
     if (runningRef.current || !readyRef.current || !canonicalBookId) return;
     const pending = quotesRef.current.filter(
@@ -158,7 +169,16 @@ function ReaderInner({
 
   const handleWebViewMessage = useCallback((event: Record<string, unknown>) => {
     if (DEBUG_BARE_READER) {
-      console.log('[DEBUG] webViewMessage type:', event.type);
+      if (event.type === 'tocDisplayDone') {
+        console.log(
+          '[DEBUG_TOC] display 완료' +
+          ' | target:', event.target,
+          '| resultHref:', event.resultHref ?? '(없음)',
+          '| resultCfi:', event.resultCfi ?? '(없음)'
+        );
+      } else {
+        console.log('[DEBUG] webViewMessage type:', event.type);
+      }
       return;
     }
     if (event.type === 'epubLog') {
@@ -318,7 +338,8 @@ function ReaderInner({
       if (!cfi) return;
 
       if (DEBUG_BARE_READER) {
-        console.log('[DEBUG] onLocationChange cfi:', cfi, 'progress:', Math.round(progress) + '%');
+        const href = location?.start?.href;
+        console.log('[DEBUG] onLocationChange href:', href ?? '(없음)', '| cfi:', cfi, '| progress:', Math.round(progress) + '%');
         setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
         const dispD = location?.start?.displayed;
         if (dispD && dispD.total > 1) setPageInfo({ page: dispD.page, total: dispD.total });
@@ -520,7 +541,7 @@ function ReaderInner({
           flow={flow}
           manager={manager}
           defaultTheme={readerTheme}
-          initialLocation={DEBUG_BARE_READER ? (entry.lastReadingLocation ?? undefined) : currentLocationRef.current}
+          initialLocation={DEBUG_BARE_READER ? DEBUG_FORCED_CFI : currentLocationRef.current}
           onReady={handleReady}
           onLocationChange={handleLocationChange}
           onSearch={DEBUG_BARE_READER ? undefined : handleSearch}
@@ -570,12 +591,30 @@ function ReaderInner({
         visible={tocVisible}
         toc={toc}
         onSelect={(href) => {
-          if (!DEBUG_BARE_READER) {
-            isRestoringRef.current = false;
-            if (restoreTimeoutRef.current) {
-              clearTimeout(restoreTimeoutRef.current);
-              restoreTimeoutRef.current = null;
-            }
+          if (DEBUG_BARE_READER) {
+            console.log('[DEBUG_TOC] 선택된 href:', href);
+            injectJavascript(
+              `(function(){` +
+              `  var target = ${JSON.stringify(href)};` +
+              `  rendition.display(target).then(function(){` +
+              `    var loc = rendition.currentLocation();` +
+              `    var rn = window.ReactNativeWebView || window;` +
+              `    rn.postMessage(JSON.stringify({` +
+              `      type:'tocDisplayDone',` +
+              `      target: target,` +
+              `      resultCfi: loc && loc.start && loc.start.cfi,` +
+              `      resultHref: loc && loc.start && loc.start.href` +
+              `    }));` +
+              `  });` +
+              `})(); true`
+            );
+            setTocVisible(false);
+            return;
+          }
+          isRestoringRef.current = false;
+          if (restoreTimeoutRef.current) {
+            clearTimeout(restoreTimeoutRef.current);
+            restoreTimeoutRef.current = null;
           }
           goToLocation(href);
         }}
