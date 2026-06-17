@@ -40,6 +40,10 @@ import {
 } from "@/hooks/useReaderSettings";
 
 const PAGE_ONE_CFI = 'epubcfi(/6/2!/4/1:0)';
+// 진단용 플래그: true → 앱 레벨 사이드이펙트(저장·스타일·앵커링·코멘트) 전부 비활성화,
+// 라이브러리 기본 동작(EPUB 로드·initialLocation·TOC)만 실행.
+// 테스트 완료 후 false 로 되돌릴 것.
+const DEBUG_BARE_READER = true;
 
 function intensityToOpacity(intensity: number): number {
   return Math.max(0.15, Math.min(0.50, intensity));
@@ -114,6 +118,10 @@ function ReaderInner({
 
   const handleReady = useCallback(() => {
     readyRef.current = true;
+    if (DEBUG_BARE_READER) {
+      console.log('[DEBUG] onReady — 스타일/복원 주입 없음 (베어 리더 모드)');
+      return;
+    }
     if (isRestoringRef.current && initialLocationRef.current) {
       const savedCfi = initialLocationRef.current;
       console.log('[RESTORE] savedCfi:', savedCfi);
@@ -149,6 +157,10 @@ function ReaderInner({
   }, [startAnchoring, injectJavascript, settingsRef]);
 
   const handleWebViewMessage = useCallback((event: Record<string, unknown>) => {
+    if (DEBUG_BARE_READER) {
+      console.log('[DEBUG] webViewMessage type:', event.type);
+      return;
+    }
     if (event.type === 'epubLog') {
       console.log(event.msg as string);
     } else if (event.type === 'restoreDone') {
@@ -304,6 +316,14 @@ function ReaderInner({
     (_total: number, location: Location, progress: number) => {
       const cfi = location?.start?.cfi;
       if (!cfi) return;
+
+      if (DEBUG_BARE_READER) {
+        console.log('[DEBUG] onLocationChange cfi:', cfi, 'progress:', Math.round(progress) + '%');
+        setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
+        const dispD = location?.start?.displayed;
+        if (dispD && dispD.total > 1) setPageInfo({ page: dispD.page, total: dispD.total });
+        return;
+      }
 
       // UI 상태는 항상 업데이트 — 복원/안정화 모드 여부와 무관하게 즉시 반영
       // (요건 B: pageInfo/readProgress는 저장 보호와 독립적으로 표시)
@@ -500,13 +520,13 @@ function ReaderInner({
           flow={flow}
           manager={manager}
           defaultTheme={readerTheme}
-          initialLocation={currentLocationRef.current}
+          initialLocation={DEBUG_BARE_READER ? (entry.lastReadingLocation ?? undefined) : currentLocationRef.current}
           onReady={handleReady}
           onLocationChange={handleLocationChange}
-          onSearch={handleSearch}
-          onPressAnnotation={handlePressAnnotation}
+          onSearch={DEBUG_BARE_READER ? undefined : handleSearch}
+          onPressAnnotation={DEBUG_BARE_READER ? undefined : handlePressAnnotation}
           onWebViewMessage={handleWebViewMessage}
-          menuItems={[
+          menuItems={DEBUG_BARE_READER ? [] : [
             { label: "하이라이트", action: (cfiRange, text) => handleHighlight(cfiRange, text) },
             { label: "코멘트", action: (cfiRange, text) => handleComment(cfiRange, text) },
           ]}
@@ -550,10 +570,12 @@ function ReaderInner({
         visible={tocVisible}
         toc={toc}
         onSelect={(href) => {
-          isRestoringRef.current = false;
-          if (restoreTimeoutRef.current) {
-            clearTimeout(restoreTimeoutRef.current);
-            restoreTimeoutRef.current = null;
+          if (!DEBUG_BARE_READER) {
+            isRestoringRef.current = false;
+            if (restoreTimeoutRef.current) {
+              clearTimeout(restoreTimeoutRef.current);
+              restoreTimeoutRef.current = null;
+            }
           }
           goToLocation(href);
         }}
