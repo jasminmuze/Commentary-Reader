@@ -39,6 +39,8 @@ import {
   HIGHLIGHT_STYLE_CONFIGS,
 } from "@/hooks/useReaderSettings";
 
+const PAGE_ONE_CFI = 'epubcfi(/6/2!/4/1:0)';
+
 function intensityToOpacity(intensity: number): number {
   return Math.max(0.15, Math.min(0.50, intensity));
 }
@@ -66,6 +68,7 @@ function ReaderInner({
   const isRestoringRef = useRef<boolean>(!!entry.lastReadingLocation);
   const restoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstSaveLoggedRef = useRef(false);
+  const restoredCfiRef = useRef<string | null>(null);
 
   const fs = useFileSystem();
   const [localSrc, setLocalSrc] = useState<string | null>(null);
@@ -121,7 +124,8 @@ function ReaderInner({
         `var rn=window.ReactNativeWebView||window;` +
         `rendition.display(t).then(function(){` +
         `  var loc=rendition.currentLocation();` +
-        `  rn.postMessage(JSON.stringify({type:'epubLog',msg:'[RESTORE] display done, location: '+JSON.stringify(loc&&loc.start&&loc.start.cfi)}));` +
+        `  var cfi=loc&&loc.start&&loc.start.cfi;` +
+        `  rn.postMessage(JSON.stringify({type:'restoreDone',cfi:cfi}));` +
         styleScript +
         `});` +
         `})(); true`
@@ -143,6 +147,18 @@ function ReaderInner({
   const handleWebViewMessage = useCallback((event: Record<string, unknown>) => {
     if (event.type === 'epubLog') {
       console.log(event.msg as string);
+    } else if (event.type === 'restoreDone') {
+      const cfi = event.cfi as string | undefined;
+      console.log('[RESTORE] display done, location:', cfi);
+      if (cfi && cfi !== PAGE_ONE_CFI) {
+        currentLocationRef.current = cfi;
+        restoredCfiRef.current = cfi;
+      }
+      isRestoringRef.current = false;
+      if (restoreTimeoutRef.current) {
+        clearTimeout(restoreTimeoutRef.current);
+        restoreTimeoutRef.current = null;
+      }
     }
   }, []);
 
@@ -274,7 +290,23 @@ function ReaderInner({
       const cfi = location?.start?.cfi;
       if (!cfi) return;
 
-      // UI는 항상 업데이트 — 복원 모드 중에도 progress/pageInfo/currentLocationRef 유지
+      // page-1 spurious 이벤트 차단:
+      // onResized() race condition으로 epubcfi(/6/2!/4/1:0) 이벤트가 반복 발화됨.
+      // 복원 대상이 page-1이 아닌 경우, 복원 모드 중 AND 복원 직후(restoredCfiRef 살아있는 동안)
+      // 모두 무시 — currentLocationRef/UI/저장 전부 건너뜀.
+      const savedNotPageOne = initialLocationRef.current && initialLocationRef.current !== PAGE_ONE_CFI;
+      if (cfi === PAGE_ONE_CFI && savedNotPageOne) {
+        if (isRestoringRef.current) {
+          console.log('[RESTORE] 복원 중 page-1 이벤트 무시 (spurious)');
+          return;
+        }
+        if (restoredCfiRef.current) {
+          console.log('[RESTORE] 복원 후 page-1 이벤트 차단 (복원 CFI 보존)');
+          return;
+        }
+      }
+
+      // UI 업데이트
       currentLocationRef.current = cfi;
       setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
       const disp = location?.start?.displayed;
@@ -286,6 +318,11 @@ function ReaderInner({
       if (isRestoringRef.current) {
         console.log('[RESTORE] 복원 중 저장 건너뜀:', cfi);
         return;
+      }
+
+      // 복원 후 첫 유효한(non-page-1) 저장 시 restoredCfiRef 해제
+      if (restoredCfiRef.current) {
+        restoredCfiRef.current = null;
       }
 
       if (!firstSaveLoggedRef.current) {

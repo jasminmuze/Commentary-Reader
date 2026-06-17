@@ -1,0 +1,139 @@
+[RESTORE] 복원 후 첫 저장 위치: epubcfi(/6/2!/4/1:0)
+Android Bundled 240ms node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__4094ee48018c5b5c8f1246009fce9036/node_modules/expo-router/entry.js (1 module)
+Android Bundled 116ms node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__4094ee48018c5b5c8f1246009fce9036/node_modules/expo-router/entry.js (1 module)
+ LOG  [EPUB] 캐시 경로: file:///data/user/0/host.exp.exponent/cache/epub_12.epub
+ LOG  [EPUB] 캐시 히트 → 즉시 사용
+ LOG  [RESTORE] savedCfi: epubcfi(/6/2!/4/1:0)
+ LOG  [ANCHOR] 매칭 없음: The books that the world calls immoral are books that show t
+ LOG  [RESTORE] 복원 중 저장 건너뜀: epubcfi(/6/2!/4/1:0)
+ LOG  [ANCHOR] 매칭 없음: To define is to limit. The moment you put a definition on so
+ LOG  [ANCHOR] 매칭 없음: I don't want to be at the mercy of my emotions. I want to us
+ LOG  [RESTORE] display done, location: "epubcfi(/6/2!/4/1:0)"
+ LOG  [ANCHOR] 인용: The only way to get rid of a temptation is to yield to it. Resist it, and your s
+ LOG  [ANCHOR] CFI: epubcfi(/6/28!/4/56,/5:281,/5:505)
+ LOG  [ANCHOR] 매칭 없음: Nowadays people know the price of everything and the value o
+ LOG  [ANCHOR] 매칭 없음: Behind every exquisite thing that existed, there was somethi
+ LOG  [RESTORE] 복원 중 저장 건너뜀: epubcfi(/6/2!/4/1:0)
+ LOG  [ANCHOR] 매칭 없음: You will always be fond of me. I represent to you all the si
+ LOG  [RESTORE] 복원 중 저장 건너뜀: epubcfi(/6/2!/4/1:0)
+ LOG  [ANCHOR] 매칭 없음: There is only one thing in life worse than being talked abou
+ LOG  [RESTORE] 복원 중 저장 건너뜀: epubcfi(/6/2!/4/1:0)
+ LOG  [ANCHOR] 매칭 없음: Experience is merely the name men gave to their mistakes. Lo
+ LOG  [ANCHOR] 매칭 없음: One can always be kind to people about whom one cares nothin
+ LOG  [ANCHOR] 매칭 없음: To regret one's own experiences is to arrest one's own devel
+ LOG  [ANCHOR] 매칭 없음: I am too fond of reading books to care to write them. Lord H
+ LOG  [ANCHOR] 인용: His sins, if there are such things as sins, are borrowed. He becomes an echo of
+ LOG  [ANCHOR] CFI: epubcfi(/6/28!/4/52,/1:170,/1:271)
+ LOG  [ANCHOR] 인용: hand that morning. He hesitated for a moment, and then put it aside. The others
+ LOG  [ANCHOR] CFI: epubcfi(/6/40!/4/14,/1:139,/1:358)
+ LOG  [ANCHOR] 인용: gas-fire with asbestos.’
+ LOG  [ANCHOR] CFI: epubcfi(/6/52!/4/156,/1:17,/1:41)
+ LOG  [ANCHOR] 매칭 없음: and my servant will take a cab and bring the things back to
+ LOG  [ANCHOR] 매칭 없음: about The Picture of Dorian Gray at the time of publication,
+ LOG  [ANCHOR] 인용: dominate it still,
+ LOG  [ANCHOR] CFI: epubcfi(/6/14!/4/12,/7:6,/7:24)
+ LOG  [ANCHOR] 인용: violence and (unspecified) debauchery which horrifies his more respectable side.
+ LOG  [ANCHOR] CFI: epubcfi(/6/14!/4/30,/5:350,/5:440)
+ LOG  [ANCHOR] 인용: Dorian Gray shuddered. He felt that his could not be the hand to take the handke
+ LOG  [ANCHOR] CFI: epubcfi(/6/60!/4/186,/1:0,/1:151)
+ LOG  [ANCHOR] 인용: It was clear to him that the experimental method was the only method by which on
+ LOG  [ANCHOR] CFI: epubcfi(/6/32!/4/208,/1:0,/1:136)
+ LOG  [ANCHOR] 인용: For some reason or other, the house was crowded that night, and
+ LOG  [ANCHOR] CFI: epubcfi(/6/38!/4/6,/1:0,/1:63)
+ LOG  [ANCHOR] 인용: have no desire to help you. You forget that. I am simply indifferent to the whol
+ LOG  [ANCHOR] CFI: epubcfi(/6/52!/4/116,/1:3,/1:120)
+ LOG  [ANCHOR] 인용: Mother, mother, I am so happy!’ whispered the girl, burying her face in the lap
+ LOG  [ANCHOR] CFI: epubcfi(/6/34!/4/6,/1:1,/1:240)
+ LOG  [ANCHOR] 인용: Dorian Gray frowned
+ LOG  [ANCHOR] CFI: epubcfi(/6/28!/4/86,/1:0,/1:19)
+ LOG  [RESTORE] 복원 모드 종료 (2000ms 타임아웃)
+ LOG  [RESTORE] 복원 후 첫 저장 위치: epubcfi(/6/2!/4/1:0)
+ LOG  [EPUB] 캐시 경로: file:///data/user/0/host.exp.exponent/cache/epub_12.epub
+ LOG  [EPUB] 캐시 히트 → 즉시 사용
+ LOG  [RESTORE] savedCfi: epubcfi(/6/26!/4/72/1:458)
+ LOG  [RESTORE] 복원 중 저장 건너뜀: epubcfi(/6/2!/4/1:0)
+ LOG  [ANCHOR] 매칭 없음: The books that the world calls immoral are books that show t
+ LOG  [ANCHOR] 매칭 없음: To define is to limit. The moment you put a definition on so
+ LOG  [ANCHOR] 매칭 없음: I don't want to be at the mercy of my emotions. I want to us
+ LOG  [RESTORE] display done, location: "epubcfi(/6/26!/4/72/1:430)"
+ LOG  [ANCHOR] 인용: The only way to get rid of a temptation is to yield to it. Resist it, and your s
+ LOG  [ANCHOR] CFI: epubcfi(/6/28!/4/56,/5:281,/5:505)
+ LOG  [ANCHOR] 매칭 없음: Nowadays people know the price of everything and the value o
+ LOG  [ANCHOR] 매칭 없음: Behind every exquisite thing that existed, there was somethi
+ LOG  [ANCHOR] 매칭 없음: You will always be fond of me. I represent to you all the si
+ LOG  [RESTORE] 복원 중 저장 건너뜀: epubcfi(/6/2!/4/1:0)
+ LOG  [ANCHOR] 매칭 없음: There is only one thing in life worse than being talked abou
+ LOG  [RESTORE] 복원 중 저장 건너뜀: epubcfi(/6/2!/4/1:0)
+ LOG  [ANCHOR] 매칭 없음: Experience is merely the name men gave to their mistakes. Lo
+ LOG  [RESTORE] 복원 중 저장 건너뜀: epubcfi(/6/2!/4/1:0)
+ LOG  [ANCHOR] 매칭 없음: One can always be kind to people about whom one cares nothin
+ LOG  [ANCHOR] 매칭 없음: To regret one's own experiences is to arrest one's own devel
+ LOG  [ANCHOR] 매칭 없음: I am too fond of reading books to care to write them. Lord H
+ LOG  [ANCHOR] 인용: His sins, if there are such things as sins, are borrowed. He becomes an echo of
+ LOG  [ANCHOR] CFI: epubcfi(/6/28!/4/52,/1:170,/1:271)
+ LOG  [ANCHOR] 인용: hand that morning. He hesitated for a moment, and then put it aside. The others
+ LOG  [ANCHOR] CFI: epubcfi(/6/40!/4/14,/1:139,/1:358)
+ LOG  [ANCHOR] 인용: gas-fire with asbestos.’
+ LOG  [ANCHOR] CFI: epubcfi(/6/52!/4/156,/1:17,/1:41)
+ LOG  [ANCHOR] 매칭 없음: and my servant will take a cab and bring the things back to
+ LOG  [ANCHOR] 매칭 없음: about The Picture of Dorian Gray at the time of publication,
+ LOG  [ANCHOR] 인용: dominate it still,
+ LOG  [ANCHOR] CFI: epubcfi(/6/14!/4/12,/7:6,/7:24)
+ LOG  [ANCHOR] 인용: violence and (unspecified) debauchery which horrifies his more respectable side.
+ LOG  [ANCHOR] CFI: epubcfi(/6/14!/4/30,/5:350,/5:440)
+ LOG  [ANCHOR] 인용: Dorian Gray shuddered. He felt that his could not be the hand to take the handke
+ LOG  [ANCHOR] CFI: epubcfi(/6/60!/4/186,/1:0,/1:151)
+ LOG  [ANCHOR] 인용: It was clear to him that the experimental method was the only method by which on
+ LOG  [ANCHOR] CFI: epubcfi(/6/32!/4/208,/1:0,/1:136)
+ LOG  [ANCHOR] 인용: For some reason or other, the house was crowded that night, and
+ LOG  [ANCHOR] CFI: epubcfi(/6/38!/4/6,/1:0,/1:63)
+ LOG  [ANCHOR] 인용: have no desire to help you. You forget that. I am simply indifferent to the whol
+ LOG  [ANCHOR] CFI: epubcfi(/6/52!/4/116,/1:3,/1:120)
+ LOG  [ANCHOR] 인용: Mother, mother, I am so happy!’ whispered the girl, burying her face in the lap
+ LOG  [ANCHOR] CFI: epubcfi(/6/34!/4/6,/1:1,/1:240)
+ LOG  [ANCHOR] 인용: Dorian Gray frowned
+ LOG  [ANCHOR] CFI: epubcfi(/6/28!/4/86,/1:0,/1:19)
+ LOG  [RESTORE] 복원 모드 종료 (2000ms 타임아웃)
+ LOG  [RESTORE] 복원 후 첫 저장 위치: epubcfi(/6/2!/4/1:0)
+ LOG  [EPUB] 캐시 경로: file:///data/user/0/host.exp.exponent/cache/epub_12.epub
+ LOG  [EPUB] 캐시 히트 → 즉시 사용
+ LOG  [RESTORE] savedCfi: epubcfi(/6/26!/4/138/1:1009)
+ LOG  [RESTORE] 복원 중 저장 건너뜀: epubcfi(/6/2!/4/1:0)
+ LOG  [ANCHOR] 매칭 없음: The books that the world calls immoral are books that show t
+ LOG  [ANCHOR] 매칭 없음: To define is to limit. The moment you put a definition on so
+ LOG  [ANCHOR] 매칭 없음: I don't want to be at the mercy of my emotions. I want to us
+ LOG  [ANCHOR] 인용: The only way to get rid of a temptation is to yield to it. Resist it, and your s
+ LOG  [ANCHOR] CFI: epubcfi(/6/28!/4/56,/5:281,/5:505)
+ LOG  [ANCHOR] 매칭 없음: Nowadays people know the price of everything and the value o
+ LOG  [ANCHOR] 매칭 없음: Behind every exquisite thing that existed, there was somethi
+ LOG  [ANCHOR] 매칭 없음: You will always be fond of me. I represent to you all the si
+ LOG  [ANCHOR] 매칭 없음: There is only one thing in life worse than being talked abou
+ LOG  [ANCHOR] 매칭 없음: Experience is merely the name men gave to their mistakes. Lo
+ LOG  [ANCHOR] 매칭 없음: One can always be kind to people about whom one cares nothin
+ LOG  [ANCHOR] 매칭 없음: To regret one's own experiences is to arrest one's own devel
+ LOG  [ANCHOR] 매칭 없음: I am too fond of reading books to care to write them. Lord H
+ LOG  [ANCHOR] 인용: His sins, if there are such things as sins, are borrowed. He becomes an echo of
+ LOG  [ANCHOR] CFI: epubcfi(/6/28!/4/52,/1:170,/1:271)
+ LOG  [ANCHOR] 인용: hand that morning. He hesitated for a moment, and then put it aside. The others
+ LOG  [ANCHOR] CFI: epubcfi(/6/40!/4/14,/1:139,/1:358)
+ LOG  [ANCHOR] 인용: gas-fire with asbestos.’
+ LOG  [ANCHOR] CFI: epubcfi(/6/52!/4/156,/1:17,/1:41)
+ LOG  [ANCHOR] 매칭 없음: and my servant will take a cab and bring the things back to
+ LOG  [ANCHOR] 매칭 없음: about The Picture of Dorian Gray at the time of publication,
+ LOG  [ANCHOR] 인용: dominate it still,
+ LOG  [ANCHOR] CFI: epubcfi(/6/14!/4/12,/7:6,/7:24)
+ LOG  [ANCHOR] 인용: violence and (unspecified) debauchery which horrifies his more respectable side.
+ LOG  [ANCHOR] CFI: epubcfi(/6/14!/4/30,/5:350,/5:440)
+ LOG  [ANCHOR] 인용: Dorian Gray shuddered. He felt that his could not be the hand to take the handke
+ LOG  [ANCHOR] CFI: epubcfi(/6/60!/4/186,/1:0,/1:151)
+ LOG  [ANCHOR] 인용: It was clear to him that the experimental method was the only method by which on
+ LOG  [ANCHOR] CFI: epubcfi(/6/32!/4/208,/1:0,/1:136)
+ LOG  [ANCHOR] 인용: For some reason or other, the house was crowded that night, and
+ LOG  [ANCHOR] CFI: epubcfi(/6/38!/4/6,/1:0,/1:63)
+ LOG  [ANCHOR] 인용: have no desire to help you. You forget that. I am simply indifferent to the whol
+ LOG  [ANCHOR] CFI: epubcfi(/6/52!/4/116,/1:3,/1:120)
+ LOG  [ANCHOR] 인용: Mother, mother, I am so happy!’ whispered the girl, burying her face in the lap
+ LOG  [ANCHOR] CFI: epubcfi(/6/34!/4/6,/1:1,/1:240)
+ LOG  [ANCHOR] 인용: Dorian Gray frowned
+ LOG  [ANCHOR] CFI: epubcfi(/6/28!/4/86,/1:0,/1:19)
+ LOG  [RESTORE] 복원 모드 종료 (2000ms 타임아웃)
