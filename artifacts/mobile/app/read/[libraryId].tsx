@@ -69,6 +69,9 @@ function ReaderInner({
   const restoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstSaveLoggedRef = useRef(false);
   const restoredCfiRef = useRef<string | null>(null);
+  // 복원 완료 후 안정화: 앵커링 중 발생하는 relocated 이벤트가 저장 위치를 덮어쓰지 않도록 차단
+  const isStabilizingRef = useRef(false);
+  const stabilizingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fs = useFileSystem();
   const [localSrc, setLocalSrc] = useState<string | null>(null);
@@ -159,6 +162,16 @@ function ReaderInner({
         clearTimeout(restoreTimeoutRef.current);
         restoreTimeoutRef.current = null;
       }
+      // 안정화 시작: 앵커링/하이라이트 처리 중 발생하는 relocated 이벤트가
+      // 저장 위치를 덮어쓰지 않도록 차단. 앵커링 완료 또는 5초 폴백으로 해제.
+      isStabilizingRef.current = true;
+      if (stabilizingTimerRef.current) clearTimeout(stabilizingTimerRef.current);
+      stabilizingTimerRef.current = setTimeout(() => {
+        if (isStabilizingRef.current) {
+          isStabilizingRef.current = false;
+          console.log('[RESTORE] 안정화 종료 (5초 폴백)');
+        }
+      }, 5000);
     }
   }, []);
 
@@ -290,37 +303,24 @@ function ReaderInner({
       const cfi = location?.start?.cfi;
       if (!cfi) return;
 
-      // page-1 spurious 이벤트 차단:
-      // onResized() race condition으로 epubcfi(/6/2!/4/1:0) 이벤트가 반복 발화됨.
-      // 복원 대상이 page-1이 아닌 경우, 복원 모드 중 AND 복원 직후(restoredCfiRef 살아있는 동안)
-      // 모두 무시 — currentLocationRef/UI/저장 전부 건너뜀.
-      const savedNotPageOne = initialLocationRef.current && initialLocationRef.current !== PAGE_ONE_CFI;
-      if (cfi === PAGE_ONE_CFI && savedNotPageOne) {
-        if (isRestoringRef.current) {
-          console.log('[RESTORE] 복원 중 page-1 이벤트 무시 (spurious)');
-          return;
-        }
-        if (restoredCfiRef.current) {
-          console.log('[RESTORE] 복원 후 page-1 이벤트 차단 (복원 CFI 보존)');
-          return;
-        }
-      }
-
-      // UI 업데이트
-      currentLocationRef.current = cfi;
+      // UI 상태는 항상 업데이트 — 복원/안정화 모드 여부와 무관하게 즉시 반영
+      // (요건 B: pageInfo/readProgress는 저장 보호와 독립적으로 표시)
       setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
       const disp = location?.start?.displayed;
       if (disp && disp.total > 1) {
         setPageInfo({ page: disp.page, total: disp.total });
       }
 
-      // 복원 모드 중이면 서버 저장만 건너뜀
-      if (isRestoringRef.current) {
-        console.log('[RESTORE] 복원 중 저장 건너뜀:', cfi);
+      // 저장 위치 보호: 복원 모드 OR 안정화 중에는 currentLocationRef + 서버 저장 차단
+      // (앵커링/하이라이트 addAnnotation 이 onResized를 유발해 발생하는 spurious relocated 이벤트 방지)
+      if (isRestoringRef.current || isStabilizingRef.current) {
+        const phase = isRestoringRef.current ? '복원 중' : '안정화 중';
+        console.log(`[RESTORE] ${phase} 저장 건너뜀: ${cfi}`);
         return;
       }
 
-      // 복원 후 첫 유효한(non-page-1) 저장 시 restoredCfiRef 해제
+      // 정상 저장 경로
+      currentLocationRef.current = cfi;
       if (restoredCfiRef.current) {
         restoredCfiRef.current = null;
       }
@@ -352,8 +352,21 @@ function ReaderInner({
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       if (restoreTimeoutRef.current) clearTimeout(restoreTimeoutRef.current);
+      if (stabilizingTimerRef.current) clearTimeout(stabilizingTimerRef.current);
     };
   }, []);
+
+  // 앵커링 완료 시 안정화 해제: addAnnotation이 유발한 relocated 이벤트가 끝나면 저장 허용
+  useEffect(() => {
+    if (!anchoring && isStabilizingRef.current) {
+      isStabilizingRef.current = false;
+      if (stabilizingTimerRef.current) {
+        clearTimeout(stabilizingTimerRef.current);
+        stabilizingTimerRef.current = null;
+      }
+      console.log('[RESTORE] 안정화 종료 (앵커링 완료)');
+    }
+  }, [anchoring]);
 
   useEffect(() => {
     if (!fs.cacheDirectory) return;
