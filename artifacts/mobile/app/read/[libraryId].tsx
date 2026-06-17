@@ -108,23 +108,21 @@ function ReaderInner({
 
   const handleReady = useCallback(() => {
     readyRef.current = true;
-    const script = buildApplyStyleScript(settingsRef.current);
-    console.log("[Reader] onReady - applying initial styles");
-    injectJavascript(script);
     if (isRestoringRef.current && initialLocationRef.current) {
       const savedCfi = initialLocationRef.current;
       console.log('[RESTORE] savedCfi:', savedCfi);
-      console.log('[GO_TO_LOCATION] target:', savedCfi);
-      // goToLocation 대신 injectJavascript 직접 사용 — WebView 내부 로그 포함
+      // 스타일을 display().then() 안에서 적용 — this.location이 savedCfi로 갱신된
+      // 이후에 override()가 실행되어야 onResized() 레이스 컨디션이 발생하지 않음
       const escaped = savedCfi.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const styleScript = buildApplyStyleScript(settingsRef.current);
       injectJavascript(
         `(function(){` +
         `var t='${escaped}';` +
         `var rn=window.ReactNativeWebView||window;` +
-        `rn.postMessage(JSON.stringify({type:'epubLog',msg:'[WEBVIEW] received goToLocation: '+t}));` +
         `rendition.display(t).then(function(){` +
         `  var loc=rendition.currentLocation();` +
-        `  rn.postMessage(JSON.stringify({type:'epubLog',msg:'[WEBVIEW] rendition.display result location: '+JSON.stringify(loc)}));` +
+        `  rn.postMessage(JSON.stringify({type:'epubLog',msg:'[RESTORE] display done, location: '+JSON.stringify(loc&&loc.start&&loc.start.cfi)}));` +
+        styleScript +
         `});` +
         `})(); true`
       );
@@ -134,6 +132,10 @@ function ReaderInner({
           console.log('[RESTORE] 복원 모드 종료 (2000ms 타임아웃)');
         }
       }, 2000);
+    } else {
+      const script = buildApplyStyleScript(settingsRef.current);
+      console.log("[Reader] onReady - applying initial styles (no restore)");
+      injectJavascript(script);
     }
     startAnchoring();
   }, [startAnchoring, injectJavascript, settingsRef]);
