@@ -148,13 +148,17 @@ function ReaderInner({
   }, [injectJavascript, settingsRef]);
 
   const handleWebViewMessage = useCallback((event: Record<string, unknown>) => {
-    if (event.type === 'navigationDone') {
+    if (event.type === 'navLog') {
+      console.log(event.msg as string);
+    } else if (event.type === 'navigationDone') {
       const reason = event.reason as string;
       const target = event.target as string;
+      const displayTarget = event.displayTarget as string | undefined;
       const resultCfi = event.resultCfi as string | undefined;
       const resultHref = event.resultHref as string | undefined;
       console.log(
         `[NAV] ${reason} 완료 | target: ${target}` +
+        (displayTarget ? ` | displayTarget: ${displayTarget}` : '') +
         ` | resultHref: ${resultHref ?? '없음'}` +
         ` | resultCfi: ${resultCfi ?? '없음'}`
       );
@@ -544,23 +548,42 @@ function ReaderInner({
               `})(); true`
             );
           } else {
-            // 프래그먼트 없음: spine.index 경유로 챕터 시작 위치로 이동
+            // 프래그먼트 없음: 섹션을 직접 로드 → cfiFromElement()로 시작 CFI 계산 → display(startCfi)
+            // display(index) / display(href) 는 섹션이 활성화된 상태에서 인트라-섹션 오프셋을
+            // 재사용하므로 첫 클릭에 챕터 중간에 착지하는 버그가 있음
             injectJavascript(
-              `(function(){` +
+              `(async function(){` +
               `  var href = ${hrefJson};` +
-              `  var spine = book.spine.get(href);` +
-              `  var target = spine ? spine.index : href;` +
-              `  rendition.display(target).then(function(){` +
+              `  var rn = window.ReactNativeWebView || window;` +
+              `  var section = book.spine.get(href);` +
+              `  if (section) {` +
+              `    await section.load(book.load.bind(book));` +
+              `    var doc = section.document;` +
+              `    var el = doc.body.querySelector('h1,h2,h3,h4,p,section,div') || doc.body.firstElementChild || doc.body;` +
+              `    var startCfi = section.cfiFromElement(el);` +
+              `    rn.postMessage(JSON.stringify({type:'navLog',msg:'[NAV] TOC startCfi → '+startCfi}));` +
+              `    await rendition.display(startCfi);` +
               `    var loc = rendition.currentLocation();` +
-              `    var rn = window.ReactNativeWebView || window;` +
               `    rn.postMessage(JSON.stringify({` +
               `      type:'navigationDone',` +
               `      reason:'toc',` +
               `      target: href,` +
+              `      displayTarget: startCfi,` +
               `      resultCfi: loc && loc.start && loc.start.cfi,` +
               `      resultHref: loc && loc.start && loc.start.href` +
               `    }));` +
-              `  });` +
+              `  } else {` +
+              `    await rendition.display(href);` +
+              `    var loc2 = rendition.currentLocation();` +
+              `    rn.postMessage(JSON.stringify({` +
+              `      type:'navigationDone',` +
+              `      reason:'toc',` +
+              `      target: href,` +
+              `      displayTarget: href,` +
+              `      resultCfi: loc2 && loc2.start && loc2.start.cfi,` +
+              `      resultHref: loc2 && loc2.start && loc2.start.href` +
+              `    }));` +
+              `  }` +
               `})(); true`
             );
           }

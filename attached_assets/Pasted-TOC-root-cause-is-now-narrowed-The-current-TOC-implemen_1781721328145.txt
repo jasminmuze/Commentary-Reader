@@ -1,0 +1,75 @@
+TOC root cause is now narrowed.
+
+The current TOC implementation reaches the correct href, but the first click lands at a mid-section CFI. The second click on the same TOC item lands at the section start.
+
+Evidence:
+
+split_014:
+1st click result:
+target: Text/The_Picture_of_Dorian_Gray_split_014.html
+resultHref: Text/The_Picture_of_Dorian_Gray_split_014.html
+resultCfi: epubcfi(/6/32!/4/208/1:995)
+
+2nd click result:
+target: Text/The_Picture_of_Dorian_Gray_split_014.html
+resultHref: Text/The_Picture_of_Dorian_Gray_split_014.html
+resultCfi: epubcfi(/6/32!/4/4/2/2/1:0)
+
+Same pattern for split_012 and split_013.
+
+Conclusion:
+The href is resolved correctly, but display(index) / display(href) is not a reliable "chapter start" command on first call. It appears to preserve or reuse an intra-section page offset until the section is already active.
+
+Do not fix this by requiring a double click.
+Do not add more restore timers, stabilization windows, or page-1 save guards.
+
+Patch TOC navigation only:
+
+For TOC hrefs without a fragment:
+1. Resolve the spine section inside WebView:
+   const section = book.spine.get(targetHref)
+
+2. Load the section if needed:
+   await section.load(book.load.bind(book))
+
+3. Compute an explicit start CFI for the section:
+   const doc = section.document
+   const startElement =
+     doc.body.querySelector('h1,h2,h3,h4,p,section,div') ||
+     doc.body.firstElementChild ||
+     doc.body
+   const startCfi = section.cfiFromElement(startElement)
+
+4. Navigate using:
+   await rendition.display(startCfi)
+
+For TOC hrefs with a #fragment:
+- Keep using rendition.display(fullHref)
+
+Do not use rendition.display(section.index) for TOC no-fragment items anymore.
+
+Log:
+[NAV] TOC 선택 → href
+[NAV] TOC startCfi → computedStartCfi
+[NAV] toc 완료 | target | displayTarget | resultHref | resultCfi
+
+Expected result:
+A single TOC click should produce a resultCfi near the section start, like:
+epubcfi(/6/32!/4/4/...)
+not:
+epubcfi(/6/32!/4/208/...)
+
+Keep restore direct-CFI navigation as is because the latest log shows restore display succeeds:
+[NAV] restore 완료 | resultCfi equals saved CFI
+
+Scope:
+Prefer modifying only artifacts/mobile/app/read/[libraryId].tsx.
+Do not modify server, DB, upload, auth, friends, comments data model, or UI design.
+Do not modify epubjs library files.
+
+Validation:
+1. Run mobile typecheck.
+2. Click split_012 once.
+3. Click split_013 once.
+4. Click split_014 once.
+5. Confirm each lands near /4/4... on the first click.
