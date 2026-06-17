@@ -144,7 +144,8 @@ function ReaderInner({
       console.log("[Reader] onReady - applying initial styles (no restore)");
       injectJavascript(script);
     }
-    startAnchoring();
+    // ANCHORING DISABLED FOR DIAGNOSIS — restore/TOC accuracy test
+    // startAnchoring();
   }, [startAnchoring, injectJavascript, settingsRef]);
 
   const handleWebViewMessage = useCallback((event: Record<string, unknown>) => {
@@ -175,9 +176,10 @@ function ReaderInner({
     }
   }, []);
 
-  useEffect(() => {
-    if (readyRef.current && quotes.length > 0) startAnchoring();
-  }, [quotes, startAnchoring]);
+  // ANCHORING DISABLED FOR DIAGNOSIS — restore/TOC accuracy test
+  // useEffect(() => {
+  //   if (readyRef.current && quotes.length > 0) startAnchoring();
+  // }, [quotes, startAnchoring]);
 
   const handleSearch = useCallback((results: SearchResult[]) => {
     if (!runningRef.current) return;
