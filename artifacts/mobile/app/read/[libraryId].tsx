@@ -40,13 +40,6 @@ import {
 } from "@/hooks/useReaderSettings";
 
 const PAGE_ONE_CFI = 'epubcfi(/6/2!/4/1:0)';
-// 진단용 플래그: true → 앱 레벨 사이드이펙트(저장·스타일·앵커링·코멘트) 전부 비활성화,
-// 라이브러리 기본 동작(EPUB 로드·initialLocation·TOC)만 실행.
-// 테스트 완료 후 false 로 되돌릴 것.
-const DEBUG_BARE_READER = true;
-// 로그에서 확인한 실제 CFI 로 교체해서 테스트
-// (DEBUG_BARE_READER = true 일 때만 initialLocation 으로 사용)
-const DEBUG_FORCED_CFI = 'epubcfi(/6/30!/4/188/1:41)';
 
 function intensityToOpacity(intensity: number): number {
   return Math.max(0.15, Math.min(0.50, intensity));
@@ -71,14 +64,9 @@ function ReaderInner({
   const currentLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
   // 복원할 대상 CFI — 마운트 시 한 번만 캡처 (refetch로 변경되면 안 됨)
   const initialLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
-  // 복원 모드: initialLocation이 있을 때 true, 복원 완료 시 false
-  const isRestoringRef = useRef<boolean>(!!entry.lastReadingLocation);
-  const restoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const firstSaveLoggedRef = useRef(false);
-  const restoredCfiRef = useRef<string | null>(null);
-  // 복원 완료 후 안정화: 앵커링 중 발생하는 relocated 이벤트가 저장 위치를 덮어쓰지 않도록 차단
-  const isStabilizingRef = useRef(false);
-  const stabilizingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 제어된 탐색 상태: 'navigating' 중에는 저장을 차단
+  const navPhaseRef = useRef<'idle' | 'navigating'>('idle');
+  const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fs = useFileSystem();
   const [localSrc, setLocalSrc] = useState<string | null>(null);
@@ -106,14 +94,6 @@ function ReaderInner({
 
   useEffect(() => { quotesRef.current = quotes; }, [quotes]);
 
-  // [진단] localSrc 세팅 = Reader 렌더 직전. 실제 전달값 확인용
-  useEffect(() => {
-    if (!DEBUG_BARE_READER || !localSrc) return;
-    console.log('[DEBUG_INIT] entry.lastReadingLocation:', entry.lastReadingLocation ?? '(없음)');
-    console.log('[DEBUG_INIT] Reader initialLocation (DEBUG_FORCED_CFI):', DEBUG_FORCED_CFI);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localSrc]);
-
   const startAnchoring = useCallback(() => {
     if (runningRef.current || !readyRef.current || !canonicalBookId) return;
     const pending = quotesRef.current.filter(
@@ -129,82 +109,63 @@ function ReaderInner({
 
   const handleReady = useCallback(() => {
     readyRef.current = true;
-    if (DEBUG_BARE_READER) {
-      console.log('[DEBUG] onReady — 스타일/복원 주입 없음 (베어 리더 모드)');
-      return;
-    }
-    if (isRestoringRef.current && initialLocationRef.current) {
-      const savedCfi = initialLocationRef.current;
-      console.log('[RESTORE] savedCfi:', savedCfi);
-      // 스타일을 display().then() 안에서 적용 — this.location이 savedCfi로 갱신된
-      // 이후에 override()가 실행되어야 onResized() 레이스 컨디션이 발생하지 않음
-      const escaped = savedCfi.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-      const styleScript = buildApplyStyleScript(settingsRef.current);
+    const styleScript = buildApplyStyleScript(settingsRef.current);
+
+    if (initialLocationRef.current) {
+      // Reader initialLocation prop 은 신뢰하지 않음 — onReady 이후 직접 주입
+      const targetJson = JSON.stringify(initialLocationRef.current);
+      navPhaseRef.current = 'navigating';
+      console.log('[NAV] restore 시작 →', initialLocationRef.current);
+      if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+      navTimeoutRef.current = setTimeout(() => {
+        if (navPhaseRef.current === 'navigating') {
+          navPhaseRef.current = 'idle';
+          console.log('[NAV] restore 타임아웃 — 강제 해제');
+        }
+      }, 6000);
       injectJavascript(
         `(function(){` +
-        `var t='${escaped}';` +
-        `var rn=window.ReactNativeWebView||window;` +
-        `rendition.display(t).then(function(){` +
-        `  var loc=rendition.currentLocation();` +
-        `  var cfi=loc&&loc.start&&loc.start.cfi;` +
-        `  rn.postMessage(JSON.stringify({type:'restoreDone',cfi:cfi}));` +
+        `  var target = ${targetJson};` +
+        `  rendition.display(target).then(function(){` +
+        `    var loc = rendition.currentLocation();` +
+        `    var rn = window.ReactNativeWebView || window;` +
+        `    rn.postMessage(JSON.stringify({` +
+        `      type:'navigationDone',` +
+        `      reason:'restore',` +
+        `      target: target,` +
+        `      resultCfi: loc && loc.start && loc.start.cfi,` +
+        `      resultHref: loc && loc.start && loc.start.href` +
+        `    }));` +
         styleScript +
-        `});` +
+        `  });` +
         `})(); true`
       );
-      restoreTimeoutRef.current = setTimeout(() => {
-        if (isRestoringRef.current) {
-          isRestoringRef.current = false;
-          console.log('[RESTORE] 복원 모드 종료 (2000ms 타임아웃)');
-        }
-      }, 2000);
     } else {
-      const script = buildApplyStyleScript(settingsRef.current);
-      console.log("[Reader] onReady - applying initial styles (no restore)");
-      injectJavascript(script);
+      console.log('[NAV] onReady — 복원 없음, 스타일 적용');
+      injectJavascript(styleScript);
     }
-    // ANCHORING DISABLED FOR DIAGNOSIS — restore/TOC accuracy test
-    // startAnchoring();
-  }, [startAnchoring, injectJavascript, settingsRef]);
+    // startAnchoring(); — 앵커링 별도 후속 작업
+  }, [injectJavascript, settingsRef]);
 
   const handleWebViewMessage = useCallback((event: Record<string, unknown>) => {
-    if (DEBUG_BARE_READER) {
-      if (event.type === 'tocDisplayDone') {
-        console.log(
-          '[DEBUG_TOC] display 완료' +
-          ' | target:', event.target,
-          '| resultHref:', event.resultHref ?? '(없음)',
-          '| resultCfi:', event.resultCfi ?? '(없음)'
-        );
-      } else {
-        console.log('[DEBUG] webViewMessage type:', event.type);
+    if (event.type === 'navigationDone') {
+      const reason = event.reason as string;
+      const target = event.target as string;
+      const resultCfi = event.resultCfi as string | undefined;
+      const resultHref = event.resultHref as string | undefined;
+      console.log(
+        `[NAV] ${reason} 완료 | target: ${target}` +
+        ` | resultHref: ${resultHref ?? '없음'}` +
+        ` | resultCfi: ${resultCfi ?? '없음'}`
+      );
+      if (resultCfi && resultCfi !== PAGE_ONE_CFI) {
+        currentLocationRef.current = resultCfi;
       }
-      return;
-    }
-    if (event.type === 'epubLog') {
-      console.log(event.msg as string);
-    } else if (event.type === 'restoreDone') {
-      const cfi = event.cfi as string | undefined;
-      console.log('[RESTORE] display done, location:', cfi);
-      if (cfi && cfi !== PAGE_ONE_CFI) {
-        currentLocationRef.current = cfi;
-        restoredCfiRef.current = cfi;
+      if (navTimeoutRef.current) {
+        clearTimeout(navTimeoutRef.current);
+        navTimeoutRef.current = null;
       }
-      isRestoringRef.current = false;
-      if (restoreTimeoutRef.current) {
-        clearTimeout(restoreTimeoutRef.current);
-        restoreTimeoutRef.current = null;
-      }
-      // 안정화 시작: 앵커링/하이라이트 처리 중 발생하는 relocated 이벤트가
-      // 저장 위치를 덮어쓰지 않도록 차단. 앵커링 완료 또는 5초 폴백으로 해제.
-      isStabilizingRef.current = true;
-      if (stabilizingTimerRef.current) clearTimeout(stabilizingTimerRef.current);
-      stabilizingTimerRef.current = setTimeout(() => {
-        if (isStabilizingRef.current) {
-          isStabilizingRef.current = false;
-          console.log('[RESTORE] 안정화 종료 (5초 폴백)');
-        }
-      }, 5000);
+      navPhaseRef.current = 'idle';
     }
   }, []);
 
@@ -335,43 +296,22 @@ function ReaderInner({
   const handleLocationChange = useCallback(
     (_total: number, location: Location, progress: number) => {
       const cfi = location?.start?.cfi;
-      if (!cfi) return;
+      // page-1 (titlepage) 이벤트는 마운트·탐색 중 항상 발생 → 항상 무시
+      if (!cfi || cfi === PAGE_ONE_CFI) return;
 
-      if (DEBUG_BARE_READER) {
-        const href = location?.start?.href;
-        console.log('[DEBUG] onLocationChange href:', href ?? '(없음)', '| cfi:', cfi, '| progress:', Math.round(progress) + '%');
-        setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
-        const dispD = location?.start?.displayed;
-        if (dispD && dispD.total > 1) setPageInfo({ page: dispD.page, total: dispD.total });
-        return;
-      }
-
-      // UI 상태는 항상 업데이트 — 복원/안정화 모드 여부와 무관하게 즉시 반영
-      // (요건 B: pageInfo/readProgress는 저장 보호와 독립적으로 표시)
+      // UI 업데이트는 항상 수행 (탐색 중 포함)
       setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
       const disp = location?.start?.displayed;
-      if (disp && disp.total > 1) {
-        setPageInfo({ page: disp.page, total: disp.total });
-      }
+      if (disp && disp.total > 1) setPageInfo({ page: disp.page, total: disp.total });
 
-      // 저장 위치 보호: 복원 모드 OR 안정화 중에는 currentLocationRef + 서버 저장 차단
-      // (앵커링/하이라이트 addAnnotation 이 onResized를 유발해 발생하는 spurious relocated 이벤트 방지)
-      if (isRestoringRef.current || isStabilizingRef.current) {
-        const phase = isRestoringRef.current ? '복원 중' : '안정화 중';
-        console.log(`[RESTORE] ${phase} 저장 건너뜀: ${cfi}`);
+      // 제어된 탐색 중에는 저장만 건너뜀
+      if (navPhaseRef.current === 'navigating') {
+        console.log('[NAV] 탐색 중 — 저장 건너뜀:', cfi);
         return;
       }
 
       // 정상 저장 경로
       currentLocationRef.current = cfi;
-      if (restoredCfiRef.current) {
-        restoredCfiRef.current = null;
-      }
-
-      if (!firstSaveLoggedRef.current) {
-        firstSaveLoggedRef.current = true;
-        console.log('[RESTORE] 복원 후 첫 저장 위치:', cfi);
-      }
       const clampedProgress = Math.min(100, Math.max(0, Math.round(progress)));
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
@@ -379,10 +319,7 @@ function ReaderInner({
           { libraryId, data: { location: cfi, readingProgress: clampedProgress } },
           {
             onSuccess: (updated) => {
-              queryClient.setQueryData(
-                getGetLibraryEntryQueryKey(libraryId),
-                updated
-              );
+              queryClient.setQueryData(getGetLibraryEntryQueryKey(libraryId), updated);
             },
           }
         );
@@ -394,22 +331,10 @@ function ReaderInner({
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      if (restoreTimeoutRef.current) clearTimeout(restoreTimeoutRef.current);
-      if (stabilizingTimerRef.current) clearTimeout(stabilizingTimerRef.current);
+      if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
     };
   }, []);
 
-  // 앵커링 완료 시 안정화 해제: addAnnotation이 유발한 relocated 이벤트가 끝나면 저장 허용
-  useEffect(() => {
-    if (!anchoring && isStabilizingRef.current) {
-      isStabilizingRef.current = false;
-      if (stabilizingTimerRef.current) {
-        clearTimeout(stabilizingTimerRef.current);
-        stabilizingTimerRef.current = null;
-      }
-      console.log('[RESTORE] 안정화 종료 (앵커링 완료)');
-    }
-  }, [anchoring]);
 
   useEffect(() => {
     if (!fs.cacheDirectory) return;
@@ -541,13 +466,12 @@ function ReaderInner({
           flow={flow}
           manager={manager}
           defaultTheme={readerTheme}
-          initialLocation={DEBUG_BARE_READER ? DEBUG_FORCED_CFI : currentLocationRef.current}
           onReady={handleReady}
           onLocationChange={handleLocationChange}
-          onSearch={DEBUG_BARE_READER ? undefined : handleSearch}
-          onPressAnnotation={DEBUG_BARE_READER ? undefined : handlePressAnnotation}
+          onSearch={handleSearch}
+          onPressAnnotation={handlePressAnnotation}
           onWebViewMessage={handleWebViewMessage}
-          menuItems={DEBUG_BARE_READER ? [] : [
+          menuItems={[
             { label: "하이라이트", action: (cfiRange, text) => handleHighlight(cfiRange, text) },
             { label: "코멘트", action: (cfiRange, text) => handleComment(cfiRange, text) },
           ]}
@@ -591,16 +515,27 @@ function ReaderInner({
         visible={tocVisible}
         toc={toc}
         onSelect={(href) => {
-          if (DEBUG_BARE_READER) {
-            console.log('[DEBUG_TOC] 선택된 href:', href);
+          navPhaseRef.current = 'navigating';
+          console.log('[NAV] TOC 선택 → href:', href);
+          if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+          navTimeoutRef.current = setTimeout(() => {
+            if (navPhaseRef.current === 'navigating') {
+              navPhaseRef.current = 'idle';
+              console.log('[NAV] TOC 탐색 타임아웃 — 강제 해제');
+            }
+          }, 6000);
+          const hrefJson = JSON.stringify(href);
+          if (href.includes('#')) {
+            // 프래그먼트 있음: 직접 display(href)
             injectJavascript(
               `(function(){` +
-              `  var target = ${JSON.stringify(href)};` +
+              `  var target = ${hrefJson};` +
               `  rendition.display(target).then(function(){` +
               `    var loc = rendition.currentLocation();` +
               `    var rn = window.ReactNativeWebView || window;` +
               `    rn.postMessage(JSON.stringify({` +
-              `      type:'tocDisplayDone',` +
+              `      type:'navigationDone',` +
+              `      reason:'toc',` +
               `      target: target,` +
               `      resultCfi: loc && loc.start && loc.start.cfi,` +
               `      resultHref: loc && loc.start && loc.start.href` +
@@ -608,15 +543,28 @@ function ReaderInner({
               `  });` +
               `})(); true`
             );
-            setTocVisible(false);
-            return;
+          } else {
+            // 프래그먼트 없음: spine.index 경유로 챕터 시작 위치로 이동
+            injectJavascript(
+              `(function(){` +
+              `  var href = ${hrefJson};` +
+              `  var spine = book.spine.get(href);` +
+              `  var target = spine ? spine.index : href;` +
+              `  rendition.display(target).then(function(){` +
+              `    var loc = rendition.currentLocation();` +
+              `    var rn = window.ReactNativeWebView || window;` +
+              `    rn.postMessage(JSON.stringify({` +
+              `      type:'navigationDone',` +
+              `      reason:'toc',` +
+              `      target: href,` +
+              `      resultCfi: loc && loc.start && loc.start.cfi,` +
+              `      resultHref: loc && loc.start && loc.start.href` +
+              `    }));` +
+              `  });` +
+              `})(); true`
+            );
           }
-          isRestoringRef.current = false;
-          if (restoreTimeoutRef.current) {
-            clearTimeout(restoreTimeoutRef.current);
-            restoreTimeoutRef.current = null;
-          }
-          goToLocation(href);
+          setTocVisible(false);
         }}
         onClose={() => setTocVisible(false)}
       />

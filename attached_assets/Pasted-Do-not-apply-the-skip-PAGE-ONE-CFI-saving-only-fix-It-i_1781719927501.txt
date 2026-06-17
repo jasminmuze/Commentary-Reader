@@ -1,0 +1,78 @@
+Do not apply the "skip PAGE_ONE_CFI saving only" fix. It is insufficient.
+
+The latest logs show a deeper navigation-layer problem.
+
+Evidence:
+
+1. DEBUG_FORCED_CFI was passed as Reader initialLocation:
+   epubcfi(/6/30!/4/188/1:41)
+
+   But Reader only emitted titlepage/page-1:
+   Text/titlepage.xhtml | epubcfi(/6/2!/4/1:0)
+   Text/titlepage.xhtml | epubcfi(/6/2!/4/1:0)
+   Text/titlepage.xhtml | epubcfi(/6/2!/4/1:0)
+
+   Therefore the Reader initialLocation prop is not reliable and must not be used as the restore mechanism.
+
+2. TOC display reaches the correct href:
+   target: Text/The_Picture_of_Dorian_Gray_split_011.html
+   resultHref: Text/The_Picture_of_Dorian_Gray_split_011.html
+
+   But it lands at a mid-section CFI:
+   resultCfi: epubcfi(/6/26!/4/158/1:40)
+
+   Then another location event appears at:
+   epubcfi(/6/26!/4/94/1:467)
+
+   Therefore TOC href navigation is not landing at the section start reliably.
+
+Required direction:
+
+Fix the shared navigation layer, not restore guards.
+
+Implement controlled WebView navigation:
+
+A. Restore
+- Stop relying on Reader initialLocation prop for restore.
+- Pass no initialLocation, or do not rely on it.
+- After onReady, explicitly inject:
+  rendition.display(savedCfi)
+- Use JSON.stringify for safe target injection.
+- When display resolves, post a message back to RN with:
+  type: navigationDone
+  reason: restore
+  target
+  resultHref
+  resultCfi
+
+B. TOC
+- Do not use the library goToLocation(href) directly for TOC in production.
+- For TOC href without a fragment:
+  resolve it inside WebView using book.spine.get(href)
+  then call rendition.display(spineItem.index) so it goes to the start of the spine item.
+- For TOC href with a #fragment:
+  call rendition.display(fullHref) normally.
+- Post navigationDone with target/resultHref/resultCfi.
+
+C. Location events
+- During controlled navigation, do not treat ordinary onLocationChange events as authoritative for saving.
+- Ignore titlepage/page-1 events emitted during mount/navigation.
+- After navigationDone, set currentLocationRef from resultCfi.
+- UI page/progress should be updated from the navigation result or the first trusted non-page-1 location event.
+
+D. Cleanup
+- Remove DEBUG_BARE_READER after implementing the fix.
+- Remove accumulated restore timers/stabilization/page-1 guard experiments that are no longer part of the design.
+- Keep anchoring disabled only if still needed for a separate follow-up, but do not blame anchoring for this issue now.
+
+Scope:
+- Prefer modifying only artifacts/mobile/app/read/[libraryId].tsx.
+- Do not modify server, DB, upload, auth, friends, comments data model, or UI design.
+- Do not modify epubjs library files unless there is no other option.
+
+Validation:
+1. Run mobile typecheck.
+2. Test restore with a saved non-page-1 CFI.
+3. Test TOC with at least three chapters.
+4. Test normal reading across a chapter boundary.
+5. Report navigationDone logs and onLocationChange logs.
