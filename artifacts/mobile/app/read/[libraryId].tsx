@@ -548,9 +548,10 @@ function ReaderInner({
               `})(); true`
             );
           } else {
-            // 프래그먼트 없음: 섹션을 직접 로드 → cfiFromElement()로 시작 CFI 계산 → display(startCfi)
-            // display(index) / display(href) 는 섹션이 활성화된 상태에서 인트라-섹션 오프셋을
-            // 재사용하므로 첫 클릭에 챕터 중간에 착지하는 버그가 있음
+            // 프래그먼트 없음: 수렴 루프
+            // display(href/index)는 scrolled-doc 모드에서 인트라-섹션 오프셋을 재사용하므로
+            // cfiFromElement(섹션 시작 요소)로 startCfi 계산 후 display(startCfi) 반복
+            // → currentLocation이 startCfi 이하에 착지할 때까지 최대 5회
             injectJavascript(
               `(async function(){` +
               `  var href = ${hrefJson};` +
@@ -560,33 +561,44 @@ function ReaderInner({
               `             || book.spine.get(href.split('/').slice(1).join('/'));` +
               `  rn.postMessage(JSON.stringify({type:'navLog',` +
               `    msg:'[NAV] TOC section resolved: '+(section?(section.href||section.idref||section.index):'null')}));` +
-              `  if (section) {` +
-              `    await section.load(book.load.bind(book));` +
-              `    var doc = section.document;` +
-              `    var el = doc.body.querySelector('h1,h2,h3,h4,p,section,div') || doc.body.firstElementChild || doc.body;` +
-              `    var startCfi = section.cfiFromElement(el);` +
-              `    rn.postMessage(JSON.stringify({type:'navLog',msg:'[NAV] TOC startCfi → '+startCfi}));` +
-              `    await rendition.display(startCfi);` +
-              `    var loc = rendition.currentLocation();` +
-              `    rn.postMessage(JSON.stringify({` +
-              `      type:'navigationDone',` +
-              `      reason:'toc',` +
-              `      target: href,` +
-              `      displayTarget: startCfi,` +
-              `      resultCfi: loc && loc.start && loc.start.cfi,` +
-              `      resultHref: loc && loc.start && loc.start.href` +
-              `    }));` +
-              `  } else {` +
+              `  if (!section) {` +
               `    await rendition.display(href);` +
-              `    var loc2 = rendition.currentLocation();` +
-              `    rn.postMessage(JSON.stringify({` +
-              `      type:'navigationDone',` +
-              `      reason:'toc',` +
-              `      target: href,` +
-              `      displayTarget: href,` +
-              `      resultCfi: loc2 && loc2.start && loc2.start.cfi,` +
-              `      resultHref: loc2 && loc2.start && loc2.start.href` +
-              `    }));` +
+              `    var loc0=rendition.currentLocation();` +
+              `    rn.postMessage(JSON.stringify({type:'navigationDone',reason:'toc',target:href,` +
+              `      displayTarget:href,` +
+              `      resultCfi:loc0&&loc0.start&&loc0.start.cfi,` +
+              `      resultHref:loc0&&loc0.start&&loc0.start.href}));` +
+              `    return;` +
+              `  }` +
+              `  await section.load(book.load.bind(book));` +
+              `  var el=section.document.body.querySelector('h1,h2,h3,h4,p,section,div')` +
+              `        ||section.document.body.firstElementChild||section.document.body;` +
+              `  var startCfi=section.cfiFromElement(el);` +
+              `  rn.postMessage(JSON.stringify({type:'navLog',msg:'[NAV] TOC startCfi → '+startCfi}));` +
+              `  function isNearStart(rCfi){` +
+              `    if(!rCfi)return false;` +
+              `    if(startCfi.split('!')[0]!==rCfi.split('!')[0])return false;` +
+              `    try{return ePub.CFI.prototype.compare(rCfi,startCfi)<=0;}catch(e){return false;}` +
+              `  }` +
+              `  var MAX=5,converged=false,lastCfi=null,lastHref=null;` +
+              `  for(var attempt=1;attempt<=MAX;attempt++){` +
+              `    await rendition.display(startCfi);` +
+              `    var loc=rendition.currentLocation();` +
+              `    lastCfi=loc&&loc.start&&loc.start.cfi;` +
+              `    lastHref=loc&&loc.start&&loc.start.href;` +
+              `    rn.postMessage(JSON.stringify({type:'navLog',` +
+              `      msg:'[NAV] TOC attempt '+attempt+' resultCfi: '+lastCfi}));` +
+              `    if(isNearStart(lastCfi)){converged=true;break;}` +
+              `    if(attempt<MAX){await new Promise(function(r){requestAnimationFrame(r);});}` +
+              `  }` +
+              `  if(converged){` +
+              `    rn.postMessage(JSON.stringify({type:'navigationDone',reason:'toc',target:href,` +
+              `      displayTarget:startCfi,resultCfi:lastCfi,resultHref:lastHref}));` +
+              `  }else{` +
+              `    rn.postMessage(JSON.stringify({type:'navLog',` +
+              `      msg:'[NAV] toc 실패: 수렴 불가 startCfi='+startCfi+' lastCfi='+lastCfi}));` +
+              `    rn.postMessage(JSON.stringify({type:'navigationDone',reason:'toc-failed',target:href,` +
+              `      displayTarget:startCfi,resultCfi:null,resultHref:null}));` +
               `  }` +
               `})(); true`
             );
