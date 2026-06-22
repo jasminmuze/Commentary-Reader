@@ -555,7 +555,11 @@ function ReaderInner({
               `(async function(){` +
               `  var href = ${hrefJson};` +
               `  var rn = window.ReactNativeWebView || window;` +
-              `  var section = book.spine.get(href);` +
+              `  var section = book.spine.get(href.split('/')[1])` +
+              `             || book.spine.get(href)` +
+              `             || book.spine.get(href.split('/').slice(1).join('/'));` +
+              `  rn.postMessage(JSON.stringify({type:'navLog',` +
+              `    msg:'[NAV] TOC section resolved: '+(section?(section.href||section.idref||section.index):'null')}));` +
               `  if (section) {` +
               `    await section.load(book.load.bind(book));` +
               `    var doc = section.document;` +
