@@ -33,6 +33,18 @@ export interface Quote {
   highlightedByMe?: boolean;
 }
 
+/**
+ * Who can see a comment or highlight — public, friends (mutual follows), or private (author only)
+ */
+export type Visibility = typeof Visibility[keyof typeof Visibility];
+
+
+export const Visibility = {
+  public: 'public',
+  friends: 'friends',
+  private: 'private',
+} as const;
+
 export interface Comment {
   id: number;
   quoteId: number;
@@ -40,6 +52,7 @@ export interface Comment {
   username: string;
   avatarColor: string;
   text: string;
+  visibility: Visibility;
   quoteText?: string;
   likeCount: number;
   likedByMe: boolean;
@@ -63,6 +76,7 @@ export interface BookDetail {
 export interface CommentInput {
   /** @minLength 1 */
   text: string;
+  visibility?: Visibility;
 }
 
 export interface CreateQuoteInput {
@@ -76,6 +90,7 @@ export interface CreateQuoteInput {
 export interface HighlightInput {
   userLibraryId?: number;
   cfiRange?: string;
+  visibility?: Visibility;
 }
 
 export interface HighlightResult {
@@ -173,9 +188,31 @@ export interface User {
   id: number;
   username: string;
   avatarColor: string;
+  defaultVisibility: Visibility;
   createdAt: string;
   /** HMAC-signed bearer token — only present in POST /users response */
   token?: string;
+}
+
+export interface UserProfile {
+  id: number;
+  username: string;
+  avatarColor: string;
+  createdAt: string;
+  followerCount: number;
+  followingCount: number;
+  highlightCount: number;
+  commentCount: number;
+  /** Whether the requesting user follows this profile */
+  isFollowedByMe: boolean;
+  /** Whether this profile follows the requesting user */
+  followsMe: boolean;
+  /** Whether this profile is the requesting user */
+  isMe: boolean;
+}
+
+export interface UpdateUserSettings {
+  defaultVisibility: Visibility;
 }
 
 export interface UserWithFriendStatus {

@@ -7,12 +7,6 @@
  */
 import type { Visibility } from './visibility';
 
-export interface User {
-  id: number;
-  username: string;
-  avatarColor: string;
+export interface UpdateUserSettings {
   defaultVisibility: Visibility;
-  createdAt: Date;
-  /** HMAC-signed bearer token — only present in POST /users response */
-  token?: string;
 }

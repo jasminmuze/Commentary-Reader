@@ -96,6 +96,9 @@ function ReaderInner({
 
   const startAnchoring = useCallback(() => {
     if (runningRef.current || !readyRef.current || !canonicalBookId) return;
+    // Never run search()-based anchoring while a controlled navigation
+    // (restore / TOC jump) is in flight — it would race rendition.display().
+    if (navPhaseRef.current === 'navigating') return;
     const pending = quotesRef.current.filter(
       (q) => q.searchText.length > 0 && !anchoredRef.current.has(q.id)
     );
@@ -121,6 +124,7 @@ function ReaderInner({
         if (navPhaseRef.current === 'navigating') {
           navPhaseRef.current = 'idle';
           console.log('[NAV] restore 타임아웃 — 강제 해제');
+          startAnchoring();
         }
       }, 6000);
       injectJavascript(
@@ -144,8 +148,8 @@ function ReaderInner({
       console.log('[NAV] onReady — 복원 없음, 스타일 적용');
       injectJavascript(styleScript);
     }
-    // startAnchoring(); — 앵커링 별도 후속 작업
-  }, [injectJavascript, settingsRef]);
+    startAnchoring();
+  }, [injectJavascript, settingsRef, startAnchoring]);
 
   const handleWebViewMessage = useCallback((event: Record<string, unknown>) => {
     if (event.type === 'navLog') {
@@ -170,13 +174,15 @@ function ReaderInner({
         navTimeoutRef.current = null;
       }
       navPhaseRef.current = 'idle';
+      // Resume community-highlight anchoring once controlled navigation settles,
+      // so deferred search() calls never raced the in-flight rendition.display().
+      startAnchoring();
     }
-  }, []);
+  }, [startAnchoring]);
 
-  // ANCHORING DISABLED FOR DIAGNOSIS — restore/TOC accuracy test
-  // useEffect(() => {
-  //   if (readyRef.current && quotes.length > 0) startAnchoring();
-  // }, [quotes, startAnchoring]);
+  useEffect(() => {
+    if (readyRef.current && quotes.length > 0) startAnchoring();
+  }, [quotes, startAnchoring]);
 
   const handleSearch = useCallback((results: SearchResult[]) => {
     if (!runningRef.current) return;
@@ -622,7 +628,7 @@ function ReaderInner({
         quoteId={selectedQuote?.id ?? null}
         quoteText={selectedQuote?.text ?? ""}
         onClose={() => setSheetVisible(false)}
-        onCommentSaved={() => {
+        onCommentSaved={(visibility) => {
           const cfi = selectedQuote?.cfiRange;
           const qId = selectedQuote?.id;
           if (!cfi || !qId || !canonicalBookId) return;
@@ -633,7 +639,7 @@ function ReaderInner({
             addAnnotation(hlStyle.annotationType, cfi, { quoteId: qId }, { color: hlStyle.color, opacity: 0.35 });
           } catch {}
           toggleHighlight.mutate(
-            { quoteId: qId, data: { userLibraryId: libraryId, cfiRange: cfi } },
+            { quoteId: qId, data: { userLibraryId: libraryId, cfiRange: cfi, visibility } },
             {
               onSuccess: () => {
                 queryClient.invalidateQueries({ queryKey: getGetBookQuotesQueryKey(canonicalBookId) });

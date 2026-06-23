@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, like, inArray } from "drizzle-orm";
+import { eq, and, like, inArray, count } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -7,6 +7,7 @@ import {
   commentsTable,
   commentSavesTable,
   quotesTable,
+  userHighlightsTable,
 } from "@workspace/db";
 import {
   CreateUserBody,
@@ -17,8 +18,16 @@ import {
   RemoveFriendParams,
   GetSavedCommentsParams,
   SearchUsersQueryParams,
+  GetUserProfileParams,
+  UpdateUserSettingsParams,
+  UpdateUserSettingsBody,
 } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
+import {
+  getViewer,
+  isFollowing,
+  visibilityPredicate,
+} from "../lib/social";
 import { createToken } from "../lib/auth.js";
 import { authenticate } from "../middlewares/authenticate.js";
 
@@ -43,7 +52,7 @@ router.post("/users", async (req, res): Promise<void> => {
   const existing = await db.select().from(usersTable).where(eq(usersTable.username, body.data.username));
   if (existing.length > 0) {
     const user = existing[0]!;
-    res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, createdAt: user.createdAt.toISOString(), token: createToken(user.id) });
+    res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility, createdAt: user.createdAt.toISOString(), token: createToken(user.id) });
     return;
   }
 
@@ -52,7 +61,7 @@ router.post("/users", async (req, res): Promise<void> => {
     avatarColor: randomAvatarColor(),
   }).returning();
 
-  res.json({ id: user!.id, username: user!.username, avatarColor: user!.avatarColor, createdAt: user!.createdAt.toISOString(), token: createToken(user!.id) });
+  res.json({ id: user!.id, username: user!.username, avatarColor: user!.avatarColor, defaultVisibility: user!.defaultVisibility, createdAt: user!.createdAt.toISOString(), token: createToken(user!.id) });
 });
 
 router.get("/users/search", async (req, res): Promise<void> => {
@@ -97,18 +106,112 @@ router.get("/users/:userId", authenticate, async (req, res): Promise<void> => {
     return;
   }
 
-  if (req.userId !== params.data.userId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, params.data.userId));
   if (!user) {
     res.status(404).json({ error: "User not found" });
     return;
   }
 
-  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, createdAt: user.createdAt.toISOString() });
+  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility, createdAt: user.createdAt.toISOString() });
+});
+
+// Public profile with follower/following + activity counts and the viewer's
+// relationship to this user. Counts are visibility-gated to the viewer.
+router.get("/users/:userId/profile", authenticate, async (req, res): Promise<void> => {
+  const params = GetUserProfileParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const targetId = params.data.userId;
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, targetId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const viewer = await getViewer(req.userId);
+  const isMe = req.userId === targetId;
+
+  const [followerRow] = await db
+    .select({ c: count() })
+    .from(friendshipsTable)
+    .where(eq(friendshipsTable.friendId, targetId));
+  const [followingRow] = await db
+    .select({ c: count() })
+    .from(friendshipsTable)
+    .where(eq(friendshipsTable.userId, targetId));
+  const [highlightRow] = await db
+    .select({ c: count() })
+    .from(userHighlightsTable)
+    .where(
+      and(
+        eq(userHighlightsTable.userId, targetId),
+        visibilityPredicate(
+          userHighlightsTable.visibility,
+          userHighlightsTable.userId,
+          viewer,
+        ),
+      ),
+    );
+  const [commentRow] = await db
+    .select({ c: count() })
+    .from(commentsTable)
+    .where(
+      and(
+        eq(commentsTable.userId, targetId),
+        visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+        ),
+      ),
+    );
+
+  res.json({
+    id: user.id,
+    username: user.username,
+    avatarColor: user.avatarColor,
+    createdAt: user.createdAt.toISOString(),
+    followerCount: Number(followerRow?.c ?? 0),
+    followingCount: Number(followingRow?.c ?? 0),
+    highlightCount: Number(highlightRow?.c ?? 0),
+    commentCount: Number(commentRow?.c ?? 0),
+    isFollowedByMe: isMe ? false : await isFollowing(req.userId, targetId),
+    followsMe: isMe ? false : await isFollowing(targetId, req.userId),
+    isMe,
+  });
+});
+
+// Update the current user's personal settings (self only).
+router.patch("/users/:userId/settings", authenticate, async (req, res): Promise<void> => {
+  const params = UpdateUserSettingsParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const body = UpdateUserSettingsBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const [user] = await db
+    .update(usersTable)
+    .set({ defaultVisibility: body.data.defaultVisibility })
+    .where(eq(usersTable.id, params.data.userId))
+    .returning();
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility, createdAt: user.createdAt.toISOString() });
 });
 
 router.get("/users/:userId/friends", authenticate, async (req, res): Promise<void> => {
@@ -132,7 +235,7 @@ router.get("/users/:userId/friends", authenticate, async (req, res): Promise<voi
   const friendIds = friendships.map((f) => f.friendId);
   const friends = await db.select().from(usersTable);
   const filtered = friends.filter((u) => friendIds.includes(u.id));
-  res.json(filtered.map((u) => ({ id: u.id, username: u.username, avatarColor: u.avatarColor, createdAt: u.createdAt.toISOString() })));
+  res.json(filtered.map((u) => ({ id: u.id, username: u.username, avatarColor: u.avatarColor, defaultVisibility: u.defaultVisibility, createdAt: u.createdAt.toISOString() })));
 });
 
 router.post("/users/:userId/friends", authenticate, async (req, res): Promise<void> => {
@@ -156,10 +259,9 @@ router.post("/users/:userId/friends", authenticate, async (req, res): Promise<vo
   const { userId } = params.data;
   const { friendId } = body.data;
 
-  const existing = await db.select().from(friendshipsTable).where(and(eq(friendshipsTable.userId, userId), eq(friendshipsTable.friendId, friendId)));
-  if (existing.length === 0) {
-    await db.insert(friendshipsTable).values({ userId, friendId });
-    await db.insert(friendshipsTable).values({ userId: friendId, friendId: userId }).onConflictDoNothing();
+  if (userId === friendId) {
+    res.status(400).json({ error: "Cannot follow yourself" });
+    return;
   }
 
   const [friend] = await db.select().from(usersTable).where(eq(usersTable.id, friendId));
@@ -168,7 +270,14 @@ router.post("/users/:userId/friends", authenticate, async (req, res): Promise<vo
     return;
   }
 
-  res.json({ id: friend.id, username: friend.username, avatarColor: friend.avatarColor, createdAt: friend.createdAt.toISOString() });
+  // Directional follow: a single row (userId follows friendId). No reverse row.
+  // Validate the target exists first so we never persist an orphan follow edge.
+  await db
+    .insert(friendshipsTable)
+    .values({ userId, friendId })
+    .onConflictDoNothing();
+
+  res.json({ id: friend.id, username: friend.username, avatarColor: friend.avatarColor, defaultVisibility: friend.defaultVisibility, createdAt: friend.createdAt.toISOString() });
 });
 
 router.delete("/users/:userId/friends/:friendId", authenticate, async (req, res): Promise<void> => {
@@ -184,8 +293,8 @@ router.delete("/users/:userId/friends/:friendId", authenticate, async (req, res)
   }
 
   const { userId, friendId } = params.data;
+  // Directional unfollow: remove only the (userId -> friendId) row.
   await db.delete(friendshipsTable).where(and(eq(friendshipsTable.userId, userId), eq(friendshipsTable.friendId, friendId)));
-  await db.delete(friendshipsTable).where(and(eq(friendshipsTable.userId, friendId), eq(friendshipsTable.friendId, userId)));
   res.sendStatus(204);
 });
 
@@ -210,10 +319,22 @@ router.get("/users/:userId/saved-comments", authenticate, async (req, res): Prom
   }
 
   const commentIds = saves.map((s) => s.commentId);
+  // Re-apply visibility on read: a comment saved while public may since have
+  // turned private/friends-only, so never return text the viewer can't see.
+  const viewer = await getViewer(userId);
   const comments = await db
     .select()
     .from(commentsTable)
-    .where(inArray(commentsTable.id, commentIds));
+    .where(
+      and(
+        inArray(commentsTable.id, commentIds),
+        visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+        ),
+      ),
+    );
 
   const quoteIds = [...new Set(comments.map((c) => c.quoteId))];
   const quotes = quoteIds.length

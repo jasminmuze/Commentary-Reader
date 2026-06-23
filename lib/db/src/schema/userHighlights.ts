@@ -6,6 +6,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { Visibility } from "./users";
 
 // A user's personal highlight of a canonical quote. One row per (user, quote);
 // community "most highlighted" counts are computed by GROUP BY on this table
@@ -20,6 +21,11 @@ export const userHighlightsTable = pgTable(
     userLibraryId: integer("user_library_id"),
     // CFI range within the user's own file, used to restore their highlight fast.
     cfiRange: text("cfi_range"),
+    // Who can see this highlight: public | friends (mutual follows) | private.
+    visibility: text("visibility")
+      .notNull()
+      .default("public")
+      .$type<Visibility>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

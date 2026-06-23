@@ -1,4 +1,5 @@
 import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import type { Visibility } from "./users";
 
 export const commentsTable = pgTable("comments", {
   id: serial("id").primaryKey(),
@@ -6,6 +7,11 @@ export const commentsTable = pgTable("comments", {
   quoteId: integer("quote_id").notNull(),
   userId: integer("user_id").notNull(),
   text: text("text").notNull(),
+  // Who can see this comment: public | friends (mutual follows) | private (author only).
+  visibility: text("visibility")
+    .notNull()
+    .default("public")
+    .$type<Visibility>(),
   likeCount: integer("like_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

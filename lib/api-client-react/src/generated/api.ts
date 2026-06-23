@@ -41,8 +41,10 @@ import type {
   SaveResult,
   SearchUsersParams,
   UpdateReadingLocationInput,
+  UpdateUserSettings,
   User,
   UserInput,
+  UserProfile,
   UserWithFriendStatus
 } from './api.schemas';
 
@@ -1787,4 +1789,153 @@ export function useGetSavedComments<TData = Awaited<ReturnType<typeof getSavedCo
 
 
 
+
+export const getGetUserProfileUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/profile`
+}
+
+/**
+ * @summary Get a user's public profile with follower/following and activity counts
+ */
+export const getUserProfile = async (userId: number, options?: RequestInit): Promise<UserProfile> => {
+
+  return customFetch<UserProfile>(getGetUserProfileUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUserProfileQueryKey = (userId: number,) => {
+    return [
+    `/api/users/${userId}/profile`
+    ] as const;
+    }
+
+
+export const getGetUserProfileQueryOptions = <TData = Awaited<ReturnType<typeof getUserProfile>>, TError = ErrorType<void>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserProfile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUserProfileQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserProfile>>> = ({ signal }) => getUserProfile(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUserProfile>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUserProfileQueryResult = NonNullable<Awaited<ReturnType<typeof getUserProfile>>>
+export type GetUserProfileQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a user's public profile with follower/following and activity counts
+ */
+
+export function useGetUserProfile<TData = Awaited<ReturnType<typeof getUserProfile>>, TError = ErrorType<void>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserProfile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUserProfileQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateUserSettingsUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/settings`
+}
+
+/**
+ * @summary Update the current user's personal settings
+ */
+export const updateUserSettings = async (userId: number,
+    updateUserSettings: UpdateUserSettings, options?: RequestInit): Promise<User> => {
+
+  return customFetch<User>(getUpdateUserSettingsUrl(userId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateUserSettings,)
+  }
+);}
+
+
+
+
+export const getUpdateUserSettingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateUserSettings>>, TError,{userId: number;data: BodyType<UpdateUserSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateUserSettings>>, TError,{userId: number;data: BodyType<UpdateUserSettings>}, TContext> => {
+
+const mutationKey = ['updateUserSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateUserSettings>>, {userId: number;data: BodyType<UpdateUserSettings>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  updateUserSettings(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateUserSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateUserSettings>>>
+    export type UpdateUserSettingsMutationBody = BodyType<UpdateUserSettings>
+    export type UpdateUserSettingsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update the current user's personal settings
+ */
+export const useUpdateUserSettings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateUserSettings>>, TError,{userId: number;data: BodyType<UpdateUserSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateUserSettings>>,
+        TError,
+        {userId: number;data: BodyType<UpdateUserSettings>},
+        TContext
+      > => {
+      return useMutation(getUpdateUserSettingsMutationOptions(options));
+    }
 

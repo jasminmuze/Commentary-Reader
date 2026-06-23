@@ -6,6 +6,7 @@ import {
   commentsTable,
   commentLikesTable,
   userHighlightsTable,
+  friendshipsTable,
 } from "@workspace/db";
 import { asc, eq } from "drizzle-orm";
 import { logger } from "./logger";
@@ -189,6 +190,23 @@ export async function seedDatabase(): Promise<void> {
       .insert(usersTable)
       .values(DEMO_USERS.map((u) => ({ username: u.username, avatarColor: u.color })))
       .returning();
+
+    // Seed a directional follow web so demo profiles show realistic
+    // follower/following counts (and some mutual "friends"). Each user follows
+    // the next 3 users (wrapping). Symmetric wrap creates mutual pairs.
+    const followRows: { userId: number; friendId: number }[] = [];
+    for (let i = 0; i < insertedUsers.length; i++) {
+      for (let offset = 1; offset <= 3; offset++) {
+        const target = insertedUsers[(i + offset) % insertedUsers.length]!;
+        const me = insertedUsers[i]!;
+        if (me.id !== target.id) {
+          followRows.push({ userId: me.id, friendId: target.id });
+        }
+      }
+    }
+    if (followRows.length > 0) {
+      await db.insert(friendshipsTable).values(followRows).onConflictDoNothing();
+    }
 
     for (let bookIdx = 0; bookIdx < BOOKS.length; bookIdx++) {
       const book = BOOKS[bookIdx]!;

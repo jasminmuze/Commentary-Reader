@@ -513,6 +513,52 @@ paths:
                 items:
                   $ref: "#/components/schemas/Comment"
 
+  /users/{userId}/profile:
+    get:
+      operationId: getUserProfile
+      tags: [users]
+      summary: Get a user's public profile with follower/following and activity counts
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "404":
+          description: Not found
+
+  /users/{userId}/settings:
+    patch:
+      operationId: updateUserSettings
+      tags: [users]
+      summary: Update the current user's personal settings
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserSettings"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
 components:
   schemas:
     HealthStatus:
@@ -598,7 +644,7 @@ components:
 
     Comment:
       type: object
-      required: [id, quoteId, userId, username, avatarColor, text, likeCount, likedByMe, savedByMe, createdAt]
+      required: [id, quoteId, userId, username, avatarColor, text, visibility, likeCount, likedByMe, savedByMe, createdAt]
       properties:
         id:
           type: integer
@@ -612,6 +658,8 @@ components:
           type: string
         text:
           type: string
+        visibility:
+          $ref: "#/components/schemas/Visibility"
         quoteText:
           type: string
         likeCount:
@@ -631,6 +679,8 @@ components:
         text:
           type: string
           minLength: 1
+        visibility:
+          $ref: "#/components/schemas/Visibility"
 
     CreateQuoteInput:
       type: object
@@ -648,6 +698,8 @@ components:
           type: integer
         cfiRange:
           type: string
+        visibility:
+          $ref: "#/components/schemas/Visibility"
 
     HighlightResult:
       type: object
@@ -782,9 +834,46 @@ components:
         userId:
           type: integer
 
+    Visibility:
+      type: string
+      enum: [public, friends, private]
+      description: Who can see a comment or highlight — public, friends (mutual follows), or private (author only)
+
     User:
       type: object
-      required: [id, username, avatarColor, createdAt]
+      required: [id, username, avatarColor, defaultVisibility, createdAt]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        avatarColor:
+          type: string
+        defaultVisibility:
+          $ref: "#/components/schemas/Visibility"
+        createdAt:
+          type: string
+          format: date-time
+        token:
+          type: string
+          description: HMAC-signed bearer token — only present in POST /users response
+
+    UserProfile:
+      type: object
+      required:
+        [
+          id,
+          username,
+          avatarColor,
+          createdAt,
+          followerCount,
+          followingCount,
+          highlightCount,
+          commentCount,
+          isFollowedByMe,
+          followsMe,
+          isMe,
+        ]
       properties:
         id:
           type: integer
@@ -795,9 +884,30 @@ components:
         createdAt:
           type: string
           format: date-time
-        token:
-          type: string
-          description: HMAC-signed bearer token — only present in POST /users response
+        followerCount:
+          type: integer
+        followingCount:
+          type: integer
+        highlightCount:
+          type: integer
+        commentCount:
+          type: integer
+        isFollowedByMe:
+          type: boolean
+          description: Whether the requesting user follows this profile
+        followsMe:
+          type: boolean
+          description: Whether this profile follows the requesting user
+        isMe:
+          type: boolean
+          description: Whether this profile is the requesting user
+
+    UpdateUserSettings:
+      type: object
+      required: [defaultVisibility]
+      properties:
+        defaultVisibility:
+          $ref: "#/components/schemas/Visibility"
 
     UserWithFriendStatus:
       type: object

@@ -9,24 +9,40 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "@/components/UserAvatar";
+import { useUpdateUserSettings } from "@workspace/api-client-react";
+import type { Visibility } from "@workspace/api-client-react";
 
-const USER_ID_KEY = "bookmarks_user_id";
+const VISIBILITY_SETTINGS: {
+  value: Visibility;
+  label: string;
+  description: string;
+  icon: React.ComponentProps<typeof Feather>["name"];
+}[] = [
+  { value: "public", label: "Public", description: "Anyone can see your highlights and comments", icon: "globe" },
+  { value: "friends", label: "Friends", description: "Only readers you both follow can see them", icon: "users" },
+  { value: "private", label: "Private", description: "Only you can see them", icon: "lock" },
+];
 
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user } = useUser();
+  const { user, setUser } = useUser();
+  const updateSettings = useUpdateUserSettings();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const handleLogout = async () => {
-    await AsyncStorage.removeItem(USER_ID_KEY);
-    // In a real app, reset navigation. For now, force a reload.
+  const handleVisibilityChange = (v: Visibility) => {
+    if (!user || v === user.defaultVisibility) return;
+    const prev = user.defaultVisibility;
+    setUser({ ...user, defaultVisibility: v });
+    updateSettings.mutate(
+      { userId: user.id, data: { defaultVisibility: v } },
+      { onError: () => setUser({ ...user, defaultVisibility: prev }) }
+    );
   };
 
   const memberSince = user
@@ -56,6 +72,47 @@ export default function ProfileScreen() {
         </Text>
         <Text style={[styles.profileSince, { color: colors.mutedForeground }]}>
           Member since {memberSince}
+        </Text>
+      </View>
+
+      {/* Default visibility */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>DEFAULT VISIBILITY</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius, gap: 4, padding: 6 }]}>
+          {VISIBILITY_SETTINGS.map((opt) => {
+            const active = user?.defaultVisibility === opt.value;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => handleVisibilityChange(opt.value)}
+                style={[
+                  styles.visRow,
+                  { borderRadius: colors.radius, backgroundColor: active ? colors.muted : "transparent" },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.visIcon,
+                    { backgroundColor: active ? colors.primary : colors.muted, borderRadius: 8 },
+                  ]}
+                >
+                  <Feather
+                    name={opt.icon}
+                    size={16}
+                    color={active ? colors.primaryForeground : colors.mutedForeground}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.visLabel, { color: colors.foreground }]}>{opt.label}</Text>
+                  <Text style={[styles.visDesc, { color: colors.mutedForeground }]}>{opt.description}</Text>
+                </View>
+                {active ? <Feather name="check" size={18} color={colors.primary} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={[styles.helperText, { color: colors.mutedForeground }]}>
+          New highlights and comments use this by default. You can change it for each comment as you post.
         </Text>
       </View>
 
@@ -144,6 +201,33 @@ const styles = StyleSheet.create({
   card: {
     padding: 16,
     borderWidth: 1,
+  },
+  visRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  visIcon: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  visLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  visDesc: {
+    fontSize: 12,
+    marginTop: 1,
+  },
+  helperText: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 8,
+    marginHorizontal: 4,
   },
   aboutText: {
     fontSize: 14,

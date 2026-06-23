@@ -5,8 +5,10 @@
  * Bookmarks - Social Ebook Reader API
  * OpenAPI spec version: 0.1.0
  */
+import type { Visibility } from './visibility';
 
 export interface CommentInput {
   /** @minLength 1 */
   text: string;
+  visibility?: Visibility;
 }

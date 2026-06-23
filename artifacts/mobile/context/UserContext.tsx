@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCreateUser, setAuthTokenGetter } from "@workspace/api-client-react";
+import type { Visibility } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { apiUrl } from "@/lib/api";
 
@@ -32,6 +33,7 @@ interface CurrentUser {
   id: number;
   username: string;
   avatarColor: string;
+  defaultVisibility: Visibility;
 }
 
 interface UserContextType {
@@ -81,7 +83,7 @@ function OnboardingScreen({ onComplete }: { onComplete: (user: CurrentUser) => v
           if (user.token) {
             await AsyncStorage.setItem(TOKEN_KEY, user.token);
           }
-          onComplete({ id: user.id, username: user.username, avatarColor: user.avatarColor });
+          onComplete({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility ?? "public" });
         },
         onError: () => {
           setError("Something went wrong. Try a different username.");
@@ -175,7 +177,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           const res = await fetch(apiUrl(`/api/users/${storedId}`), { headers });
           if (res.ok) {
             const data = await res.json();
-            setUserState({ id: data.id, username: data.username, avatarColor: data.avatarColor });
+            setUserState({ id: data.id, username: data.username, avatarColor: data.avatarColor, defaultVisibility: data.defaultVisibility ?? "public" });
           }
         } catch {
           // ignore fetch errors, show onboarding

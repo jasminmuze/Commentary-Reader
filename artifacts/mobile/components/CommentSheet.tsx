@@ -29,16 +29,26 @@ import { useUser } from "@/context/UserContext";
 import { CommentCard } from "./CommentCard";
 import { EmptyState } from "./EmptyState";
 import { LoadingShimmer } from "./LoadingShimmer";
-import type { Comment } from "@workspace/api-client-react";
+import type { Comment, Visibility } from "@workspace/api-client-react";
 
 type FilterType = "best" | "friends";
+
+const VISIBILITY_OPTIONS: {
+  value: Visibility;
+  label: string;
+  icon: React.ComponentProps<typeof Feather>["name"];
+}[] = [
+  { value: "public", label: "Public", icon: "globe" },
+  { value: "friends", label: "Friends", icon: "users" },
+  { value: "private", label: "Private", icon: "lock" },
+];
 
 interface Props {
   visible: boolean;
   quoteId: number | null;
   quoteText: string;
   onClose: () => void;
-  onCommentSaved?: () => void;
+  onCommentSaved?: (visibility: Visibility) => void;
 }
 
 export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSaved }: Props) {
@@ -48,7 +58,13 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<FilterType>("best");
   const [commentText, setCommentText] = useState("");
+  const [visibility, setVisibility] = useState<Visibility>(user?.defaultVisibility ?? "public");
   const slideAnim = useRef(new Animated.Value(0)).current;
+
+  // When the sheet opens, reset the compose visibility to the user's default.
+  useEffect(() => {
+    if (visible) setVisibility(user?.defaultVisibility ?? "public");
+  }, [visible, user?.defaultVisibility]);
 
   useEffect(() => {
     if (visible) {
@@ -108,18 +124,18 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
     if (!user || !quoteId || !commentText.trim()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     createComment.mutate(
-      { quoteId, data: { text: commentText.trim() } },
+      { quoteId, data: { text: commentText.trim(), visibility } },
       {
         onSuccess: () => {
           setCommentText("");
           Keyboard.dismiss();
           queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "best" }) });
           queryClient.invalidateQueries({ queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "friends" }) });
-          onCommentSaved?.();
+          onCommentSaved?.(visibility);
         },
       }
     );
-  }, [user, quoteId, commentText, createComment, queryClient, onCommentSaved]);
+  }, [user, quoteId, commentText, visibility, createComment, queryClient, onCommentSaved]);
 
   const translateY = slideAnim.interpolate({
     inputRange: [0, 1],
@@ -220,13 +236,47 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
 
           <View
             style={[
-              styles.inputRow,
+              styles.inputBar,
               {
                 borderColor: colors.border,
                 paddingBottom: bottomPad + 8,
               },
             ]}
           >
+            <View style={styles.visibilityRow}>
+              {VISIBILITY_OPTIONS.map((opt) => {
+                const active = visibility === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => setVisibility(opt.value)}
+                    style={[
+                      styles.visChip,
+                      {
+                        backgroundColor: active ? colors.primary : colors.card,
+                        borderColor: active ? colors.primary : colors.border,
+                        borderRadius: colors.radius,
+                      },
+                    ]}
+                  >
+                    <Feather
+                      name={opt.icon}
+                      size={12}
+                      color={active ? colors.primaryForeground : colors.mutedForeground}
+                    />
+                    <Text
+                      style={[
+                        styles.visChipText,
+                        { color: active ? colors.primaryForeground : colors.mutedForeground },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.inputRow}>
             <TextInput
               style={[
                 styles.input,
@@ -258,6 +308,7 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
             >
               <Feather name="send" size={18} color={commentText.trim() ? colors.primaryForeground : colors.mutedForeground} />
             </Pressable>
+            </View>
           </View>
         </Animated.View>
       </KeyboardAvoidingView>
@@ -325,12 +376,31 @@ const styles = StyleSheet.create({
   list: {
     flex: 1,
   },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
+  inputBar: {
     paddingHorizontal: 16,
     paddingTop: 10,
     borderTopWidth: 1,
+    gap: 10,
+  },
+  visibilityRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  visChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  visChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
     gap: 10,
   },
   input: {

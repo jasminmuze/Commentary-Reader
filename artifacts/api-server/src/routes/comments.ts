@@ -6,7 +6,7 @@ import {
   commentLikesTable,
   commentSavesTable,
   quotesTable,
-  friendshipsTable,
+  usersTable,
 } from "@workspace/db";
 import {
   GetQuoteCommentsParams,
@@ -17,6 +17,11 @@ import {
   SaveCommentParams,
 } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
+import {
+  getFollowingIds,
+  getViewer,
+  visibilityPredicate,
+} from "../lib/social";
 import { authenticate } from "../middlewares/authenticate.js";
 
 const router: IRouter = Router();
@@ -35,15 +40,19 @@ router.get("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<
     : "all";
 
   const { quoteId } = params.data;
+  const viewer = await getViewer(userId);
+  const visible = visibilityPredicate(
+    commentsTable.visibility,
+    commentsTable.userId,
+    viewer,
+  );
   let comments;
 
   if (filter === "friends") {
-    const friendships = await db
-      .select({ friendId: friendshipsTable.friendId })
-      .from(friendshipsTable)
-      .where(eq(friendshipsTable.userId, userId));
-    const friendIds = friendships.map((f) => f.friendId);
-    if (friendIds.length === 0) {
+    // "Friends" tab = comments by people I follow, still gated by visibility
+    // (a followed user's friends-only post shows only if we're mutual).
+    const followingIds = await getFollowingIds(userId);
+    if (followingIds.length === 0) {
       res.json([]);
       return;
     }
@@ -53,7 +62,8 @@ router.get("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<
       .where(
         and(
           eq(commentsTable.quoteId, quoteId),
-          inArray(commentsTable.userId, friendIds),
+          inArray(commentsTable.userId, followingIds),
+          visible,
         ),
       )
       .orderBy(desc(commentsTable.likeCount));
@@ -61,14 +71,14 @@ router.get("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<
     comments = await db
       .select()
       .from(commentsTable)
-      .where(eq(commentsTable.quoteId, quoteId))
+      .where(and(eq(commentsTable.quoteId, quoteId), visible))
       .orderBy(desc(commentsTable.likeCount))
       .limit(10);
   } else {
     comments = await db
       .select()
       .from(commentsTable)
-      .where(eq(commentsTable.quoteId, quoteId))
+      .where(and(eq(commentsTable.quoteId, quoteId), visible))
       .orderBy(desc(commentsTable.likeCount));
   }
 
@@ -101,12 +111,22 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
   }
 
   const userId = req.userId;
+  let visibility = body.data.visibility;
+  if (!visibility) {
+    const [author] = await db
+      .select({ defaultVisibility: usersTable.defaultVisibility })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+    visibility = author?.defaultVisibility ?? "public";
+  }
+
   const [comment] = await db
     .insert(commentsTable)
     .values({
       quoteId: params.data.quoteId,
       userId,
       text: body.data.text,
+      visibility,
       likeCount: 0,
     })
     .returning();
@@ -124,6 +144,27 @@ router.post("/comments/:commentId/like", authenticate, async (req, res): Promise
 
   const { commentId } = params.data;
   const userId = req.userId;
+
+  // Authz: you may only like a comment you are allowed to see.
+  const viewer = await getViewer(userId);
+  const [visibleComment] = await db
+    .select({ id: commentsTable.id })
+    .from(commentsTable)
+    .where(
+      and(
+        eq(commentsTable.id, commentId),
+        visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+        ),
+      ),
+    )
+    .limit(1);
+  if (!visibleComment) {
+    res.status(404).json({ error: "Comment not found" });
+    return;
+  }
 
   const existing = await db
     .select()
@@ -170,6 +211,27 @@ router.post("/comments/:commentId/save", authenticate, async (req, res): Promise
 
   const { commentId } = params.data;
   const userId = req.userId;
+
+  // Authz: you may only save a comment you are allowed to see.
+  const viewer = await getViewer(userId);
+  const [visibleComment] = await db
+    .select({ id: commentsTable.id })
+    .from(commentsTable)
+    .where(
+      and(
+        eq(commentsTable.id, commentId),
+        visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+        ),
+      ),
+    )
+    .limit(1);
+  if (!visibleComment) {
+    res.status(404).json({ error: "Comment not found" });
+    return;
+  }
 
   const existing = await db
     .select()

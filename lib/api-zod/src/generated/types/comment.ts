@@ -5,6 +5,7 @@
  * Bookmarks - Social Ebook Reader API
  * OpenAPI spec version: 0.1.0
  */
+import type { Visibility } from './visibility';
 
 export interface Comment {
   id: number;
@@ -13,6 +14,7 @@ export interface Comment {
   username: string;
   avatarColor: string;
   text: string;
+  visibility: Visibility;
   quoteText?: string;
   likeCount: number;
   likedByMe: boolean;

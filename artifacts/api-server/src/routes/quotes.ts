@@ -5,6 +5,7 @@ import {
   booksTable,
   quotesTable,
   userHighlightsTable,
+  usersTable,
 } from "@workspace/db";
 import {
   GetBookQuotesParams,
@@ -20,6 +21,7 @@ import {
   getHighlightedQuoteIds,
   toQuote,
 } from "../lib/queries";
+import { getViewer } from "../lib/social";
 import { authenticate } from "../middlewares/authenticate.js";
 
 const router: IRouter = Router();
@@ -32,6 +34,7 @@ router.get("/books/:bookId/quotes", authenticate, async (req, res): Promise<void
     return;
   }
   const userId = req.userId;
+  const viewer = await getViewer(userId);
 
   const quotes = await db
     .select()
@@ -39,12 +42,14 @@ router.get("/books/:bookId/quotes", authenticate, async (req, res): Promise<void
     .where(eq(quotesTable.canonicalBookId, params.data.bookId))
     .orderBy(asc(quotesTable.id));
   const quoteIds = quotes.map((q) => q.id);
-  const counts = await getQuoteCountsMap(quoteIds);
+  const counts = await getQuoteCountsMap(quoteIds, viewer);
   const highlighted = await getHighlightedQuoteIds(userId, quoteIds);
 
-  const result: Quote[] = quotes.map((q) =>
-    toQuote(q, counts.get(q.id)!, highlighted.has(q.id)),
-  );
+  // Only return quotes with viewer-visible activity so the reader never paints
+  // (and thus never leaks the text of) private/friends-only passages.
+  const result: Quote[] = quotes
+    .map((q) => toQuote(q, counts.get(q.id)!, highlighted.has(q.id)))
+    .filter((q) => q.highlightCount > 0 || q.commentCount > 0);
   res.json(result);
 });
 
@@ -90,7 +95,7 @@ router.post("/quotes/:quoteId/highlight", authenticate, async (req, res): Promis
 
   const { quoteId } = params.data;
   const userId = req.userId;
-  const { userLibraryId, cfiRange } = body.data;
+  const { userLibraryId, cfiRange, visibility } = body.data;
 
   const [quote] = await db
     .select()
@@ -123,6 +128,14 @@ router.post("/quotes/:quoteId/highlight", authenticate, async (req, res): Promis
       );
     highlighted = false;
   } else {
+    let resolvedVisibility = visibility;
+    if (!resolvedVisibility) {
+      const [author] = await db
+        .select({ defaultVisibility: usersTable.defaultVisibility })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId));
+      resolvedVisibility = author?.defaultVisibility ?? "public";
+    }
     await db
       .insert(userHighlightsTable)
       .values({
@@ -130,12 +143,14 @@ router.post("/quotes/:quoteId/highlight", authenticate, async (req, res): Promis
         quoteId,
         userLibraryId: userLibraryId ?? null,
         cfiRange: cfiRange ?? null,
+        visibility: resolvedVisibility,
       })
       .onConflictDoNothing();
     highlighted = true;
   }
 
-  const counts = (await getQuoteCountsMap([quoteId])).get(quoteId)!;
+  const viewer = await getViewer(userId);
+  const counts = (await getQuoteCountsMap([quoteId], viewer)).get(quoteId)!;
   const result: HighlightResult = {
     highlighted,
     highlightCount: counts.highlightCount,

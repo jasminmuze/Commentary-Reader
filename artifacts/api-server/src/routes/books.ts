@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db, booksTable, quotesTable, commentsTable } from "@workspace/db";
 import {
   ListBooksQueryParams,
@@ -17,6 +17,7 @@ import {
   formatComment,
 } from "../lib/queries";
 import { normalizeTitle, normalizeAuthor } from "../lib/text";
+import { getViewer, visibilityPredicate } from "../lib/social";
 import { authenticate } from "../middlewares/authenticate.js";
 
 const COVER_COLORS = [
@@ -83,6 +84,7 @@ router.get("/books/:bookId", authenticate, async (req, res): Promise<void> => {
     return;
   }
   const userId = req.userId;
+  const viewer = await getViewer(userId);
 
   const [book] = await db
     .select()
@@ -93,20 +95,23 @@ router.get("/books/:bookId", authenticate, async (req, res): Promise<void> => {
     return;
   }
 
-  const counts = (await getBookCountsMap([book.id])).get(book.id)!;
+  const counts = (await getBookCountsMap([book.id], viewer)).get(book.id)!;
 
   const quotes = await db
     .select()
     .from(quotesTable)
     .where(eq(quotesTable.canonicalBookId, book.id));
   const quoteIds = quotes.map((q) => q.id);
-  const qCounts = await getQuoteCountsMap(quoteIds);
+  const qCounts = await getQuoteCountsMap(quoteIds, viewer);
   const highlighted = userId
     ? await getHighlightedQuoteIds(userId, quoteIds)
     : new Set<number>();
 
   const topQuotes: Quote[] = quotes
     .map((q) => toQuote(q, qCounts.get(q.id)!, highlighted.has(q.id)))
+    // Only surface quotes with viewer-visible activity — never leak the text of
+    // passages whose only comments/highlights are private/friends-only.
+    .filter((q) => q.highlightCount > 0 || q.commentCount > 0)
     .sort(
       (a, b) =>
         b.highlightCount - a.highlightCount ||
@@ -119,7 +124,16 @@ router.get("/books/:bookId", authenticate, async (req, res): Promise<void> => {
     const rows = await db
       .select()
       .from(commentsTable)
-      .where(inArray(commentsTable.quoteId, quoteIds))
+      .where(
+        and(
+          inArray(commentsTable.quoteId, quoteIds),
+          visibilityPredicate(
+            commentsTable.visibility,
+            commentsTable.userId,
+            viewer,
+          ),
+        ),
+      )
       .orderBy(desc(commentsTable.likeCount))
       .limit(10);
     const quoteTextById = new Map(quotes.map((q) => [q.id, q.text]));

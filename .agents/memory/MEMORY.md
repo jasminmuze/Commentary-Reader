@@ -4,3 +4,5 @@
 - [epubjs-react-native on Expo SDK 54](epubjs-react-native-expo.md) — don't install its file-system/expo-file-system pkgs; write a local useFileSystem on `expo-file-system/legacy`; reader is device-only, guard off web.
 - [epubjs source type detection](epubjs-source-type.md) — getSourceType only matches .epub/.opf/base64 by substring; object keys MUST include .epub extension or the Reader throws "Invalid source type".
 - [HMAC auth pattern](hmac-auth.md) — Bearer token auth via SESSION_SECRET; authenticate middleware sets req.userId; zero client-supplied userId anywhere in API or mobile.
+- [Visibility privacy invariant](visibility-privacy-invariant.md) — any endpoint surfacing quote text/comments/counts must gate rows via visibilityPredicate AND drop zero-visible-activity quotes, or it leaks private passages.
+- [Reader anchoring vs nav race](reader-anchoring-nav-race.md) — pause community-highlight search()-anchoring while a controlled display() (restore/TOC) is in flight; resume on navigationDone and the restore timeout.

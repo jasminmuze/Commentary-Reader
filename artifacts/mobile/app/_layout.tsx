@@ -35,6 +35,7 @@ function RootLayoutNav() {
       <Stack.Screen name="book/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="read/[libraryId]" options={{ headerShown: false }} />
       <Stack.Screen name="match/[libraryId]" options={{ headerShown: false }} />
+      <Stack.Screen name="user/[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }

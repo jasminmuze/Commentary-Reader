@@ -2,6 +2,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import { useColors } from "@/hooks/useColors";
 import { UserAvatar } from "./UserAvatar";
 import type { Comment } from "@workspace/api-client-react";
@@ -51,7 +52,11 @@ export function CommentCard({ comment, onLike, onSave, compact = false }: Props)
         },
       ]}
     >
-      <View style={styles.header}>
+      <Pressable
+        style={styles.header}
+        onPress={() => router.push(`/user/${comment.userId}`)}
+        hitSlop={6}
+      >
         <UserAvatar username={comment.username} avatarColor={comment.avatarColor} size={32} />
         <View style={styles.headerText}>
           <Text style={[styles.username, { color: colors.foreground }]}>
@@ -61,7 +66,14 @@ export function CommentCard({ comment, onLike, onSave, compact = false }: Props)
             {timeAgo(comment.createdAt)}
           </Text>
         </View>
-      </View>
+        {comment.visibility !== "public" ? (
+          <Feather
+            name={comment.visibility === "private" ? "lock" : "users"}
+            size={12}
+            color={colors.mutedForeground}
+          />
+        ) : null}
+      </Pressable>
 
       <Text style={[styles.text, { color: colors.foreground }]}>
         {comment.text}

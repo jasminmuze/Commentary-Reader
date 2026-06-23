@@ -11,6 +11,7 @@ import {
 import { and, count, eq, inArray } from "drizzle-orm";
 import type { Book, Comment, Quote } from "@workspace/api-zod";
 import { normalizeText, hashText, leadingSubstring } from "./text";
+import { visibilityPredicate, type Viewer } from "./social";
 
 /**
  * Maps a community highlight count to a 0..1 intensity used to shade the
@@ -31,30 +32,84 @@ export interface BookCounts {
   highlightCount: number;
 }
 
-/** Per-book quote/comment/highlight counts computed via GROUP BY (no denormalization). */
+/**
+ * Per-book quote/comment/highlight counts computed via GROUP BY (no
+ * denormalization). All counts are visibility-gated to `viewer` (public-only
+ * when omitted) so private/friends activity never leaks via counts. quoteCount
+ * is the number of distinct quotes that have at least one viewer-visible comment
+ * or highlight (not the raw quote-row count).
+ */
 export async function getBookCountsMap(
   bookIds: number[],
+  viewer?: Viewer,
 ): Promise<Map<number, BookCounts>> {
   const map = new Map<number, BookCounts>();
   for (const id of bookIds)
     map.set(id, { quoteCount: 0, commentCount: 0, highlightCount: 0 });
   if (bookIds.length === 0) return map;
 
-  const qc = await db
-    .select({ bookId: quotesTable.canonicalBookId, c: count() })
-    .from(quotesTable)
-    .where(inArray(quotesTable.canonicalBookId, bookIds))
-    .groupBy(quotesTable.canonicalBookId);
-  for (const r of qc) {
-    const m = map.get(r.bookId);
-    if (m) m.quoteCount = Number(r.c);
+  // quoteCount = distinct quotes with >=1 viewer-visible comment OR highlight.
+  // Counting raw quote rows would leak the existence of private/friends-only
+  // passages, so we union the visible-activity quote IDs per book instead.
+  const bookQuoteSets = new Map<number, Set<number>>();
+  for (const id of bookIds) bookQuoteSets.set(id, new Set());
+  const visibleCommentQuotes = await db
+    .selectDistinct({
+      bookId: quotesTable.canonicalBookId,
+      quoteId: commentsTable.quoteId,
+    })
+    .from(commentsTable)
+    .innerJoin(quotesTable, eq(commentsTable.quoteId, quotesTable.id))
+    .where(
+      and(
+        inArray(quotesTable.canonicalBookId, bookIds),
+        visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+        ),
+      ),
+    );
+  for (const r of visibleCommentQuotes)
+    bookQuoteSets.get(r.bookId)?.add(r.quoteId);
+  const visibleHighlightQuotes = await db
+    .selectDistinct({
+      bookId: quotesTable.canonicalBookId,
+      quoteId: userHighlightsTable.quoteId,
+    })
+    .from(userHighlightsTable)
+    .innerJoin(quotesTable, eq(userHighlightsTable.quoteId, quotesTable.id))
+    .where(
+      and(
+        inArray(quotesTable.canonicalBookId, bookIds),
+        visibilityPredicate(
+          userHighlightsTable.visibility,
+          userHighlightsTable.userId,
+          viewer,
+        ),
+      ),
+    );
+  for (const r of visibleHighlightQuotes)
+    bookQuoteSets.get(r.bookId)?.add(r.quoteId);
+  for (const [id, set] of bookQuoteSets) {
+    const m = map.get(id);
+    if (m) m.quoteCount = set.size;
   }
 
   const cc = await db
     .select({ bookId: quotesTable.canonicalBookId, c: count() })
     .from(commentsTable)
     .innerJoin(quotesTable, eq(commentsTable.quoteId, quotesTable.id))
-    .where(inArray(quotesTable.canonicalBookId, bookIds))
+    .where(
+      and(
+        inArray(quotesTable.canonicalBookId, bookIds),
+        visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+        ),
+      ),
+    )
     .groupBy(quotesTable.canonicalBookId);
   for (const r of cc) {
     const m = map.get(r.bookId);
@@ -65,7 +120,16 @@ export async function getBookCountsMap(
     .select({ bookId: quotesTable.canonicalBookId, c: count() })
     .from(userHighlightsTable)
     .innerJoin(quotesTable, eq(userHighlightsTable.quoteId, quotesTable.id))
-    .where(inArray(quotesTable.canonicalBookId, bookIds))
+    .where(
+      and(
+        inArray(quotesTable.canonicalBookId, bookIds),
+        visibilityPredicate(
+          userHighlightsTable.visibility,
+          userHighlightsTable.userId,
+          viewer,
+        ),
+      ),
+    )
     .groupBy(quotesTable.canonicalBookId);
   for (const r of hc) {
     const m = map.get(r.bookId);
@@ -105,6 +169,7 @@ export interface QuoteCounts {
 
 export async function getQuoteCountsMap(
   quoteIds: number[],
+  viewer?: Viewer,
 ): Promise<Map<number, QuoteCounts>> {
   const map = new Map<number, QuoteCounts>();
   for (const id of quoteIds)
@@ -114,7 +179,16 @@ export async function getQuoteCountsMap(
   const hc = await db
     .select({ quoteId: userHighlightsTable.quoteId, c: count() })
     .from(userHighlightsTable)
-    .where(inArray(userHighlightsTable.quoteId, quoteIds))
+    .where(
+      and(
+        inArray(userHighlightsTable.quoteId, quoteIds),
+        visibilityPredicate(
+          userHighlightsTable.visibility,
+          userHighlightsTable.userId,
+          viewer,
+        ),
+      ),
+    )
     .groupBy(userHighlightsTable.quoteId);
   for (const r of hc) {
     const m = map.get(r.quoteId);
@@ -124,7 +198,16 @@ export async function getQuoteCountsMap(
   const cc = await db
     .select({ quoteId: commentsTable.quoteId, c: count() })
     .from(commentsTable)
-    .where(inArray(commentsTable.quoteId, quoteIds))
+    .where(
+      and(
+        inArray(commentsTable.quoteId, quoteIds),
+        visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+        ),
+      ),
+    )
     .groupBy(commentsTable.quoteId);
   for (const r of cc) {
     const m = map.get(r.quoteId);
@@ -211,6 +294,7 @@ export async function formatComment(
     username: user?.username ?? "unknown",
     avatarColor: user?.avatarColor ?? "#7A8BAA",
     text: comment.text,
+    visibility: comment.visibility,
     ...(quoteText !== undefined ? { quoteText } : {}),
     likeCount: comment.likeCount,
     likedByMe,
