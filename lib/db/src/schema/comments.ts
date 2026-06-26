@@ -13,6 +13,8 @@ export const commentsTable = pgTable("comments", {
     .default("public")
     .$type<Visibility>(),
   likeCount: integer("like_count").notNull().default(0),
+  // NULL = top-level comment. Non-null = reply to a top-level comment (max 1 level deep).
+  parentId: integer("parent_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

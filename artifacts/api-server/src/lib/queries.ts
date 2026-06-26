@@ -287,6 +287,13 @@ export async function formatComment(
       ).length > 0
     : false;
 
+  // Count direct replies to this comment (replies themselves have replyCount = 0).
+  const [replyRow] = await db
+    .select({ c: count() })
+    .from(commentsTable)
+    .where(eq(commentsTable.parentId, comment.id));
+  const replyCount = Number(replyRow?.c ?? 0);
+
   return {
     id: comment.id,
     quoteId: comment.quoteId,
@@ -299,6 +306,8 @@ export async function formatComment(
     likeCount: comment.likeCount,
     likedByMe,
     savedByMe,
+    replyCount,
+    parentId: comment.parentId ?? null,
     createdAt: comment.createdAt,
   };
 }

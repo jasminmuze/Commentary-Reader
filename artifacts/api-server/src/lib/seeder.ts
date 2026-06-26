@@ -7,8 +7,9 @@ import {
   commentLikesTable,
   userHighlightsTable,
   friendshipsTable,
+  notificationsTable,
 } from "@workspace/db";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { logger } from "./logger";
 import {
   normalizeText,
@@ -296,6 +297,101 @@ export async function seedDatabase(): Promise<void> {
               quoteId: quote.id,
             })),
           );
+        }
+      }
+    }
+
+    // Seed demo replies so the reply thread feature is visible from launch.
+    // We grab the first few top-level comments and add threaded replies with @mentions.
+    const topLevelComments = await db
+      .select()
+      .from(commentsTable)
+      .where(isNull(commentsTable.parentId))
+      .orderBy(asc(commentsTable.id))
+      .limit(6);
+
+    if (topLevelComments.length >= 3) {
+      const u = insertedUsers;
+      const demoReplies: Array<{
+        parentIdx: number;
+        userIdx: number;
+        text: string;
+      }> = [
+        {
+          parentIdx: 0,
+          userIdx: 5,
+          text: `@${u[2]!.username} 수동태 사용에 대한 분석 진짜 탁월해요. 오스틴이 독자를 이 사회적 합의의 공모자로 만드는 방식이 놀랍죠.`,
+        },
+        {
+          parentIdx: 0,
+          userIdx: 6,
+          text: `@${u[5]!.username} 맞아요! 그래서 첫 문장을 읽는 순간 이미 이 세계관에 흡수되는 느낌이에요.`,
+        },
+        {
+          parentIdx: 1,
+          userIdx: 7,
+          text: `@${u[3]!.username} "11월처럼 우울한 영혼"이라는 표현, 진짜 이 시대에도 완벽하게 통하는 말이에요. 멜빌 선견지명 ㄷㄷ`,
+        },
+        {
+          parentIdx: 1,
+          userIdx: 8,
+          text: "관광 여행 전에 이 구절 읽으면 동기부여 200% ㅋㅋ 배 타러 가고 싶다",
+        },
+        {
+          parentIdx: 2,
+          userIdx: 9,
+          text: `@${u[0]!.username} 냉소처럼 들리지만 실은 독자한테 직접 거울을 들이미는 거라고 생각해요. 오스틴 특유의 방식이죠.`,
+        },
+        {
+          parentIdx: 3,
+          userIdx: 10,
+          text: `@${u[1]!.username} 다아시가 이 프러포즈에서 실패하는 이유가 단순히 오만 때문만이 아니에요 — 그는 여전히 자신이 양보하고 있다고 생각하거든요.`,
+        },
+      ];
+
+      for (const r of demoReplies) {
+        const parent = topLevelComments[r.parentIdx];
+        const replyUser = u[r.userIdx];
+        if (!parent || !replyUser) continue;
+
+        const [reply] = await db
+          .insert(commentsTable)
+          .values({
+            quoteId: parent.quoteId,
+            userId: replyUser.id,
+            text: r.text,
+            parentId: parent.id,
+            likeCount: 0,
+          })
+          .returning();
+        if (!reply) continue;
+
+        const notifiedIds = new Set<number>([replyUser.id]);
+
+        // Notify parent comment author.
+        if (parent.userId !== replyUser.id) {
+          await db.insert(notificationsTable).values({
+            userId: parent.userId,
+            type: "reply",
+            actorId: replyUser.id,
+            commentId: reply.id,
+          });
+          notifiedIds.add(parent.userId);
+        }
+
+        // Notify @mentioned users.
+        const mentions = [...r.text.matchAll(/\B@(\w+)/g)].map((m) => m[1]!);
+        const mentionedUsers = u.filter(
+          (usr) => mentions.includes(usr.username) && !notifiedIds.has(usr.id),
+        );
+        for (const mentioned of mentionedUsers) {
+          await db.insert(notificationsTable).values({
+            userId: mentioned.id,
+            type: "mention",
+            actorId: replyUser.id,
+            commentId: reply.id,
+          });
+          notifiedIds.add(mentioned.id);
         }
       }
     }

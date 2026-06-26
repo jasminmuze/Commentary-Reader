@@ -5,10 +5,28 @@ import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { Platform, StyleSheet, Text, View, useColorScheme } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
+import { useUser } from "@/context/UserContext";
+import {
+  useGetNotifications,
+  getGetNotificationsQueryKey,
+} from "@workspace/api-client-react";
+
+function useUnreadCount() {
+  const { user } = useUser();
+  const userId = user?.id ?? 0;
+  const { data } = useGetNotifications(userId, {
+    query: {
+      enabled: !!userId,
+      queryKey: getGetNotificationsQueryKey(userId),
+      refetchInterval: 30_000,
+    },
+  });
+  return data?.unreadCount ?? 0;
+}
 
 function NativeTabLayout() {
   return (
@@ -29,11 +47,37 @@ function NativeTabLayout() {
         <Icon sf={{ default: "bookmark", selected: "bookmark.fill" }} />
         <Label>Saved</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="notifications">
+        <Icon sf={{ default: "bell", selected: "bell.fill" }} />
+        <Label>Notifications</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
         <Icon sf={{ default: "person", selected: "person.fill" }} />
         <Label>Profile</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
+  );
+}
+
+function BellIcon({ color }: { color: string }) {
+  const colors = useColors();
+  const unreadCount = useUnreadCount();
+  return (
+    <View style={{ position: "relative" }}>
+      <Feather name="bell" size={22} color={color} />
+      {unreadCount > 0 ? (
+        <View
+          style={[
+            styles.bellBadge,
+            { backgroundColor: colors.primary },
+          ]}
+        >
+          <Text style={[styles.bellBadgeText, { color: colors.primaryForeground }]}>
+            {unreadCount > 9 ? "9+" : String(unreadCount)}
+          </Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -44,6 +88,7 @@ function ClassicTabLayout() {
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const insets = useSafeAreaInsets();
+  const unreadCount = useUnreadCount();
 
   return (
     <Tabs
@@ -120,6 +165,20 @@ function ClassicTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="notifications"
+        options={{
+          title: "Notifications",
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: colors.primary, fontSize: 10 },
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="bell" tintColor={color} size={22} />
+            ) : (
+              <BellIcon color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
@@ -141,3 +200,21 @@ export default function TabLayout() {
   }
   return <ClassicTabLayout />;
 }
+
+const styles = StyleSheet.create({
+  bellBadge: {
+    position: "absolute",
+    top: -4,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: {
+    fontSize: 9,
+    fontWeight: "700",
+  },
+});

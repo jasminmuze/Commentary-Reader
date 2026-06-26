@@ -19,5 +19,12 @@ export interface Comment {
   likeCount: number;
   likedByMe: boolean;
   savedByMe: boolean;
+  /** Number of visible replies (0 for replies themselves) */
+  replyCount: number;
+  /**
+     * ID of the parent comment for replies; null for top-level comments
+     * @nullable
+     */
+  parentId?: number | null;
   createdAt: Date;
 }

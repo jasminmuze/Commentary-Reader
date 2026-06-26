@@ -6,3 +6,4 @@
 - [HMAC auth pattern](hmac-auth.md) — Bearer token auth via SESSION_SECRET; authenticate middleware sets req.userId; zero client-supplied userId anywhere in API or mobile.
 - [Visibility privacy invariant](visibility-privacy-invariant.md) — any endpoint surfacing quote text/comments/counts must gate rows via visibilityPredicate AND drop zero-visible-activity quotes, or it leaks private passages.
 - [Reader anchoring vs nav race](reader-anchoring-nav-race.md) — pause community-highlight search()-anchoring while a controlled display() (restore/TOC) is in flight; resume on navigationDone and the restore timeout.
+- [Reply threads + notifications](reply-notifications.md) — 1-level max enforced at app layer; notifications router is a separate file; after api-zod barrel changes run pnpm run typecheck:libs before leaf checks or NotificationItem stays invisible.

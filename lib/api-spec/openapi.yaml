@@ -141,7 +141,7 @@ paths:
     get:
       operationId: getQuoteComments
       tags: [comments]
-      summary: Get comments for a quote
+      summary: Get top-level comments for a quote
       parameters:
         - name: quoteId
           in: path
@@ -250,6 +250,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SaveResult"
+
+  /comments/{commentId}/replies:
+    get:
+      operationId: getCommentReplies
+      tags: [comments]
+      summary: Get replies to a top-level comment (flat, chronological, visibility-gated)
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Replies list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+    post:
+      operationId: createReply
+      tags: [comments]
+      summary: Reply to a top-level comment (max 1 level; parses @mentions and fires notifications)
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentInput"
+      responses:
+        "201":
+          description: Reply created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
 
   /library:
     post:
@@ -559,6 +603,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/User"
 
+  /users/{userId}/notifications:
+    get:
+      operationId: getNotifications
+      tags: [users]
+      summary: Get notifications for a user (newest first, limit 50)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Notification list with unread count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+
+  /users/{userId}/notifications/read-all:
+    put:
+      operationId: markNotificationsRead
+      tags: [users]
+      summary: Mark all notifications as read
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Unread count after marking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCount"
+
 components:
   schemas:
     HealthStatus:
@@ -644,7 +726,7 @@ components:
 
     Comment:
       type: object
-      required: [id, quoteId, userId, username, avatarColor, text, visibility, likeCount, likedByMe, savedByMe, createdAt]
+      required: [id, quoteId, userId, username, avatarColor, text, visibility, likeCount, likedByMe, savedByMe, replyCount, createdAt]
       properties:
         id:
           type: integer
@@ -668,6 +750,12 @@ components:
           type: boolean
         savedByMe:
           type: boolean
+        replyCount:
+          type: integer
+          description: Number of visible replies (0 for replies themselves)
+        parentId:
+          type: [integer, "null"]
+          description: ID of the parent comment for replies; null for top-level comments
         createdAt:
           type: string
           format: date-time
@@ -938,4 +1026,58 @@ components:
       required: [friendId]
       properties:
         friendId:
+          type: integer
+
+    NotificationItem:
+      type: object
+      required: [id, type, actorId, actorUsername, actorAvatarColor, commentId, commentText, parentCommentId, quoteId, read, createdAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [reply, mention]
+          description: "reply = someone replied to your comment; mention = you were @mentioned"
+        actorId:
+          type: integer
+        actorUsername:
+          type: string
+        actorAvatarColor:
+          type: string
+        commentId:
+          type: integer
+          description: The reply comment that triggered the notification
+        commentText:
+          type: string
+          description: Preview of the reply text
+        parentCommentId:
+          type: [integer, "null"]
+          description: The original top-level comment (null for mention-only notifications)
+        quoteId:
+          type: integer
+        quoteText:
+          type: string
+          description: The quote text for navigation context
+        read:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationList:
+      type: object
+      required: [notifications, unreadCount]
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationItem"
+        unreadCount:
+          type: integer
+
+    UnreadCount:
+      type: object
+      required: [unreadCount]
+      properties:
+        unreadCount:
           type: integer

@@ -11,7 +11,9 @@ interface Props {
   comment: Comment;
   onLike: (commentId: number) => void;
   onSave: (commentId: number) => void;
+  onReply?: (comment: Comment) => void;
   compact?: boolean;
+  isReply?: boolean;
 }
 
 function timeAgo(dateStr: string): string {
@@ -28,7 +30,7 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(diffDays / 30)}mo`;
 }
 
-export function CommentCard({ comment, onLike, onSave, compact = false }: Props) {
+export function CommentCard({ comment, onLike, onSave, onReply, compact = false, isReply = false }: Props) {
   const colors = useColors();
 
   const handleLike = () => {
@@ -41,6 +43,11 @@ export function CommentCard({ comment, onLike, onSave, compact = false }: Props)
     onSave(comment.id);
   };
 
+  const handleReply = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onReply?.(comment);
+  };
+
   return (
     <View
       style={[
@@ -49,6 +56,7 @@ export function CommentCard({ comment, onLike, onSave, compact = false }: Props)
           backgroundColor: colors.card,
           borderRadius: colors.radius,
           borderColor: colors.border,
+          marginLeft: isReply ? 32 : 16,
         },
       ]}
     >
@@ -103,6 +111,17 @@ export function CommentCard({ comment, onLike, onSave, compact = false }: Props)
             color={comment.savedByMe ? colors.accent : colors.mutedForeground}
           />
         </Pressable>
+
+        {onReply && !isReply ? (
+          <Pressable style={styles.action} onPress={handleReply}>
+            <Feather name="message-square" size={16} color={colors.mutedForeground} />
+            {(comment.replyCount ?? 0) > 0 ? (
+              <Text style={[styles.actionCount, { color: colors.mutedForeground }]}>
+                {comment.replyCount}
+              </Text>
+            ) : null}
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -113,7 +132,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     gap: 10,
-    marginHorizontal: 16,
+    marginRight: 16,
     marginVertical: 5,
   },
   header: {

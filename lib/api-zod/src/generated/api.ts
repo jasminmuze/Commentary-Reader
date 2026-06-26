@@ -89,6 +89,8 @@ export const GetBookResponse = zod.object({
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
   "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
   "createdAt": zod.coerce.date()
 }))
 })
@@ -143,7 +145,7 @@ export const CreateQuoteResponse = zod.object({
 
 
 /**
- * @summary Get comments for a quote
+ * @summary Get top-level comments for a quote
  */
 export const GetQuoteCommentsParams = zod.object({
   "quoteId": zod.coerce.number()
@@ -167,6 +169,8 @@ export const GetQuoteCommentsResponseItem = zod.object({
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
   "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
   "createdAt": zod.coerce.date()
 })
 export const GetQuoteCommentsResponse = zod.array(GetQuoteCommentsResponseItem)
@@ -229,6 +233,48 @@ export const SaveCommentParams = zod.object({
 
 export const SaveCommentResponse = zod.object({
   "saved": zod.boolean()
+})
+
+
+/**
+ * @summary Get replies to a top-level comment (flat, chronological, visibility-gated)
+ */
+export const GetCommentRepliesParams = zod.object({
+  "commentId": zod.coerce.number()
+})
+
+export const GetCommentRepliesResponseItem = zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "avatarColor": zod.string(),
+  "text": zod.string(),
+  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "quoteText": zod.string().optional(),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "createdAt": zod.coerce.date()
+})
+export const GetCommentRepliesResponse = zod.array(GetCommentRepliesResponseItem)
+
+
+/**
+ * @summary Reply to a top-level comment (max 1 level; parses @mentions and fires notifications)
+ */
+export const CreateReplyParams = zod.object({
+  "commentId": zod.coerce.number()
+})
+
+
+
+
+export const CreateReplyBody = zod.object({
+  "text": zod.string().min(1),
+  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)')
 })
 
 
@@ -527,6 +573,8 @@ export const GetSavedCommentsResponseItem = zod.object({
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
   "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
   "createdAt": zod.coerce.date()
 })
 export const GetSavedCommentsResponse = zod.array(GetSavedCommentsResponseItem)
@@ -572,6 +620,44 @@ export const UpdateUserSettingsResponse = zod.object({
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
   "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+})
+
+
+/**
+ * @summary Get notifications for a user (newest first, limit 50)
+ */
+export const GetNotificationsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetNotificationsResponse = zod.object({
+  "notifications": zod.array(zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['reply', 'mention']).describe('reply = someone replied to your comment; mention = you were @mentioned'),
+  "actorId": zod.number(),
+  "actorUsername": zod.string(),
+  "actorAvatarColor": zod.string(),
+  "commentId": zod.number().describe('The reply comment that triggered the notification'),
+  "commentText": zod.string().describe('Preview of the reply text'),
+  "parentCommentId": zod.number().nullable().describe('The original top-level comment (null for mention-only notifications)'),
+  "quoteId": zod.number(),
+  "quoteText": zod.string().optional().describe('The quote text for navigation context'),
+  "read": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})),
+  "unreadCount": zod.number()
+})
+
+
+/**
+ * @summary Mark all notifications as read
+ */
+export const MarkNotificationsReadParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const MarkNotificationsReadResponse = zod.object({
+  "unreadCount": zod.number()
 })
 
 

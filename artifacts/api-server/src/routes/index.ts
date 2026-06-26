@@ -6,6 +6,7 @@ import commentsRouter from "./comments";
 import libraryRouter from "./library";
 import usersRouter from "./users";
 import objectsRouter from "./objects";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(commentsRouter);
 router.use(libraryRouter);
 router.use(usersRouter);
 router.use(objectsRouter);
+router.use(notificationsRouter);
 
 export default router;

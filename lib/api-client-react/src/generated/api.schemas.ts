@@ -57,6 +57,13 @@ export interface Comment {
   likeCount: number;
   likedByMe: boolean;
   savedByMe: boolean;
+  /** Number of visible replies (0 for replies themselves) */
+  replyCount: number;
+  /**
+     * ID of the parent comment for replies; null for top-level comments
+     * @nullable
+     */
+  parentId?: number | null;
   createdAt: string;
 }
 
@@ -230,6 +237,49 @@ export interface UserInput {
 
 export interface FriendInput {
   friendId: number;
+}
+
+/**
+ * reply = someone replied to your comment; mention = you were @mentioned
+ */
+export type NotificationItemType = typeof NotificationItemType[keyof typeof NotificationItemType];
+
+
+export const NotificationItemType = {
+  reply: 'reply',
+  mention: 'mention',
+} as const;
+
+export interface NotificationItem {
+  id: number;
+  /** reply = someone replied to your comment; mention = you were @mentioned */
+  type: NotificationItemType;
+  actorId: number;
+  actorUsername: string;
+  actorAvatarColor: string;
+  /** The reply comment that triggered the notification */
+  commentId: number;
+  /** Preview of the reply text */
+  commentText: string;
+  /**
+     * The original top-level comment (null for mention-only notifications)
+     * @nullable
+     */
+  parentCommentId: number | null;
+  quoteId: number;
+  /** The quote text for navigation context */
+  quoteText?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationList {
+  notifications: NotificationItem[];
+  unreadCount: number;
+}
+
+export interface UnreadCount {
+  unreadCount: number;
 }
 
 export type ListBooksParams = {

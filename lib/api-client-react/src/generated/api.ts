@@ -37,9 +37,11 @@ import type {
   LikeResult,
   ListBooksParams,
   ManualMatchInput,
+  NotificationList,
   Quote,
   SaveResult,
   SearchUsersParams,
+  UnreadCount,
   UpdateReadingLocationInput,
   UpdateUserSettings,
   User,
@@ -535,7 +537,7 @@ export const getGetQuoteCommentsUrl = (quoteId: number,
 }
 
 /**
- * @summary Get comments for a quote
+ * @summary Get top-level comments for a quote
  */
 export const getQuoteComments = async (quoteId: number,
     params?: GetQuoteCommentsParams, options?: RequestInit): Promise<Comment[]> => {
@@ -585,7 +587,7 @@ export type GetQuoteCommentsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get comments for a quote
+ * @summary Get top-level comments for a quote
  */
 
 export function useGetQuoteComments<TData = Awaited<ReturnType<typeof getQuoteComments>>, TError = ErrorType<unknown>>(
@@ -889,6 +891,155 @@ export const useSaveComment = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSaveCommentMutationOptions(options));
+    }
+
+export const getGetCommentRepliesUrl = (commentId: number,) => {
+
+
+
+
+  return `/api/comments/${commentId}/replies`
+}
+
+/**
+ * @summary Get replies to a top-level comment (flat, chronological, visibility-gated)
+ */
+export const getCommentReplies = async (commentId: number, options?: RequestInit): Promise<Comment[]> => {
+
+  return customFetch<Comment[]>(getGetCommentRepliesUrl(commentId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCommentRepliesQueryKey = (commentId: number,) => {
+    return [
+    `/api/comments/${commentId}/replies`
+    ] as const;
+    }
+
+
+export const getGetCommentRepliesQueryOptions = <TData = Awaited<ReturnType<typeof getCommentReplies>>, TError = ErrorType<unknown>>(commentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommentReplies>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCommentRepliesQueryKey(commentId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCommentReplies>>> = ({ signal }) => getCommentReplies(commentId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(commentId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCommentReplies>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCommentRepliesQueryResult = NonNullable<Awaited<ReturnType<typeof getCommentReplies>>>
+export type GetCommentRepliesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get replies to a top-level comment (flat, chronological, visibility-gated)
+ */
+
+export function useGetCommentReplies<TData = Awaited<ReturnType<typeof getCommentReplies>>, TError = ErrorType<unknown>>(
+ commentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommentReplies>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCommentRepliesQueryOptions(commentId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateReplyUrl = (commentId: number,) => {
+
+
+
+
+  return `/api/comments/${commentId}/replies`
+}
+
+/**
+ * @summary Reply to a top-level comment (max 1 level; parses @mentions and fires notifications)
+ */
+export const createReply = async (commentId: number,
+    commentInput: CommentInput, options?: RequestInit): Promise<Comment> => {
+
+  return customFetch<Comment>(getCreateReplyUrl(commentId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      commentInput,)
+  }
+);}
+
+
+
+
+export const getCreateReplyMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReply>>, TError,{commentId: number;data: BodyType<CommentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createReply>>, TError,{commentId: number;data: BodyType<CommentInput>}, TContext> => {
+
+const mutationKey = ['createReply'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createReply>>, {commentId: number;data: BodyType<CommentInput>}> = (props) => {
+          const {commentId,data} = props ?? {};
+
+          return  createReply(commentId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateReplyMutationResult = NonNullable<Awaited<ReturnType<typeof createReply>>>
+    export type CreateReplyMutationBody = BodyType<CommentInput>
+    export type CreateReplyMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reply to a top-level comment (max 1 level; parses @mentions and fires notifications)
+ */
+export const useCreateReply = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReply>>, TError,{commentId: number;data: BodyType<CommentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createReply>>,
+        TError,
+        {commentId: number;data: BodyType<CommentInput>},
+        TContext
+      > => {
+      return useMutation(getCreateReplyMutationOptions(options));
     }
 
 export const getCreateLibraryEntryUrl = () => {
@@ -1937,5 +2088,152 @@ export const useUpdateUserSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateUserSettingsMutationOptions(options));
+    }
+
+export const getGetNotificationsUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/notifications`
+}
+
+/**
+ * @summary Get notifications for a user (newest first, limit 50)
+ */
+export const getNotifications = async (userId: number, options?: RequestInit): Promise<NotificationList> => {
+
+  return customFetch<NotificationList>(getGetNotificationsUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNotificationsQueryKey = (userId: number,) => {
+    return [
+    `/api/users/${userId}/notifications`
+    ] as const;
+    }
+
+
+export const getGetNotificationsQueryOptions = <TData = Awaited<ReturnType<typeof getNotifications>>, TError = ErrorType<unknown>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNotificationsQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNotifications>>> = ({ signal }) => getNotifications(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNotifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNotificationsQueryResult = NonNullable<Awaited<ReturnType<typeof getNotifications>>>
+export type GetNotificationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get notifications for a user (newest first, limit 50)
+ */
+
+export function useGetNotifications<TData = Awaited<ReturnType<typeof getNotifications>>, TError = ErrorType<unknown>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNotificationsQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getMarkNotificationsReadUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/notifications/read-all`
+}
+
+/**
+ * @summary Mark all notifications as read
+ */
+export const markNotificationsRead = async (userId: number, options?: RequestInit): Promise<UnreadCount> => {
+
+  return customFetch<UnreadCount>(getMarkNotificationsReadUrl(userId),
+  {
+    ...options,
+    method: 'PUT'
+
+
+  }
+);}
+
+
+
+
+export const getMarkNotificationsReadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationsRead>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markNotificationsRead>>, TError,{userId: number}, TContext> => {
+
+const mutationKey = ['markNotificationsRead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markNotificationsRead>>, {userId: number}> = (props) => {
+          const {userId} = props ?? {};
+
+          return  markNotificationsRead(userId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkNotificationsReadMutationResult = NonNullable<Awaited<ReturnType<typeof markNotificationsRead>>>
+
+    export type MarkNotificationsReadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Mark all notifications as read
+ */
+export const useMarkNotificationsRead = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationsRead>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markNotificationsRead>>,
+        TError,
+        {userId: number},
+        TContext
+      > => {
+      return useMutation(getMarkNotificationsReadMutationOptions(options));
     }
 
