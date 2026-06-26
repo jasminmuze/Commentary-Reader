@@ -594,10 +594,6 @@ function ReaderInner({
               `        ||section.document.body.firstElementChild||section.document.body;` +
               `  var startCfi=section.cfiFromElement(el);` +
               `  rn.postMessage(JSON.stringify({type:'navLog',msg:'[NAV] TOC startCfi → '+startCfi}));` +
-              `  function hrefMatch(a,b){` +
-              `    if(!a||!b)return false;` +
-              `    return a===b||a.split('/').pop()===b.split('/').pop();` +
-              `  }` +
               `  function isNearStart(rCfi){` +
               `    if(!rCfi)return false;` +
               `    if(startCfi.split('!')[0]!==rCfi.split('!')[0])return false;` +
@@ -610,8 +606,8 @@ function ReaderInner({
               `    lastCfi=loc&&loc.start&&loc.start.cfi;` +
               `    lastHref=loc&&loc.start&&loc.start.href;` +
               `    rn.postMessage(JSON.stringify({type:'navLog',` +
-              `      msg:'[NAV] TOC attempt '+attempt+' resultCfi: '+lastCfi+' href: '+lastHref}));` +
-              `    if(isNearStart(lastCfi)||hrefMatch(lastHref,section.href)){converged=true;break;}` +
+              `      msg:'[NAV] TOC attempt '+attempt+' resultCfi: '+lastCfi}));` +
+              `    if(isNearStart(lastCfi)){converged=true;break;}` +
               `    if(attempt<MAX){await new Promise(function(r){requestAnimationFrame(r);});}` +
               `  }` +
               `  if(converged){` +
