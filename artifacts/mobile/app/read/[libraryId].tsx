@@ -67,6 +67,10 @@ function ReaderInner({
   // 제어된 탐색 상태: 'navigating' 중에는 저장을 차단
   const navPhaseRef = useRef<'idle' | 'navigating'>('idle');
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // After navigation settles we hold a short save-block window to absorb late
+  // relocated events that arrive after navPhase resets to 'idle'.  Without this,
+  // those events write a navigation-artifact CFI as the user's reading position.
+  const blockSaveUntilRef = useRef<number>(0);
 
   const fs = useFileSystem();
   const [localSrc, setLocalSrc] = useState<string | null>(null);
@@ -123,6 +127,7 @@ function ReaderInner({
       navTimeoutRef.current = setTimeout(() => {
         if (navPhaseRef.current === 'navigating') {
           navPhaseRef.current = 'idle';
+          blockSaveUntilRef.current = Date.now() + 1000;
           console.log('[NAV] restore 타임아웃 — 강제 해제');
           startAnchoring();
         }
@@ -166,9 +171,12 @@ function ReaderInner({
         ` | resultHref: ${resultHref ?? '없음'}` +
         ` | resultCfi: ${resultCfi ?? '없음'}`
       );
-      if (resultCfi && resultCfi !== PAGE_ONE_CFI) {
-        currentLocationRef.current = resultCfi;
-      }
+      // Do NOT write resultCfi to currentLocationRef — it is a navigation
+      // intermediate, not a stable user reading position.
+      //
+      // Hold a 1 s cooldown so relocated events that are still in-flight when
+      // navPhase becomes 'idle' don't slip through and overwrite the saved CFI.
+      blockSaveUntilRef.current = Date.now() + 1000;
       if (navTimeoutRef.current) {
         clearTimeout(navTimeoutRef.current);
         navTimeoutRef.current = null;
@@ -314,9 +322,12 @@ function ReaderInner({
       const disp = location?.start?.displayed;
       if (disp && disp.total > 1) setPageInfo({ page: disp.page, total: disp.total });
 
-      // 제어된 탐색 중에는 저장만 건너뜀
-      if (navPhaseRef.current === 'navigating') {
-        console.log('[NAV] 탐색 중 — 저장 건너뜀:', cfi);
+      // 제어된 탐색 중이거나, 탐색 직후 쿨다운 창 내에는 저장 건너뜀.
+      // blockSaveUntilRef: navigationDone 직후 늦게 도착하는 relocated 이벤트가
+      // nav-artifact CFI를 저장하는 race를 막는 1초 쿨다운.
+      if (navPhaseRef.current === 'navigating' || Date.now() < blockSaveUntilRef.current) {
+        console.log('[NAV] 저장 건너뜀:', cfi,
+          navPhaseRef.current !== 'idle' ? '(nav 진행중)' : '(cooldown)');
         return;
       }
 
@@ -531,7 +542,9 @@ function ReaderInner({
           navTimeoutRef.current = setTimeout(() => {
             if (navPhaseRef.current === 'navigating') {
               navPhaseRef.current = 'idle';
+              blockSaveUntilRef.current = Date.now() + 1000;
               console.log('[NAV] TOC 탐색 타임아웃 — 강제 해제');
+              startAnchoring();
             }
           }, 6000);
           const hrefJson = JSON.stringify(href);
@@ -581,6 +594,10 @@ function ReaderInner({
               `        ||section.document.body.firstElementChild||section.document.body;` +
               `  var startCfi=section.cfiFromElement(el);` +
               `  rn.postMessage(JSON.stringify({type:'navLog',msg:'[NAV] TOC startCfi → '+startCfi}));` +
+              `  function hrefMatch(a,b){` +
+              `    if(!a||!b)return false;` +
+              `    return a===b||a.split('/').pop()===b.split('/').pop();` +
+              `  }` +
               `  function isNearStart(rCfi){` +
               `    if(!rCfi)return false;` +
               `    if(startCfi.split('!')[0]!==rCfi.split('!')[0])return false;` +
@@ -593,8 +610,8 @@ function ReaderInner({
               `    lastCfi=loc&&loc.start&&loc.start.cfi;` +
               `    lastHref=loc&&loc.start&&loc.start.href;` +
               `    rn.postMessage(JSON.stringify({type:'navLog',` +
-              `      msg:'[NAV] TOC attempt '+attempt+' resultCfi: '+lastCfi}));` +
-              `    if(isNearStart(lastCfi)){converged=true;break;}` +
+              `      msg:'[NAV] TOC attempt '+attempt+' resultCfi: '+lastCfi+' href: '+lastHref}));` +
+              `    if(isNearStart(lastCfi)||hrefMatch(lastHref,section.href)){converged=true;break;}` +
               `    if(attempt<MAX){await new Promise(function(r){requestAnimationFrame(r);});}` +
               `  }` +
               `  if(converged){` +

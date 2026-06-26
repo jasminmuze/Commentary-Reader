@@ -1,0 +1,338 @@
+원인 구조
+1. TOC 이동 중 생긴 임시 CFI가 저장됨
+
+이전 로그의 attempt 2 CFI:
+
+epubcfi(/6/32!/4/4/2/2/1:0)
+
+가 다음 실행 때 restore target으로 쓰였어.
+
+이건 탐색 중 저장 차단이 완전하지 않다는 뜻.
+
+2. restore 후 currentLocation이 안정화되기 전에 resultCfi를 읽음
+
+restore target은 /4/4...였는데 result는 /4/208...이야.
+
+즉 restore 후 위치 계산이 흔들리고 있어.
+
+3. anchor 매칭이 restore와 동시에 또는 직후에 돌아감
+
+anchor가 /6/28, /6/40 같은 다른 spine의 CFI를 찾고 있어.
+
+이게 화면 이동이나 저장과 연결되어 있으면 재오픈 후 위치가 엉뚱한 곳으로 튐.
+
+결론
+
+맞아. 목차 눌렀을 때 이상한 곳으로 튀는 문제랑, 책 재오픈 시 원래 읽던 위치로 안 가는 문제는 같은 계열의 문제야.
+
+더 정확히는:
+
+programmatic navigation 중 발생한 임시 CFI가 저장됨
++
+restore/TOC 후 currentLocation을 너무 빨리 신뢰함
++
+anchor fallback이 복원 흐름에 끼어듦
+
+이 세 가지가 같이 터지는 것 같아.
+
+가장 먼저 확인해야 할 것
+
+코드에서 아래를 전부 찾아봐.
+
+AsyncStorage.setItem
+saveLocation
+setCurrentCfi
+setLastLocation
+rendition.display
+currentLocation
+relocated
+
+그리고 모든 저장 지점에 로그를 박아야 해.
+
+예:
+
+function saveLocationDebug(source, cfi, extra = {}) {
+  console.log("[SAVE_CALL]", {
+    source,
+    cfi,
+    isNavigating: isNavigatingRef.current,
+    navSource: navSourceRef.current,
+    token: navTokenRef.current,
+    ...extra,
+  });
+
+  // 실제 저장
+}
+
+특히 알고 싶은 건 이거야.
+
+누가 epubcfi(/6/32!/4/4/2/2/1:0)를 저장했는가?
+
+이걸 찾으면 문제의 절반은 잡은 거야.
+
+수정 방향
+1. 저장 권한을 한 군데로 모으기
+
+지금은 아마 여러 곳에서 위치를 저장하고 있을 가능성이 있어.
+
+예를 들어:
+
+relocated 이벤트
+TOC 완료
+restore 완료
+anchor 매칭 완료
+앱 background 처리
+currentCfi useEffect
+
+이런 데서 각각 저장하면 꼬이기 쉬워.
+
+추천 구조는:
+
+사용자가 실제로 읽는 중 발생한 relocated만 저장
+TOC/restore/anchor 중 발생한 relocated는 저장 금지
+
+그리고 저장 함수는 하나만 둬.
+
+function persistReadingLocation(loc, source) {
+  if (navState.current.active) {
+    console.log("[SAVE_SKIP] programmatic nav", source, loc?.start?.cfi);
+    return;
+  }
+
+  saveToStorage({
+    cfi: loc.start.cfi,
+    href: loc.start.href,
+    index: loc.start.index,
+  });
+}
+2. restore 중에는 절대 저장하지 않기
+
+restore는 “저장된 위치로 이동하는 행위”지, 새 위치를 저장하는 행위가 아니야.
+
+따라서 restore 중에는:
+
+setCurrentCfi는 가능
+AsyncStorage 저장은 금지
+
+가 좋아.
+
+특히 이런 코드는 위험해.
+
+await rendition.display(savedCfi);
+const loc = rendition.currentLocation();
+saveLocation(loc.start.cfi); // 위험
+
+restore 성공 직후의 currentLocation은 흔들릴 수 있으니까 저장하면 안 돼.
+
+3. TOC 이동 성공 판단을 CFI 완전일치로 하지 않기
+
+TOC에서는 target href가:
+
+Text/The_Picture_of_Dorian_Gray_split_014.html
+
+이었고 resultHref도 맞았어.
+
+그러면 일단 성공으로 봐야 해.
+
+TOC 이동에서 이런 식은 위험해.
+
+if (resultCfi !== startCfi) retry();
+
+대신:
+
+if (resultHref === targetHref || resultIndex === targetIndex) {
+  success();
+}
+
+로 봐야 함.
+
+CFI는 렌더링 상태에 따라 조금 달라질 수 있어.
+
+4. anchor 매칭은 restore 실패 때만 실행하기
+
+지금 로그상 anchor 매칭이 restore 직후 자동으로 도는 것 같아.
+
+이 구조는 위험해.
+
+추천은:
+
+1. savedCfi로 restore 시도
+2. 같은 href/spine이면 성공 처리
+3. 성공했으면 anchor 매칭 안 함
+4. restore 실패했을 때만 anchor fallback 실행
+
+그리고 anchor fallback도 전체 책을 뒤지는 게 아니라, 저장된 위치의 href 안에서만 찾는 게 안전해.
+
+예:
+
+저장 위치 href = split_014.html
+anchor fallback도 split_014.html 안에서만 검색
+
+지금처럼 /6/28, /6/40까지 찾으면 복원과 무관한 위치가 개입할 수 있어.
+
+5. anchor 매칭이 display를 호출하지 않게 하기
+
+이게 진짜 중요해.
+
+anchor 매칭은 가능하면 “조용히 CFI를 계산”만 해야 해.
+
+위험한 방식:
+
+rendition.display(anchorCfi);
+const loc = rendition.currentLocation();
+
+안전한 방식:
+
+spineItem.load(...)
+DOM에서 quote 찾기
+epubcfi 생성
+return cfi
+
+즉 anchor 검색용으로 실제 reader 화면을 움직이면 안 돼.
+
+화면 이동이 필요하면 숨겨진 rendition이나 별도 parser에서 해야 해.
+
+추천하는 상태 구조
+
+이런 식으로 navigation source를 하나만 관리해.
+
+const navRef = useRef({
+  token: 0,
+  source: "idle", // idle | toc | restore | anchor
+  blockSaveUntil: 0,
+});
+
+TOC나 restore 시작할 때:
+
+navRef.current.token += 1;
+navRef.current.source = "toc"; // or restore
+navRef.current.blockSaveUntil = Date.now() + 2000;
+
+relocated 이벤트에서는:
+
+rendition.on("relocated", (loc) => {
+  const cfi = loc?.start?.cfi;
+
+  console.log("[RELOCATED]", {
+    cfi,
+    href: loc?.start?.href,
+    navSource: navRef.current.source,
+  });
+
+  if (navRef.current.source !== "idle") {
+    console.log("[SAVE_SKIP] navigating", cfi);
+    return;
+  }
+
+  if (Date.now() < navRef.current.blockSaveUntil) {
+    console.log("[SAVE_SKIP] blocked", cfi);
+    return;
+  }
+
+  saveLocation({
+    cfi,
+    href: loc.start.href,
+    index: loc.start.index,
+  });
+});
+
+그리고 restore 완료 후에도 바로 idle로 풀지 말고 약간 늦게 풀어.
+
+setTimeout(() => {
+  if (navRef.current.token === token) {
+    navRef.current.source = "idle";
+  }
+}, 800);
+
+이렇게 해야 늦게 도착하는 relocated 이벤트가 저장을 오염시키지 않아.
+
+restore 로직은 이렇게 가는 게 좋아
+async function restoreLocation(saved) {
+  const token = ++navRef.current.token;
+  navRef.current.source = "restore";
+  navRef.current.blockSaveUntil = Date.now() + 3000;
+
+  try {
+    console.log("[NAV] restore 시작", saved.cfi);
+
+    await rendition.display(saved.cfi);
+
+    await waitFrames(2);
+    await sleep(500);
+
+    if (token !== navRef.current.token) return;
+
+    const loc = rendition.currentLocation();
+
+    console.log("[NAV] restore result", {
+      targetCfi: saved.cfi,
+      resultHref: loc?.start?.href,
+      resultCfi: loc?.start?.cfi,
+      targetHref: saved.href,
+    });
+
+    const sameSection =
+      loc?.start?.href === saved.href ||
+      loc?.start?.index === saved.index;
+
+    if (sameSection) {
+      console.log("[NAV] restore 성공");
+      // 여기서 저장하지 않음
+      return;
+    }
+
+    console.log("[NAV] restore CFI 실패 → anchor fallback");
+
+    // fallback은 같은 href 안에서만
+    if (saved.anchorText && saved.href) {
+      const anchorCfi = await findAnchorInHref(saved.href, saved.anchorText);
+      if (anchorCfi && token === navRef.current.token) {
+        await rendition.display(anchorCfi);
+        console.log("[NAV] anchor restore 성공", anchorCfi);
+      }
+    }
+  } finally {
+    setTimeout(() => {
+      if (token === navRef.current.token) {
+        navRef.current.source = "idle";
+      }
+    }, 1000);
+  }
+}
+저장 데이터도 CFI 하나만 저장하지 말기
+
+CFI만 저장하면 EPUB split이나 pagination이 흔들릴 때 복구가 어려워.
+
+이렇게 같이 저장하는 게 좋아.
+
+{
+  cfi: loc.start.cfi,
+  href: loc.start.href,
+  index: loc.start.index,
+  percentage: loc.start.percentage,
+  textAnchor: {
+    exact: "현재 위치 근처 문장",
+    prefix: "앞부분 30~80자",
+    suffix: "뒷부분 30~80자"
+  },
+  updatedAt: Date.now()
+}
+
+그러면 restore 순서는:
+
+1. CFI로 복원
+2. 같은 href/spine인지 확인
+3. 이상하면 textAnchor로 같은 href 안에서 검색
+4. 그래도 실패하면 href 시작점
+
+이렇게 안정적으로 갈 수 있어.
+
+지금 로그 기준으로 제일 먼저 고칠 순서
+모든 저장 호출에 [SAVE_CALL] source 로그 추가
+/6/32!/4/4/2/2/1:0를 누가 저장했는지 찾기
+restore 중/TOC 중/anchor 중 저장 전부 차단
+anchor 매칭은 restore 성공 시 실행하지 않기
+TOC 성공 판단을 CFI 일치가 아니라 href/spine 일치로 바꾸기
+display() 직후 currentLocation() 즉시 신뢰하지 말고 2 frame + 500ms 정도 안정화 후 읽기
+
+정리하면, 재오픈 문제는 단순히 “restore가 실패했다”가 아니라 이전 TOC 이동 중 생성된 임시 위치가 저장됐고, restore 직후 anchor/relocated/currentLocation 로직이 다시 개입해서 위치를 오염시키는 문제에 가까워 보여.
