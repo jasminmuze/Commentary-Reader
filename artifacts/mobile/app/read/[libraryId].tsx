@@ -40,7 +40,7 @@ import {
 } from "@/hooks/useReaderSettings";
 
 const PAGE_ONE_CFI = 'epubcfi(/6/2!/4/1:0)';
-const PAGE_ONE_CFI_PREFIX = 'epubcfi(/6/2';
+const PAGE_ONE_CFI_PREFIX = 'epubcfi(/6/2!';
 
 function normalizeProgress(progress: unknown): number | null {
   if (typeof progress !== "number" || !Number.isFinite(progress)) return null;
@@ -373,10 +373,15 @@ function ReaderInner({
       const disp = location?.start?.displayed;
       if (disp && disp.total > 1) setPageInfo({ page: disp.page, total: disp.total });
 
-      // 제어된 탐색 중에는 저장만 건너뜀
-      if (navPhaseRef.current !== 'idle') {
+      // 제어된 탐색/검색 앵커링 중에는 저장만 건너뜀
+      if (navPhaseRef.current !== 'idle' || runningRef.current) {
         currentLocationRef.current = cfi;
-        console.log('[NAV] 탐색 중 — 저장 건너뜀:', cfi);
+        console.log(
+          navPhaseRef.current !== 'idle'
+            ? '[NAV] 탐색 중 — 저장 건너뜀:'
+            : '[ANCHOR] 앵커링 중 — 저장 건너뜀:',
+          cfi,
+        );
         return;
       }
 
@@ -613,10 +618,8 @@ function ReaderInner({
               `})(); true`
             );
           } else {
-            // 프래그먼트 없음: 수렴 루프
-            // display(href/index)는 scrolled-doc 모드에서 인트라-섹션 오프셋을 재사용하므로
-            // cfiFromElement(섹션 시작 요소)로 startCfi 계산 후 display(startCfi) 반복
-            // → currentLocation이 startCfi 이하에 착지할 때까지 최대 5회
+            // 프래그먼트 없음: spine section 시작으로 한 번만 이동
+            // 반복 수렴 루프는 epub.js가 계산한 현재 위치와 오가며 챕터 밖으로 흔들릴 수 있음
             injectJavascript(
               `(async function(){` +
               `  var href = ${hrefJson};` +
@@ -624,46 +627,15 @@ function ReaderInner({
               `  var section = book.spine.get(href.split('/')[1])` +
               `             || book.spine.get(href)` +
               `             || book.spine.get(href.split('/').slice(1).join('/'));` +
-              `  rn.postMessage(JSON.stringify({type:'navLog',` +
-              `    msg:'[NAV] TOC section resolved: '+(section?(section.href||section.idref||section.index):'null')}));` +
-              `  if (!section) {` +
-              `    await rendition.display(href);` +
-              `    var loc0=rendition.currentLocation();` +
-              `    rn.postMessage(JSON.stringify({type:'navigationDone',reason:'toc',target:href,` +
-              `      displayTarget:href,` +
-              `      resultCfi:loc0&&loc0.start&&loc0.start.cfi,` +
-              `      resultHref:loc0&&loc0.start&&loc0.start.href}));` +
-              `    return;` +
-              `  }` +
-              `  await section.load(book.load.bind(book));` +
-              `  var el=section.document.body.querySelector('h1,h2,h3,h4,p,section,div')` +
-              `        ||section.document.body.firstElementChild||section.document.body;` +
-              `  var startCfi=section.cfiFromElement(el);` +
-              `  rn.postMessage(JSON.stringify({type:'navLog',msg:'[NAV] TOC startCfi → '+startCfi}));` +
-              `  function isNearStart(rCfi){` +
-              `    if(!rCfi)return false;` +
-              `    if(startCfi.split('!')[0]!==rCfi.split('!')[0])return false;` +
-              `    try{return ePub.CFI.prototype.compare(rCfi,startCfi)<=0;}catch(e){return false;}` +
-              `  }` +
-              `  var MAX=5,converged=false,lastCfi=null,lastHref=null;` +
-              `  for(var attempt=1;attempt<=MAX;attempt++){` +
-              `    await rendition.display(startCfi);` +
-              `    var loc=rendition.currentLocation();` +
-              `    lastCfi=loc&&loc.start&&loc.start.cfi;` +
-              `    lastHref=loc&&loc.start&&loc.start.href;` +
-              `    rn.postMessage(JSON.stringify({type:'navLog',` +
-              `      msg:'[NAV] TOC attempt '+attempt+' resultCfi: '+lastCfi}));` +
-              `    if(isNearStart(lastCfi)){converged=true;break;}` +
-              `    if(attempt<MAX){await new Promise(function(r){requestAnimationFrame(r);});}` +
-              `  }` +
-              `  if(converged){` +
-              `    rn.postMessage(JSON.stringify({type:'navigationDone',reason:'toc',target:href,` +
-              `      displayTarget:startCfi,resultCfi:lastCfi,resultHref:lastHref}));` +
-              `  }else{` +
-              `    rn.postMessage(JSON.stringify({type:'navLog',` +
-              `      msg:'[NAV] toc 실패: 수렴 불가 startCfi='+startCfi+' lastCfi='+lastCfi}));` +
-              `    rn.postMessage(JSON.stringify({type:'navigationDone',reason:'toc-failed',target:href,` +
-              `      displayTarget:startCfi,resultCfi:null,resultHref:null}));` +
+              `  var displayTarget = section ? (section.href || section.idref || href) : href;` +
+              `  rn.postMessage(JSON.stringify({type:'navLog', msg:'[NAV] TOC section resolved: '+(section?(section.href||section.idref||section.index):'null')}));` +
+              `  try {` +
+              `    await rendition.display(displayTarget);` +
+              `    await new Promise(function(resolve){ requestAnimationFrame(resolve); });` +
+              `    var loc = rendition.currentLocation();` +
+              `    rn.postMessage(JSON.stringify({type:'navigationDone',reason:'toc',target:href,displayTarget:displayTarget,resultCfi:loc&&loc.start&&loc.start.cfi,resultHref:loc&&loc.start&&loc.start.href,resultProgress:loc&&loc.start&&typeof loc.start.percentage==='number'?loc.start.percentage:null,resultPage:loc&&loc.start&&loc.start.displayed&&loc.start.displayed.page,resultTotal:loc&&loc.start&&loc.start.displayed&&loc.start.displayed.total}));` +
+              `  } catch (err) {` +
+              `    rn.postMessage(JSON.stringify({type:'navigationError',reason:'toc',target:href,message:String(err&&err.message?err.message:err)}));` +
               `  }` +
               `})(); true`
             );
