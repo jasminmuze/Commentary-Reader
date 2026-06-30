@@ -40,6 +40,22 @@ import {
 } from "@/hooks/useReaderSettings";
 
 const PAGE_ONE_CFI = 'epubcfi(/6/2!/4/1:0)';
+const PAGE_ONE_CFI_PREFIX = 'epubcfi(/6/2';
+
+function normalizeProgress(progress: unknown): number | null {
+  if (typeof progress !== "number" || !Number.isFinite(progress)) return null;
+  const percent = progress <= 1 ? progress * 100 : progress;
+  return Math.min(100, Math.max(0, Math.round(percent)));
+}
+
+function isBootLocation(cfi?: string, href?: string): boolean {
+  const normalizedHref = href?.toLowerCase() ?? "";
+  return (
+    cfi === PAGE_ONE_CFI ||
+    cfi?.startsWith(PAGE_ONE_CFI_PREFIX) === true ||
+    normalizedHref.includes("titlepage")
+  );
+}
 
 function intensityToOpacity(intensity: number): number {
   return Math.max(0.15, Math.min(0.50, intensity));
@@ -64,8 +80,8 @@ function ReaderInner({
   const currentLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
   // 복원할 대상 CFI — 마운트 시 한 번만 캡처 (refetch로 변경되면 안 됨)
   const initialLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
-  // 제어된 탐색 상태: 'navigating' 중에는 저장을 차단
-  const navPhaseRef = useRef<'idle' | 'navigating'>('idle');
+  // 제어된 탐색 상태: 복원/TOC 이동 중에는 위치 저장을 차단
+  const navPhaseRef = useRef<'idle' | 'restoring' | 'navigating'>('idle');
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fs = useFileSystem();
@@ -81,7 +97,9 @@ function ReaderInner({
   const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string; cfiRange?: string } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [anchoring, setAnchoring] = useState(false);
-  const [readProgress, setReadProgress] = useState<number | null>(null);
+  const [readProgress, setReadProgress] = useState<number | null>(
+    normalizeProgress(entry.readingProgress ?? null),
+  );
   const [pageInfo, setPageInfo] = useState<{ page: number; total: number } | null>(null);
 
   const quotesRef = useRef<Quote[]>([]);
@@ -98,7 +116,7 @@ function ReaderInner({
     if (runningRef.current || !readyRef.current || !canonicalBookId) return;
     // Never run search()-based anchoring while a controlled navigation
     // (restore / TOC jump) is in flight — it would race rendition.display().
-    if (navPhaseRef.current === 'navigating') return;
+    if (navPhaseRef.current !== 'idle') return;
     const pending = quotesRef.current.filter(
       (q) => q.searchText.length > 0 && !anchoredRef.current.has(q.id)
     );
@@ -117,31 +135,43 @@ function ReaderInner({
     if (initialLocationRef.current) {
       // Reader initialLocation prop 은 신뢰하지 않음 — onReady 이후 직접 주입
       const targetJson = JSON.stringify(initialLocationRef.current);
-      navPhaseRef.current = 'navigating';
+      navPhaseRef.current = 'restoring';
       console.log('[NAV] restore 시작 →', initialLocationRef.current);
       if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
       navTimeoutRef.current = setTimeout(() => {
-        if (navPhaseRef.current === 'navigating') {
+        if (navPhaseRef.current === 'restoring') {
           navPhaseRef.current = 'idle';
           console.log('[NAV] restore 타임아웃 — 강제 해제');
           startAnchoring();
         }
       }, 6000);
       injectJavascript(
-        `(function(){` +
+        `(async function(){` +
         `  var target = ${targetJson};` +
-        `  rendition.display(target).then(function(){` +
+        `  var rn = window.ReactNativeWebView || window;` +
+        `  try {` +
+        `    await rendition.display(target);` +
         `    var loc = rendition.currentLocation();` +
-        `    var rn = window.ReactNativeWebView || window;` +
+        `    var start = loc && loc.start;` +
         `    rn.postMessage(JSON.stringify({` +
         `      type:'navigationDone',` +
         `      reason:'restore',` +
         `      target: target,` +
-        `      resultCfi: loc && loc.start && loc.start.cfi,` +
-        `      resultHref: loc && loc.start && loc.start.href` +
+        `      resultCfi: start && start.cfi,` +
+        `      resultHref: start && start.href,` +
+        `      resultProgress: start && typeof start.percentage === 'number' ? start.percentage : null,` +
+        `      resultPage: start && start.displayed && start.displayed.page,` +
+        `      resultTotal: start && start.displayed && start.displayed.total` +
         `    }));` +
         styleScript +
-        `  });` +
+        `  } catch (err) {` +
+        `    rn.postMessage(JSON.stringify({` +
+        `      type:'navigationError',` +
+        `      reason:'restore',` +
+        `      target: target,` +
+        `      message: String(err && err.message ? err.message : err)` +
+        `    }));` +
+        `  }` +
         `})(); true`
       );
     } else {
@@ -154,20 +184,40 @@ function ReaderInner({
   const handleWebViewMessage = useCallback((event: Record<string, unknown>) => {
     if (event.type === 'navLog') {
       console.log(event.msg as string);
+    } else if (event.type === 'navigationError') {
+      console.log(
+        `[NAV] ${event.reason as string} 실패 | target: ${event.target as string}` +
+        ` | message: ${event.message as string}`
+      );
+      if (navTimeoutRef.current) {
+        clearTimeout(navTimeoutRef.current);
+        navTimeoutRef.current = null;
+      }
+      navPhaseRef.current = 'idle';
+      startAnchoring();
     } else if (event.type === 'navigationDone') {
       const reason = event.reason as string;
       const target = event.target as string;
       const displayTarget = event.displayTarget as string | undefined;
       const resultCfi = event.resultCfi as string | undefined;
       const resultHref = event.resultHref as string | undefined;
+      const resultProgress = normalizeProgress(event.resultProgress);
+      const resultPage = typeof event.resultPage === "number" ? event.resultPage : null;
+      const resultTotal = typeof event.resultTotal === "number" ? event.resultTotal : null;
       console.log(
         `[NAV] ${reason} 완료 | target: ${target}` +
         (displayTarget ? ` | displayTarget: ${displayTarget}` : '') +
         ` | resultHref: ${resultHref ?? '없음'}` +
         ` | resultCfi: ${resultCfi ?? '없음'}`
       );
-      if (resultCfi && resultCfi !== PAGE_ONE_CFI) {
+      if (resultCfi && !isBootLocation(resultCfi, resultHref)) {
         currentLocationRef.current = resultCfi;
+      }
+      if (resultProgress !== null) {
+        setReadProgress(resultProgress);
+      }
+      if (resultPage !== null && resultTotal !== null && resultTotal > 1) {
+        setPageInfo({ page: resultPage, total: resultTotal });
       }
       if (navTimeoutRef.current) {
         clearTimeout(navTimeoutRef.current);
@@ -306,23 +356,32 @@ function ReaderInner({
   const handleLocationChange = useCallback(
     (_total: number, location: Location, progress: number) => {
       const cfi = location?.start?.cfi;
-      // page-1 (titlepage) 이벤트는 마운트·탐색 중 항상 발생 → 항상 무시
-      if (!cfi || cfi === PAGE_ONE_CFI) return;
+      const href = location?.start?.href;
+      if (!cfi) return;
+
+      // Boot/titlepage relocated events can arrive before or after controlled
+      // restore. Never let them replace a real saved reading position.
+      if (isBootLocation(cfi, href)) {
+        console.log('[NAV] boot/titlepage 위치 이벤트 무시:', href ?? 'href 없음', cfi);
+        return;
+      }
+
+      const clampedProgress = normalizeProgress(progress) ?? 0;
 
       // UI 업데이트는 항상 수행 (탐색 중 포함)
-      setReadProgress(Math.min(100, Math.max(0, Math.round(progress))));
+      setReadProgress(clampedProgress);
       const disp = location?.start?.displayed;
       if (disp && disp.total > 1) setPageInfo({ page: disp.page, total: disp.total });
 
       // 제어된 탐색 중에는 저장만 건너뜀
-      if (navPhaseRef.current === 'navigating') {
+      if (navPhaseRef.current !== 'idle') {
+        currentLocationRef.current = cfi;
         console.log('[NAV] 탐색 중 — 저장 건너뜀:', cfi);
         return;
       }
 
       // 정상 저장 경로
       currentLocationRef.current = cfi;
-      const clampedProgress = Math.min(100, Math.max(0, Math.round(progress)));
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         updateLocation.mutate(
