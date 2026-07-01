@@ -16,7 +16,7 @@ import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
-import { ReadiumView, useSearch } from "react-native-readium";
+import { ReadiumView } from "react-native-readium";
 import type {
   Decoration,
   DecorationActivatedEvent,
@@ -27,7 +27,6 @@ import type {
   PublicationReadyEvent,
   ReadiumProps,
   ReadiumViewRef,
-  SearchResult,
   SelectionAction,
   SelectionActionEvent,
 } from "react-native-readium";
@@ -93,6 +92,13 @@ type TocRow = {
   key: string;
   link: Link;
   depth: number;
+};
+
+type ReadiumSearchResult = {
+  locator: Locator;
+  before?: string;
+  highlight?: string;
+  after?: string;
 };
 
 function normalizePercent(value: unknown): number | null {
@@ -253,7 +259,7 @@ function mergeDecorations(left: Decoration[], right: Decoration[]): Decoration[]
   return Array.from(map.values());
 }
 
-function selectedTextPreview(result: SearchResult): string {
+function selectedTextPreview(result: ReadiumSearchResult): string {
   const before = result.before ? `${result.before} ` : "";
   const highlight = result.highlight ?? result.locator.text?.highlight ?? "";
   const after = result.after ? ` ${result.after}` : "";
@@ -342,7 +348,7 @@ function SearchModal({
   visible: boolean;
   query: string;
   setQuery: (value: string) => void;
-  results: SearchResult[];
+  results: ReadiumSearchResult[];
   isSearching: boolean;
   isLoadingMore: boolean;
   hasMore: boolean;
@@ -551,6 +557,8 @@ function ReadiumReaderInner({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPersistedLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
   const publicationReadyRef = useRef(false);
+  const activeSearchIdRef = useRef(0);
+  const loadingMoreSearchRef = useRef(false);
 
   const [localSrc, setLocalSrc] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -565,19 +573,13 @@ function ReadiumReaderInner({
   const [notesVisible, setNotesVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [searchResults, setSearchResults] = useState<ReadiumSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isSearchSupported, setIsSearchSupported] = useState(Platform.OS !== "web");
+  const [hasMoreSearchResults, setHasMoreSearchResults] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<SelectedQuote | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
-
-  const {
-    results: searchResults,
-    isSearching,
-    isLoadingMore,
-    isSupported,
-    hasMore,
-    search,
-    loadMore,
-    clear,
-  } = useSearch(readiumRef);
 
   useEffect(() => {
     quotesRef.current = quotes;
@@ -619,9 +621,78 @@ function ReadiumReaderInner({
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      clear();
+      activeSearchIdRef.current += 1;
+      readiumRef.current?.cancelSearch();
     };
-  }, [clear]);
+  }, []);
+
+  const clearSearch = useCallback(() => {
+    activeSearchIdRef.current += 1;
+    loadingMoreSearchRef.current = false;
+    readiumRef.current?.cancelSearch();
+    setSearchText("");
+    setSearchResults([]);
+    setIsSearching(false);
+    setIsLoadingMore(false);
+    setHasMoreSearchResults(false);
+    setIsSearchSupported(Platform.OS !== "web");
+  }, []);
+
+  const runSearch = useCallback(async () => {
+    const query = searchText.trim();
+    const target = readiumRef.current;
+    if (!query || !target) return;
+
+    const searchId = activeSearchIdRef.current + 1;
+    activeSearchIdRef.current = searchId;
+    loadingMoreSearchRef.current = true;
+    setIsSearching(true);
+    setSearchResults([]);
+    setHasMoreSearchResults(false);
+
+    try {
+      const page = await target.search(query, { caseSensitive: false });
+      if (searchId !== activeSearchIdRef.current) return;
+      setSearchResults((page.results ?? []) as ReadiumSearchResult[]);
+      setHasMoreSearchResults(Boolean(page.hasMore));
+      setIsSearchSupported(page.isSupported !== false);
+    } catch {
+      if (searchId === activeSearchIdRef.current) {
+        setHasMoreSearchResults(false);
+      }
+    } finally {
+      if (searchId === activeSearchIdRef.current) {
+        setIsSearching(false);
+      }
+      loadingMoreSearchRef.current = false;
+    }
+  }, [searchText]);
+
+  const loadMoreSearchResults = useCallback(async () => {
+    const target = readiumRef.current;
+    if (!target || loadingMoreSearchRef.current || !hasMoreSearchResults) return;
+
+    const searchId = activeSearchIdRef.current;
+    loadingMoreSearchRef.current = true;
+    setIsLoadingMore(true);
+
+    try {
+      const page = await target.loadMoreSearchResults();
+      if (searchId !== activeSearchIdRef.current) return;
+      setSearchResults((prev) => [...prev, ...((page.results ?? []) as ReadiumSearchResult[])]);
+      setHasMoreSearchResults(Boolean(page.hasMore));
+      setIsSearchSupported(page.isSupported !== false);
+    } catch {
+      if (searchId === activeSearchIdRef.current) {
+        setHasMoreSearchResults(false);
+      }
+    } finally {
+      if (searchId === activeSearchIdRef.current) {
+        setIsLoadingMore(false);
+      }
+      loadingMoreSearchRef.current = false;
+    }
+  }, [hasMoreSearchResults]);
 
   const preferences = useMemo(() => buildReadiumPreferences(settings), [settings]);
 
@@ -922,18 +993,15 @@ function ReadiumReaderInner({
         results={searchResults}
         isSearching={isSearching}
         isLoadingMore={isLoadingMore}
-        hasMore={hasMore}
-        isSupported={isSupported}
-        onSubmit={() => search(searchText, { caseSensitive: false })}
-        onLoadMore={loadMore}
+        hasMore={hasMoreSearchResults}
+        isSupported={isSearchSupported}
+        onSubmit={runSearch}
+        onLoadMore={loadMoreSearchResults}
         onSelect={(locator) => {
           navigateToLocator(locator);
           setSearchVisible(false);
         }}
-        onClear={() => {
-          setSearchText("");
-          clear();
-        }}
+        onClear={clearSearch}
         onClose={() => setSearchVisible(false)}
       />
 
