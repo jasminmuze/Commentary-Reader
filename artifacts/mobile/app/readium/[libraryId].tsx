@@ -3,13 +3,11 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -71,7 +69,6 @@ type StoredReadiumLocation = {
 
 type LegacyReaderLocation = {
   v?: number;
-  cfi?: string;
   href?: string;
   progress?: number | null;
 };
@@ -79,7 +76,6 @@ type LegacyReaderLocation = {
 type QuoteWithLocation = Quote & {
   cfiRange?: string | null;
   highlightedByMe?: boolean | null;
-  highlightIntensity?: number | null;
 };
 
 type SelectedQuote = {
@@ -92,13 +88,6 @@ type TocRow = {
   key: string;
   link: Link;
   depth: number;
-};
-
-type ReadiumSearchResult = {
-  locator: Locator;
-  before?: string;
-  highlight?: string;
-  after?: string;
 };
 
 function normalizePercent(value: unknown): number | null {
@@ -114,14 +103,15 @@ function progressFromLocator(locator?: Locator | null): number | null {
   );
 }
 
-function locatorFromHref(href: string): Locator | null {
+function locatorFromHref(href: string, fallbackProgress?: number | null): Locator | null {
   const normalized = href.trim();
   if (!normalized || normalized.startsWith("epubcfi(")) return null;
+  const progress = normalizePercent(fallbackProgress);
   return {
     href: normalized,
     type: "application/xhtml+xml",
     title: "",
-    locations: { progression: 0 },
+    locations: { progression: progress !== null ? progress / 100 : 0 },
   };
 }
 
@@ -144,20 +134,13 @@ function parseStoredReadiumLocator(
     }
 
     if (parsed && "href" in parsed && typeof parsed.href === "string") {
-      return locatorFromHref(parsed.href);
+      return locatorFromHref(parsed.href, parsed.progress ?? fallbackProgress);
     }
   } catch {
     // Older rows can be raw EPUB CFIs or raw hrefs.
   }
 
-  const legacyHrefLocator = locatorFromHref(value);
-  if (legacyHrefLocator) {
-    const progress = normalizePercent(fallbackProgress);
-    if (progress !== null) {
-      legacyHrefLocator.locations = { progression: progress / 100 };
-    }
-  }
-  return legacyHrefLocator;
+  return locatorFromHref(value, fallbackProgress);
 }
 
 function serializeReadiumLocation(locator: Locator): string {
@@ -216,7 +199,7 @@ function flattenToc(links: Link[], depth = 0): TocRow[] {
   });
 }
 
-function readiumLocatorFromLink(link: Link): Locator {
+function locatorFromLink(link: Link): Locator {
   const type = (link as Link & { type?: string }).type ?? "application/xhtml+xml";
   return {
     href: link.href,
@@ -257,13 +240,6 @@ function mergeDecorations(left: Decoration[], right: Decoration[]): Decoration[]
   for (const item of left) map.set(item.id, item);
   for (const item of right) map.set(item.id, item);
   return Array.from(map.values());
-}
-
-function selectedTextPreview(result: ReadiumSearchResult): string {
-  const before = result.before ? `${result.before} ` : "";
-  const highlight = result.highlight ?? result.locator.text?.highlight ?? "";
-  const after = result.after ? ` ${result.after}` : "";
-  return `${before}${highlight}${after}`.trim() || result.locator.title || result.locator.href;
 }
 
 function TocModal({
@@ -330,121 +306,31 @@ function TocModal({
   );
 }
 
-function SearchModal({
-  visible,
-  query,
-  setQuery,
-  results,
-  isSearching,
-  isLoadingMore,
-  hasMore,
-  isSupported,
-  onSubmit,
-  onLoadMore,
-  onSelect,
-  onClear,
-  onClose,
-}: {
-  visible: boolean;
-  query: string;
-  setQuery: (value: string) => void;
-  results: ReadiumSearchResult[];
-  isSearching: boolean;
-  isLoadingMore: boolean;
-  hasMore: boolean;
-  isSupported: boolean;
-  onSubmit: () => void;
-  onLoadMore: () => void;
-  onSelect: (locator: Locator) => void;
-  onClear: () => void;
-  onClose: () => void;
-}) {
+function SearchUnavailableModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.keyboardPanel}
+      <View
+        style={[
+          styles.bottomPanel,
+          {
+            backgroundColor: colors.card,
+            borderTopColor: colors.border,
+            paddingBottom: insets.bottom + 10,
+          },
+        ]}
       >
-        <View
-          style={[
-            styles.bottomPanel,
-            {
-              backgroundColor: colors.card,
-              borderTopColor: colors.border,
-              paddingBottom: insets.bottom + 10,
-            },
-          ]}
-        >
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border + "80" }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>본문 검색</Text>
-            <Pressable onPress={onClose} hitSlop={16}>
-              <Feather name="x" size={20} color={colors.mutedForeground} />
-            </Pressable>
-          </View>
-
-          <View style={[styles.searchBar, { borderColor: colors.border, backgroundColor: colors.background }]}> 
-            <Feather name="search" size={16} color={colors.mutedForeground} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              onSubmitEditing={onSubmit}
-              placeholder="책 안에서 찾기"
-              placeholderTextColor={colors.mutedForeground}
-              returnKeyType="search"
-              style={[styles.searchInput, { color: colors.foreground }]}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {query.length > 0 ? (
-              <Pressable onPress={onClear} hitSlop={10}>
-                <Feather name="x-circle" size={16} color={colors.mutedForeground} />
-              </Pressable>
-            ) : null}
-          </View>
-
-          {!isSupported ? (
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>이 EPUB는 검색 서비스를 제공하지 않아요.</Text>
-          ) : isSearching ? (
-            <View style={styles.inlineLoading}>
-              <ActivityIndicator color={colors.primary} />
-              <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>검색 중...</Text>
-            </View>
-          ) : results.length === 0 ? (
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>검색어를 입력하면 결과가 여기에 떠요.</Text>
-          ) : (
-            <FlatList
-              data={results}
-              keyExtractor={(item, index) => `${item.locator.href}-${index}-${item.locator.locations?.progression ?? 0}`}
-              onEndReached={() => {
-                if (hasMore && !isLoadingMore) onLoadMore();
-              }}
-              renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => onSelect(item.locator)}
-                  style={({ pressed }) => [
-                    styles.searchRow,
-                    { opacity: pressed ? 0.6 : 1, borderBottomColor: colors.border + "30" },
-                  ]}
-                >
-                  <Text style={[styles.searchTitle, { color: colors.primary }]} numberOfLines={1}>
-                    {item.locator.title || item.locator.href}
-                  </Text>
-                  <Text style={[styles.searchSnippet, { color: colors.foreground }]} numberOfLines={3}>
-                    {selectedTextPreview(item)}
-                  </Text>
-                </Pressable>
-              )}
-              ListFooterComponent={
-                isLoadingMore ? <ActivityIndicator style={{ marginVertical: 12 }} color={colors.primary} /> : null
-              }
-            />
-          )}
+        <View style={[styles.modalHeader, { borderBottomColor: colors.border + "80" }]}>
+          <Text style={[styles.modalTitle, { color: colors.foreground }]}>본문 검색</Text>
+          <Pressable onPress={onClose} hitSlop={16}>
+            <Feather name="x" size={20} color={colors.mutedForeground} />
+          </Pressable>
         </View>
-      </KeyboardAvoidingView>
+        <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>현재 설치된 Readium 패키지 버전은 검색 API를 아직 노출하지 않아요. 리더 안정화가 끝나면 패키지 업그레이드나 네이티브 브리지로 붙일 예정이에요.</Text>
+      </View>
     </Modal>
   );
 }
@@ -543,12 +429,11 @@ function ReadiumReaderInner({
   const createQuote = useCreateQuote();
   const toggleHighlight = useToggleHighlight();
   const updateLocation = useUpdateReadingLocation();
-  const { user } = useUser();
   const { settings, settingsRef, update: updateSettings, reset: resetSettings, loaded } = useReaderSettings();
 
   const initialLocator = useMemo(
     () => parseStoredReadiumLocator(entry.lastReadingLocation, entry.readingProgress ?? null),
-    // The first location is a mount-time seed; background refetches should not remount the reader.
+    // Mount-time seed only; background refetches should not remount the reader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -557,8 +442,6 @@ function ReadiumReaderInner({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPersistedLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
   const publicationReadyRef = useRef(false);
-  const activeSearchIdRef = useRef(0);
-  const loadingMoreSearchRef = useRef(false);
 
   const [localSrc, setLocalSrc] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -572,12 +455,6 @@ function ReadiumReaderInner({
   const [tocVisible, setTocVisible] = useState(false);
   const [notesVisible, setNotesVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
-  const [searchText, setSearchText] = useState("");
-  const [searchResults, setSearchResults] = useState<ReadiumSearchResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [isSearchSupported, setIsSearchSupported] = useState(Platform.OS !== "web");
-  const [hasMoreSearchResults, setHasMoreSearchResults] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<SelectedQuote | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
 
@@ -621,78 +498,8 @@ function ReadiumReaderInner({
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      activeSearchIdRef.current += 1;
-      readiumRef.current?.cancelSearch();
     };
   }, []);
-
-  const clearSearch = useCallback(() => {
-    activeSearchIdRef.current += 1;
-    loadingMoreSearchRef.current = false;
-    readiumRef.current?.cancelSearch();
-    setSearchText("");
-    setSearchResults([]);
-    setIsSearching(false);
-    setIsLoadingMore(false);
-    setHasMoreSearchResults(false);
-    setIsSearchSupported(Platform.OS !== "web");
-  }, []);
-
-  const runSearch = useCallback(async () => {
-    const query = searchText.trim();
-    const target = readiumRef.current;
-    if (!query || !target) return;
-
-    const searchId = activeSearchIdRef.current + 1;
-    activeSearchIdRef.current = searchId;
-    loadingMoreSearchRef.current = true;
-    setIsSearching(true);
-    setSearchResults([]);
-    setHasMoreSearchResults(false);
-
-    try {
-      const page = await target.search(query, { caseSensitive: false });
-      if (searchId !== activeSearchIdRef.current) return;
-      setSearchResults((page.results ?? []) as ReadiumSearchResult[]);
-      setHasMoreSearchResults(Boolean(page.hasMore));
-      setIsSearchSupported(page.isSupported !== false);
-    } catch {
-      if (searchId === activeSearchIdRef.current) {
-        setHasMoreSearchResults(false);
-      }
-    } finally {
-      if (searchId === activeSearchIdRef.current) {
-        setIsSearching(false);
-      }
-      loadingMoreSearchRef.current = false;
-    }
-  }, [searchText]);
-
-  const loadMoreSearchResults = useCallback(async () => {
-    const target = readiumRef.current;
-    if (!target || loadingMoreSearchRef.current || !hasMoreSearchResults) return;
-
-    const searchId = activeSearchIdRef.current;
-    loadingMoreSearchRef.current = true;
-    setIsLoadingMore(true);
-
-    try {
-      const page = await target.loadMoreSearchResults();
-      if (searchId !== activeSearchIdRef.current) return;
-      setSearchResults((prev) => [...prev, ...((page.results ?? []) as ReadiumSearchResult[])]);
-      setHasMoreSearchResults(Boolean(page.hasMore));
-      setIsSearchSupported(page.isSupported !== false);
-    } catch {
-      if (searchId === activeSearchIdRef.current) {
-        setHasMoreSearchResults(false);
-      }
-    } finally {
-      if (searchId === activeSearchIdRef.current) {
-        setIsLoadingMore(false);
-      }
-      loadingMoreSearchRef.current = false;
-    }
-  }, [hasMoreSearchResults]);
 
   const preferences = useMemo(() => buildReadiumPreferences(settings), [settings]);
 
@@ -980,28 +787,14 @@ function ReadiumReaderInner({
         visible={tocVisible}
         toc={toc}
         onSelect={(link) => {
-          navigateToLocator(readiumLocatorFromLink(link));
+          navigateToLocator(locatorFromLink(link));
           setTocVisible(false);
         }}
         onClose={() => setTocVisible(false)}
       />
 
-      <SearchModal
+      <SearchUnavailableModal
         visible={searchVisible}
-        query={searchText}
-        setQuery={setSearchText}
-        results={searchResults}
-        isSearching={isSearching}
-        isLoadingMore={isLoadingMore}
-        hasMore={hasMoreSearchResults}
-        isSupported={isSearchSupported}
-        onSubmit={runSearch}
-        onLoadMore={loadMoreSearchResults}
-        onSelect={(locator) => {
-          navigateToLocator(locator);
-          setSearchVisible(false);
-        }}
-        onClear={clearSearch}
         onClose={() => setSearchVisible(false)}
       />
 
@@ -1154,10 +947,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.45)",
   },
-  keyboardPanel: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
   bottomPanel: {
     marginTop: "auto",
     maxHeight: "78%",
@@ -1179,6 +968,7 @@ const styles = StyleSheet.create({
     padding: 22,
     textAlign: "center",
     fontSize: 13,
+    lineHeight: 20,
   },
   tocRow: {
     minHeight: 50,
@@ -1187,34 +977,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   tocText: { fontSize: 14, lineHeight: 19, fontWeight: "600" },
-  searchBar: {
-    margin: 14,
-    height: 44,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: "100%",
-    fontSize: 15,
-  },
-  inlineLoading: {
-    padding: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  searchRow: {
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 5,
-  },
-  searchTitle: { fontSize: 12, fontWeight: "700" },
-  searchSnippet: { fontSize: 14, lineHeight: 20 },
   noteRow: {
     minHeight: 74,
     paddingHorizontal: 18,
