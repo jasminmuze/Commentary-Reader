@@ -42,6 +42,10 @@ import {
 const PAGE_ONE_CFI = 'epubcfi(/6/2!/4/1:0)';
 const PAGE_ONE_CFI_PREFIX = 'epubcfi(/6/2!';
 
+type NavPhase = 'idle' | 'restoring' | 'navigating';
+type NavReason = 'restore' | 'toc';
+type NavTransaction = { reason: NavReason; target?: string; completed: boolean };
+
 function normalizeProgress(progress: unknown): number | null {
   if (typeof progress !== "number" || !Number.isFinite(progress)) return null;
   const percent = progress <= 1 ? progress * 100 : progress;
@@ -78,10 +82,12 @@ function ReaderInner({
   const updateLocation = useUpdateReadingLocation();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
+  const lastPersistedLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
   // 복원할 대상 CFI — 마운트 시 한 번만 캡처 (refetch로 변경되면 안 됨)
   const initialLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
   // 제어된 탐색 상태: 복원/TOC 이동 중에는 위치 저장을 차단
-  const navPhaseRef = useRef<'idle' | 'restoring' | 'navigating'>('idle');
+  const navPhaseRef = useRef<NavPhase>('idle');
+  const navTxnRef = useRef<NavTransaction | null>(null);
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fs = useFileSystem();
@@ -98,7 +104,7 @@ function ReaderInner({
   const [sheetVisible, setSheetVisible] = useState(false);
   const [anchoring, setAnchoring] = useState(false);
   const [readProgress, setReadProgress] = useState<number | null>(
-    normalizeProgress(entry.readingProgress ?? null),
+    normalizeProgress(entry.readingProgress ?? null) ?? 0,
   );
   const [pageInfo, setPageInfo] = useState<{ page: number; total: number } | null>(null);
 
@@ -111,6 +117,32 @@ function ReaderInner({
   const cfiByQuoteIdRef = useRef<Map<number, string>>(new Map());
 
   useEffect(() => { quotesRef.current = quotes; }, [quotes]);
+
+  const beginControlledNavigation = useCallback((reason: NavReason, target?: string) => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    navPhaseRef.current = reason === 'restore' ? 'restoring' : 'navigating';
+    navTxnRef.current = { reason, target, completed: false };
+  }, []);
+
+  const scheduleLocationSave = useCallback((cfi: string, progress: number) => {
+    currentLocationRef.current = cfi;
+    if (lastPersistedLocationRef.current === cfi) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      updateLocation.mutate(
+        { libraryId, data: { location: cfi, readingProgress: progress } },
+        {
+          onSuccess: (updated) => {
+            lastPersistedLocationRef.current = cfi;
+            queryClient.setQueryData(getGetLibraryEntryQueryKey(libraryId), updated);
+          },
+        }
+      );
+    }, 1500);
+  }, [libraryId, queryClient, updateLocation]);
 
   const startAnchoring = useCallback(() => {
     if (runningRef.current || !readyRef.current || !canonicalBookId) return;
@@ -135,12 +167,13 @@ function ReaderInner({
     if (initialLocationRef.current) {
       // Reader initialLocation prop 은 신뢰하지 않음 — onReady 이후 직접 주입
       const targetJson = JSON.stringify(initialLocationRef.current);
-      navPhaseRef.current = 'restoring';
+      beginControlledNavigation('restore', initialLocationRef.current);
       console.log('[NAV] restore 시작 →', initialLocationRef.current);
       if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
       navTimeoutRef.current = setTimeout(() => {
         if (navPhaseRef.current === 'restoring') {
           navPhaseRef.current = 'idle';
+          navTxnRef.current = null;
           console.log('[NAV] restore 타임아웃 — 강제 해제');
           startAnchoring();
         }
@@ -179,7 +212,7 @@ function ReaderInner({
       injectJavascript(styleScript);
     }
     startAnchoring();
-  }, [injectJavascript, settingsRef, startAnchoring]);
+  }, [beginControlledNavigation, injectJavascript, settingsRef, startAnchoring]);
 
   const handleWebViewMessage = useCallback((event: Record<string, unknown>) => {
     if (event.type === 'navLog') {
@@ -194,6 +227,7 @@ function ReaderInner({
         navTimeoutRef.current = null;
       }
       navPhaseRef.current = 'idle';
+      navTxnRef.current = null;
       startAnchoring();
     } else if (event.type === 'navigationDone') {
       const reason = event.reason as string;
@@ -210,11 +244,28 @@ function ReaderInner({
         ` | resultHref: ${resultHref ?? '없음'}` +
         ` | resultCfi: ${resultCfi ?? '없음'}`
       );
-      if (resultCfi && !isBootLocation(resultCfi, resultHref)) {
-        currentLocationRef.current = resultCfi;
+      const targetCfi = target?.startsWith('epubcfi(') ? target : undefined;
+      const stableCfi =
+        reason === 'restore' && targetCfi && !isBootLocation(targetCfi, resultHref)
+          ? targetCfi
+          : resultCfi && !isBootLocation(resultCfi, resultHref)
+            ? resultCfi
+            : undefined;
+      if (stableCfi) {
+        currentLocationRef.current = stableCfi;
       }
       if (resultProgress !== null) {
         setReadProgress(resultProgress);
+      }
+      if ((reason === 'restore' || reason === 'toc') && navTxnRef.current) {
+        navTxnRef.current = {
+          ...navTxnRef.current,
+          target,
+          completed: true,
+        };
+      }
+      if (reason === 'toc' && stableCfi) {
+        scheduleLocationSave(stableCfi, resultProgress ?? readProgress ?? 0);
       }
       if (resultPage !== null && resultTotal !== null && resultTotal > 1) {
         setPageInfo({ page: resultPage, total: resultTotal });
@@ -228,7 +279,7 @@ function ReaderInner({
       // so deferred search() calls never raced the in-flight rendition.display().
       startAnchoring();
     }
-  }, [startAnchoring]);
+  }, [readProgress, scheduleLocationSave, startAnchoring]);
 
   useEffect(() => {
     if (readyRef.current && quotes.length > 0) startAnchoring();
@@ -374,32 +425,31 @@ function ReaderInner({
       if (disp && disp.total > 1) setPageInfo({ page: disp.page, total: disp.total });
 
       // 제어된 탐색/검색 앵커링 중에는 저장만 건너뜀
-      if (navPhaseRef.current !== 'idle' || runningRef.current) {
-        currentLocationRef.current = cfi;
+      const navTxn = navTxnRef.current;
+      if (navPhaseRef.current !== 'idle' || navTxn || runningRef.current) {
+        if (navTxn?.reason === 'restore' && navTxn.target?.startsWith('epubcfi(')) {
+          currentLocationRef.current = navTxn.target;
+        } else {
+          currentLocationRef.current = cfi;
+        }
+        if (navPhaseRef.current === 'idle' && navTxn?.completed) {
+          navTxnRef.current = null;
+        }
         console.log(
           navPhaseRef.current !== 'idle'
             ? '[NAV] 탐색 중 — 저장 건너뜀:'
-            : '[ANCHOR] 앵커링 중 — 저장 건너뜀:',
+            : navTxn
+              ? '[NAV] 제어 탐색 후 위치 이벤트 — 저장 건너뜀:'
+              : '[ANCHOR] 앵커링 중 — 저장 건너뜀:',
           cfi,
         );
         return;
       }
 
       // 정상 저장 경로
-      currentLocationRef.current = cfi;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        updateLocation.mutate(
-          { libraryId, data: { location: cfi, readingProgress: clampedProgress } },
-          {
-            onSuccess: (updated) => {
-              queryClient.setQueryData(getGetLibraryEntryQueryKey(libraryId), updated);
-            },
-          }
-        );
-      }, 1500);
+      scheduleLocationSave(cfi, clampedProgress);
     },
-    [updateLocation, libraryId, queryClient]
+    [scheduleLocationSave]
   );
 
   useEffect(() => {
@@ -589,12 +639,13 @@ function ReaderInner({
         visible={tocVisible}
         toc={toc}
         onSelect={(href) => {
-          navPhaseRef.current = 'navigating';
+          beginControlledNavigation('toc', href);
           console.log('[NAV] TOC 선택 → href:', href);
           if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
           navTimeoutRef.current = setTimeout(() => {
             if (navPhaseRef.current === 'navigating') {
               navPhaseRef.current = 'idle';
+              navTxnRef.current = null;
               console.log('[NAV] TOC 탐색 타임아웃 — 강제 해제');
             }
           }, 6000);
@@ -612,7 +663,10 @@ function ReaderInner({
               `      reason:'toc',` +
               `      target: target,` +
               `      resultCfi: loc && loc.start && loc.start.cfi,` +
-              `      resultHref: loc && loc.start && loc.start.href` +
+              `      resultHref: loc && loc.start && loc.start.href,` +
+              `      resultProgress: loc && loc.start && typeof loc.start.percentage === 'number' ? loc.start.percentage : null,` +
+              `      resultPage: loc && loc.start && loc.start.displayed && loc.start.displayed.page,` +
+              `      resultTotal: loc && loc.start && loc.start.displayed && loc.start.displayed.total` +
               `    }));` +
               `  });` +
               `})(); true`
