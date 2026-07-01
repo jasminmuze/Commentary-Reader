@@ -49,6 +49,7 @@ type NavTransaction = {
   target?: string;
   href?: string;
   resultCfi?: string;
+  saved?: boolean;
   completed: boolean;
 };
 
@@ -383,6 +384,7 @@ function ReaderInner({
           target,
           href: stableHref,
           resultCfi: stableCfi ?? resultCfi,
+          saved: reason === 'toc' && !!stableCfi,
           completed: true,
         };
       }
@@ -569,12 +571,14 @@ function ReaderInner({
           currentHrefRef.current = href ?? navTxn.href ?? currentHrefRef.current;
         }
         navTxnRef.current = null;
-        if (navTxn.reason === 'toc') {
+        if (navTxn.reason === 'toc' && !navTxn.saved) {
           scheduleLocationSave(cfi, clampedProgress, href ?? navTxn.href);
         }
         console.log(
           navTxn.reason === 'toc'
-            ? '[NAV] 제어 탐색 후 목표 이벤트 — 저장 갱신/해제:'
+            ? navTxn.saved
+              ? '[NAV] 제어 탐색 후 목표 이벤트 — 저장 유지/해제:'
+              : '[NAV] 제어 탐색 후 목표 이벤트 — 저장 갱신/해제:'
             : '[NAV] 제어 탐색 후 목표 이벤트 — 저장 건너뜀/해제:',
           href ?? 'href 없음',
           cfi,
