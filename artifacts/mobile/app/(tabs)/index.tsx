@@ -132,7 +132,7 @@ export default function LibraryScreen() {
           onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: getGetUserLibraryQueryKey(user.id) });
             if (data.match.status === "matched") {
-              router.push(`/read/${data.entry.id}`);
+              router.push(`/readium/${data.entry.id}`);
             } else {
               router.push(`/match/${data.entry.id}`);
             }
@@ -181,7 +181,7 @@ export default function LibraryScreen() {
         renderItem={({ item }) => (
           <LibraryCard
             entry={item}
-            onOpen={() => router.push(`/read/${item.id}`)}
+            onOpen={() => router.push(`/readium/${item.id}`)}
             onMatch={() => router.push(`/match/${item.id}`)}
           />
         )}
