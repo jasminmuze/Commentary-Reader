@@ -11,10 +11,10 @@ import {
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
-import { ReadiumView } from "react-native-readium";
 import type {
   Decoration,
   DecorationActivatedEvent,
@@ -59,6 +59,9 @@ const selectionActions: SelectionAction[] = [
   { id: "comment", label: "코멘트" },
   { id: "define", label: "사전" },
 ];
+
+type ReadiumNativeModule = { ReadiumView?: any };
+declare const require: (moduleName: string) => ReadiumNativeModule;
 
 type StoredReadiumLocation = {
   v: typeof READIUM_LOCATION_VERSION;
@@ -155,6 +158,20 @@ function serializeReadiumLocation(locator: Locator): string {
 
 function nativeFilePath(uri: string): string {
   return Platform.OS === "web" ? uri : uri.replace(/^file:\/\//, "");
+}
+
+function isExpoGo(): boolean {
+  return Constants.appOwnership === "expo";
+}
+
+function getReadiumView(): any | null {
+  if (Platform.OS === "web" || isExpoGo()) return null;
+
+  try {
+    return require("react-native-readium").ReadiumView ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function fontFamilyForReadium(settings: ReaderSettings): ReadiumProps["preferences"]["fontFamily"] {
@@ -335,6 +352,27 @@ function SearchUnavailableModal({ visible, onClose }: { visible: boolean; onClos
   );
 }
 
+function ReadiumUnavailableScreen({ title, body }: { title: string; body: string }) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View
+      style={[
+        styles.center,
+        { backgroundColor: colors.background, paddingTop: insets.top + 40, padding: 24 },
+      ]}
+    >
+      <Feather name="smartphone" size={40} color={colors.primary} />
+      <Text style={[styles.webTitle, { color: colors.foreground }]}>{title}</Text>
+      <Text style={[styles.webBody, { color: colors.mutedForeground }]}>{body}</Text>
+      <Pressable onPress={() => router.back()} style={[styles.webBtn, { backgroundColor: colors.primary }]}> 
+        <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>돌아가기</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function NotesModal({
   visible,
   quotes,
@@ -426,6 +464,7 @@ function ReadiumReaderInner({
   const queryClient = useQueryClient();
   const fs = useFileSystem();
   const readiumRef = useRef<ReadiumViewRef>(null);
+  const ReadiumNativeView = useMemo(() => getReadiumView(), []);
   const createQuote = useCreateQuote();
   const toggleHighlight = useToggleHighlight();
   const updateLocation = useUpdateReadingLocation();
@@ -463,7 +502,7 @@ function ReadiumReaderInner({
   }, [quotes]);
 
   useEffect(() => {
-    if (!fs.cacheDirectory) return;
+    if (!fs.cacheDirectory || !ReadiumNativeView) return;
     let cancelled = false;
     const remote = apiUrl(entry.epubUrl);
     const dest = `${fs.cacheDirectory}readium_epub_${libraryId}.epub`;
@@ -493,7 +532,7 @@ function ReadiumReaderInner({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.epubUrl, libraryId]);
+  }, [entry.epubUrl, libraryId, ReadiumNativeView]);
 
   useEffect(() => {
     return () => {
@@ -677,6 +716,15 @@ function ReadiumReaderInner({
     ? `Readium · 커뮤니티 하이라이트 ${quotes.length}개`
     : "Readium · 매칭되지 않음";
 
+  if (!ReadiumNativeView) {
+    return (
+      <ReadiumUnavailableScreen
+        title="개발 빌드에서 열어주세요"
+        body="Readium 리더는 Expo Go에서 실행할 수 없는 네이티브 모듈을 사용해요. 책 목록과 소셜 기능은 Expo Go에서 볼 수 있고, 실제 EPUB 읽기는 EAS development build에서 테스트해야 해요."
+      />
+    );
+  }
+
   if (downloadError) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, padding: 24 }]}> 
@@ -742,7 +790,7 @@ function ReadiumReaderInner({
       </View>
 
       <View style={{ flex: 1 }}>
-        <ReadiumView
+        <ReadiumNativeView
           ref={readiumRef}
           file={file}
           preferences={preferences}
@@ -765,7 +813,7 @@ function ReadiumReaderInner({
               ]}
             />
           </View>
-          <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>
+          <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}> 
             {readProgress}%
             {currentLocation?.locations?.position ? ` · 위치 ${currentLocation.locations.position}` : ""}
           </Text>
@@ -834,7 +882,6 @@ function ReadiumReaderInner({
 
 export default function ReadiumReaderScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const { user } = useUser();
   const { libraryId: libraryIdParam } = useLocalSearchParams<{ libraryId: string }>();
   const libraryId = parseInt(libraryIdParam ?? "0", 10);
@@ -861,21 +908,10 @@ export default function ReadiumReaderScreen() {
 
   if (Platform.OS === "web") {
     return (
-      <View
-        style={[
-          styles.center,
-          { backgroundColor: colors.background, paddingTop: insets.top + 40, padding: 24 },
-        ]}
-      >
-        <Feather name="smartphone" size={40} color={colors.primary} />
-        <Text style={[styles.webTitle, { color: colors.foreground }]}>모바일 빌드에서 읽어주세요</Text>
-        <Text style={[styles.webBody, { color: colors.mutedForeground }]}> 
-          Readium 리더는 네이티브 모듈이라 Expo Go/개발 빌드에서 테스트해야 해요.
-        </Text>
-        <Pressable onPress={() => router.back()} style={[styles.webBtn, { backgroundColor: colors.primary }]}> 
-          <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>돌아가기</Text>
-        </Pressable>
-      </View>
+      <ReadiumUnavailableScreen
+        title="모바일 빌드에서 읽어주세요"
+        body="Readium 리더는 네이티브 모듈이라 웹 Preview에서는 열 수 없어요. Expo Go에서는 안내 화면만 보이고, 실제 EPUB 읽기는 EAS development build에서 테스트해야 해요."
+      />
     );
   }
 
@@ -995,7 +1031,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  webTitle: { marginTop: 16, fontSize: 20, fontWeight: "800" },
+  webTitle: { marginTop: 16, fontSize: 20, fontWeight: "800", textAlign: "center" },
   webBody: { marginTop: 10, fontSize: 14, lineHeight: 21, textAlign: "center" },
   webBtn: {
     marginTop: 18,
