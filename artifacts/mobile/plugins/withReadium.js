@@ -5,6 +5,7 @@ const { withAppBuildGradle, withDangerousMod } = require("expo/config-plugins");
 const READIUM_SOURCE = "source 'https://github.com/readium/podspecs'";
 const COCOAPODS_SOURCE = "source 'https://cdn.cocoapods.org/'";
 const DESUGAR_DEP = 'coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.2"';
+const KOTLINX_DATETIME_DEP = 'implementation "org.jetbrains.kotlinx:kotlinx-datetime:0.6.1"';
 
 function ensurePodSources(contents) {
   if (contents.includes(READIUM_SOURCE)) return contents;
@@ -107,11 +108,24 @@ function withReadiumIos(config) {
   ]);
 }
 
+function ensureKotlinxDatetimeDependency(contents) {
+  if (contents.includes("org.jetbrains.kotlinx:kotlinx-datetime")) return contents;
+  const lines = contents.split("\n");
+  const dependenciesIndex = lines.findIndex((line) => /^dependencies\s*\{/.test(line.trim()));
+  if (dependenciesIndex >= 0) {
+    lines.splice(dependenciesIndex + 1, 0, `    ${KOTLINX_DATETIME_DEP}`);
+  } else {
+    lines.push("", "dependencies {", `    ${KOTLINX_DATETIME_DEP}`, "}");
+  }
+  return lines.join("\n");
+}
+
 function withReadiumAndroid(config) {
   return withAppBuildGradle(config, (modConfig) => {
     let contents = modConfig.modResults.contents;
     contents = ensureCompileOptions(contents);
     contents = ensureDesugarDependency(contents);
+    contents = ensureKotlinxDatetimeDependency(contents);
     modConfig.modResults.contents = contents;
     return modConfig;
   });
