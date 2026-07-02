@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { withAppBuildGradle, withDangerousMod } = require("@expo/config-plugins");
+const { withAppBuildGradle, withDangerousMod } = require("expo/config-plugins");
 
 const READIUM_SOURCE = "source 'https://github.com/readium/podspecs'";
 const COCOAPODS_SOURCE = "source 'https://cdn.cocoapods.org/'";

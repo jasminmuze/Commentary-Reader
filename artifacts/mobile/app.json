@@ -16,7 +16,9 @@
     "ios": {
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "package": "com.jasminmuze.commentaryreader"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -29,11 +31,16 @@
       ],
       "expo-font",
       "expo-web-browser",
-      "./plugins/withReadium"
+      "./plugins/withReadium.js"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a284d87c-da56-4e0d-9d2c-a3a6c87456ef"
+      }
     }
   }
 }
