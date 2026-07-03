@@ -481,6 +481,7 @@ function ReadiumReaderInner({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPersistedLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
   const publicationReadyRef = useRef(false);
+  const initialRestoreAppliedRef = useRef(false);
 
   const [localSrc, setLocalSrc] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -544,11 +545,8 @@ function ReadiumReaderInner({
 
   const file = useMemo<ReadiumFile | null>(() => {
     if (!localSrc) return null;
-    return {
-      url: nativeFilePath(localSrc),
-      initialLocation: initialLocator ?? undefined,
-    };
-  }, [initialLocator, localSrc]);
+    return { url: nativeFilePath(localSrc) };
+  }, [localSrc]);
 
   const serverDecorations = useMemo(
     () => quotes.map((quote) => decorationFromQuote(quote, settings)).filter((item): item is Decoration => !!item),
@@ -630,17 +628,23 @@ function ReadiumReaderInner({
   const handlePublicationReady = useCallback((event: PublicationReadyEvent) => {
     publicationReadyRef.current = true;
     setToc(event.tableOfContents ?? []);
-    if (initialLocator) {
+    if (initialLocator && !initialRestoreAppliedRef.current) {
+      initialRestoreAppliedRef.current = true;
       readiumRef.current?.goTo(initialLocator);
     }
   }, [initialLocator]);
 
   const navigateToLocator = useCallback((locator: Locator) => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
     readiumRef.current?.goTo(locator);
     setCurrentLocation(locator);
     const progress = progressFromLocator(locator);
     if (progress !== null) setReadProgress(progress);
-  }, []);
+    saveLocation(locator);
+  }, [saveLocation]);
 
   const handleSelectionAction = useCallback((event: SelectionActionEvent) => {
     const trimmed = event.selectedText.trim();
