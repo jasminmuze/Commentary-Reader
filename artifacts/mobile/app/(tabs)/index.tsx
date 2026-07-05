@@ -177,7 +177,7 @@ export default function LibraryScreen() {
 
       <FlatList<LibraryEntry>
         data={library ?? []}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={(item, index) => String(item.id ?? item.libraryId ?? item.bookId ?? item.uploadURL ?? item.epubUrl ?? index)}
         renderItem={({ item }) => (
           <LibraryCard
             entry={item}
