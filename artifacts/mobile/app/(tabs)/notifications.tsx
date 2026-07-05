@@ -179,7 +179,7 @@ export default function NotificationsScreen() {
       ) : (
         <FlatList<NotificationItem>
           data={notifications}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item, index) => String(item.id ?? index)}
           renderItem={({ item }) => <NotificationCard item={item} />}
           contentContainerStyle={{
             paddingHorizontal: 16,

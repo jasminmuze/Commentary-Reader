@@ -118,7 +118,7 @@ export default function MatchScreen() {
       ) : (
         <FlatList<Book>
           data={books ?? []}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item, index) => String(item.id ?? index)}
           ListHeaderComponent={
             <View>
               <View style={[styles.fileCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>

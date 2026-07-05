@@ -115,7 +115,7 @@ export default function FriendsScreen() {
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>SEARCH RESULTS</Text>
           <FlatList<UserWithFriendStatus>
             data={searchResults ?? []}
-            keyExtractor={(item) => String(item.id)}
+            keyExtractor={(item, index) => String(item.id ?? index)}
             renderItem={({ item }) => (
               <View style={[styles.userRow, { borderColor: colors.border }]}>
                 <UserAvatar username={item.username} avatarColor={item.avatarColor} size={42} />
@@ -152,7 +152,7 @@ export default function FriendsScreen() {
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>FOLLOWING</Text>
           <FlatList<User>
             data={friends ?? []}
-            keyExtractor={(item) => String(item.id)}
+            keyExtractor={(item, index) => String(item.id ?? index)}
             renderItem={({ item }) => (
               <View style={[styles.userRow, { borderColor: colors.border }]}>
                 <UserAvatar username={item.username} avatarColor={item.avatarColor} size={42} />
