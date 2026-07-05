@@ -1,9 +1,2 @@
-- [API Zod barrel exports](api-zod-barrel.md) — collision fix: never `export * from "./generated/types"` wholesale; list individual type files to skip colliders.
-- [Orval params naming](orval-params-naming.md) — path-param Zod schemas use `GetBookParams`; query-param-only Zod schemas use `SearchUsersQueryParams` (not `SearchUsersParams` which is a TS type only).
-- [Orval query hooks need queryKey](orval-query-options-querykey.md) — passing any `query` options to a generated `useGetX` requires an explicit `queryKey`; use the `getGetXQueryKey(...)` helper.
-- [epubjs-react-native on Expo SDK 54](epubjs-react-native-expo.md) — don't install its file-system/expo-file-system pkgs; write a local useFileSystem on `expo-file-system/legacy`; reader is device-only, guard off web.
-- [epubjs source type detection](epubjs-source-type.md) — getSourceType only matches .epub/.opf/base64 by substring; object keys MUST include .epub extension or the Reader throws "Invalid source type".
-- [HMAC auth pattern](hmac-auth.md) — Bearer token auth via SESSION_SECRET; authenticate middleware sets req.userId; zero client-supplied userId anywhere in API or mobile.
-- [Visibility privacy invariant](visibility-privacy-invariant.md) — any endpoint surfacing quote text/comments/counts must gate rows via visibilityPredicate AND drop zero-visible-activity quotes, or it leaks private passages.
-- [Reader anchoring vs nav race](reader-anchoring-nav-race.md) — pause community-highlight search()-anchoring while a controlled display() (restore/TOC) is in flight; resume on navigationDone and the restore timeout.
-- [Reply threads + notifications](reply-notifications.md) — 1-level max enforced at app layer; notifications router is a separate file; after api-zod barrel changes run pnpm run typecheck:libs before leaf checks or NotificationItem stays invisible.
+- [Native Readium reader (Android)](native-readium-reader.md) — why the reader must be an embedded RN ViewManager (not a full-screen Activity) for community highlight/comment parity, plus the untestable-native build loop.
+- [EAS builds from Replit](eas-builds-from-replit.md) — how dev-client builds/connect work for the `mobile` artifact, and the projectId-ownership gotcha.
