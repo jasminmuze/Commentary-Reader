@@ -72,6 +72,11 @@ function ensureReadiumPostInstall(contents) {
   return contents;
 }
 
+function ensureAndroidAbiFilters(contents) {
+  if (contents.includes("abiFilters")) return contents;
+  return contents.replace(/defaultConfig\s*\{/, "defaultConfig {\n        ndk {\n            abiFilters \"arm64-v8a\"\n        }");
+}
+
 function ensureCompileOptions(contents) {
   if (contents.includes("coreLibraryDesugaringEnabled true")) return contents;
   const lines = contents.split("\n");
@@ -156,6 +161,7 @@ function ensureNativeReadiumDependencies(contents) {
 function withReadiumAndroid(config) {
   return withAppBuildGradle(config, (modConfig) => {
     let contents = modConfig.modResults.contents;
+    contents = ensureAndroidAbiFilters(contents);
     contents = ensureCompileOptions(contents);
     contents = ensureDesugarDependency(contents);
     contents = ensureKotlinxDatetimeDependency(contents);
