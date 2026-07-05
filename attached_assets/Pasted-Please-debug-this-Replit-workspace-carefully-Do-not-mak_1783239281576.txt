@@ -1,0 +1,55 @@
+Please debug this Replit workspace carefully. Do not make broad rewrites.
+
+Project: Commentary Reader
+Branch: codex/readium-reader-poc
+Goal: get the Expo development build running correctly, allow EPUB upload, and open the native Readium Android reader.
+
+Important context:
+- We replaced the old epub.js reader with a native Android Readium Kotlin host.
+- Do not revert the native Readium host.
+- Do not run another EAS build unless native Android files or config plugin files must change.
+- First fix the JS/dev-server/API issues.
+
+Please do this in order:
+
+1. Check current state:
+   - git status
+   - git log -5 --oneline
+   - pnpm --filter @workspace/mobile typecheck
+
+2. If typecheck fails, fix it before committing anything.
+   There was a recent issue in artifacts/mobile/app/(tabs)/index.tsx:
+   keyExtractor must be type-safe. Use a safe fallback like:
+   keyExtractor={(item, index) => String(item.id ?? index)}
+
+3. Fix the mobile dev server script.
+   Current command `pnpm run dev` can fail because `$PORT` may be empty:
+   "option requires argument: --port"
+   Make artifacts/mobile/package.json dev script robust by defaulting PORT to 8081 in Replit.
+   It must still set:
+   EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN
+   EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN
+   REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN
+
+4. Verify the app uses the correct API base URL.
+   The upload error was:
+   JSON Parse error: Unexpected character: <
+   That means the app is receiving HTML instead of JSON, probably because API_BASE / EXPO_PUBLIC_DOMAIN is missing or wrong.
+   Fix uploadEpub in artifacts/mobile/lib/api.ts so it:
+   - calls the correct API URL
+   - handles non-JSON responses with a clear error message
+   - does not blindly res.json() if content-type/body is HTML
+
+5. Remove accidental committed patch files if they are still tracked:
+   - native-readium-host.patch
+   - attached_assets/native-readium-host_*.patch
+   - "new file"
+
+6. Only after typecheck passes:
+   - git add relevant files only
+   - git commit with a clear message
+   - git push origin codex/readium-reader-poc
+
+7. Start the dev server with the corrected command and confirm the QR/dev-client flow works.
+
+Please show me the exact commands run and their results. Do not commit if typecheck fails.

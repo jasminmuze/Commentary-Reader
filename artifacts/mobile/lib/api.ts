@@ -21,6 +21,12 @@ async function authHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** Collapse whitespace and truncate a response body for use in error messages. */
+function summarizeBody(body: string): string {
+  const trimmed = body.trim().replace(/\s+/g, " ");
+  return trimmed.length > 200 ? `${trimmed.slice(0, 200)}…` : trimmed;
+}
+
 /**
  * Upload an EPUB file using the two-step presigned URL flow:
  * 1. Ask the API server for a presigned PUT URL (requires auth).
@@ -33,15 +39,42 @@ async function authHeaders(): Promise<Record<string, string>> {
  * On native, use FileSystem.uploadAsync (expo-file-system).
  */
 export async function uploadEpub(fileUri: string): Promise<string> {
-  const auth = await authHeaders();
-  const res = await fetch(apiUrl("/api/objects/upload"), {
-    method: "POST",
-    headers: auth,
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to request upload URL (${res.status})`);
+  if (!API_BASE) {
+    throw new Error(
+      "API base URL is not configured (EXPO_PUBLIC_DOMAIN is missing). " +
+        "Restart the Expo dev server so it injects the Replit domain.",
+    );
   }
-  const { uploadURL } = (await res.json()) as { uploadURL: string };
+
+  const auth = await authHeaders();
+  const url = apiUrl("/api/objects/upload");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { ...auth, Accept: "application/json" },
+  });
+
+  const raw = await res.text();
+  if (!res.ok) {
+    throw new Error(
+      `Failed to request upload URL (${res.status}): ${summarizeBody(raw)}`,
+    );
+  }
+
+  let uploadURL: string | undefined;
+  try {
+    ({ uploadURL } = JSON.parse(raw) as { uploadURL?: string });
+  } catch {
+    const contentType = res.headers.get("content-type") ?? "unknown";
+    throw new Error(
+      `Expected JSON from ${url} but received ${contentType}. ` +
+        `The request likely hit the wrong host (got HTML, not the API). ` +
+        `Body: ${summarizeBody(raw)}`,
+    );
+  }
+
+  if (!uploadURL) {
+    throw new Error(`Upload URL missing in response from ${url}`);
+  }
 
   if (Platform.OS === "web") {
     const blob = await (await fetch(fileUri)).blob();
