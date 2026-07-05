@@ -19,7 +19,6 @@ import com.facebook.react.bridge.Arguments
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -196,7 +195,6 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
         locationJob = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 currentNavigator.currentLocator
-                    .distinctUntilChanged()
                     .collect { locator -> sendLocation(locator) }
             }
         }

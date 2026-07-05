@@ -26,7 +26,7 @@ class NativeReadiumModule(
 
     @ReactMethod
     fun openReader(options: ReadableMap, promise: Promise) {
-        val activity: Activity = currentActivity
+        val activity: Activity = reactContext.currentActivity
             ?: return promise.reject("NO_ACTIVITY", "No active Android activity is available.")
 
         val libraryId = options.getInt("libraryId")
