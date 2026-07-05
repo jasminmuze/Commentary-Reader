@@ -1,0 +1,2114 @@
+diff --git a/artifacts/mobile/.gitignore b/artifacts/mobile/.gitignore
+index 621de6b..f04636c 100644
+--- a/artifacts/mobile/.gitignore
++++ b/artifacts/mobile/.gitignore
+@@ -12,6 +12,10 @@ expo-env.d.ts
+ # Native
+ ios/
+ android/
++!native/
++!native/readium-host/
++!native/readium-host/android/
++!native/readium-host/android/*.kt
+ *.orig.*
+ *.jks
+ *.p8
+diff --git a/artifacts/mobile/app/readium/[libraryId].tsx b/artifacts/mobile/app/readium/[libraryId].tsx
+index a8ee485..77197b2 100644
+--- a/artifacts/mobile/app/readium/[libraryId].tsx
++++ b/artifacts/mobile/app/readium/[libraryId].tsx
+@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+ import {
+   ActivityIndicator,
+   Alert,
+-  FlatList,
+-  Modal,
++  DeviceEventEmitter,
++  NativeModules,
+   Platform,
+   Pressable,
+   StyleSheet,
+@@ -13,1034 +13,285 @@ import {
+ import { Feather } from "@expo/vector-icons";
+ import Constants from "expo-constants";
+ import { router, useLocalSearchParams } from "expo-router";
+-import { useSafeAreaInsets } from "react-native-safe-area-context";
+ import { useQueryClient } from "@tanstack/react-query";
+-import type {
+-  Decoration,
+-  DecorationActivatedEvent,
+-  DecorationGroup,
+-  File as ReadiumFile,
+-  Link,
+-  Locator,
+-  PublicationReadyEvent,
+-  ReadiumProps,
+-  ReadiumViewRef,
+-  SelectionAction,
+-  SelectionActionEvent,
+-} from "react-native-readium";
+ import {
+-  getGetBookQuotesQueryKey,
+   getGetLibraryEntryQueryKey,
+-  useCreateQuote,
+-  useGetBookQuotes,
+   useGetLibraryEntry,
+-  useToggleHighlight,
+   useUpdateReadingLocation,
+ } from "@workspace/api-client-react";
+-import type { LibraryEntry, Quote } from "@workspace/api-client-react";
+ import { useColors } from "@/hooks/useColors";
+-import { useUser } from "@/context/UserContext";
+ import { useFileSystem } from "@/hooks/useFileSystem";
+-import { CommentSheet } from "@/components/CommentSheet";
+-import { ReaderSettingsPanel } from "@/components/ReaderSettingsPanel";
++import { useReaderSettings } from "@/hooks/useReaderSettings";
+ import { apiUrl } from "@/lib/api";
+-import {
+-  HIGHLIGHT_STYLE_CONFIGS,
+-  LINE_SPACING_VALUES,
+-  MARGIN_VALUES,
+-  THEME_CONFIGS,
+-  useReaderSettings,
+-  type ReaderSettings,
+-} from "@/hooks/useReaderSettings";
+-
+-const READIUM_LOCATION_VERSION = 3;
+-const selectionActions: SelectionAction[] = [
+-  { id: "highlight", label: "하이라이트" },
+-  { id: "comment", label: "코멘트" },
+-  { id: "define", label: "사전" },
+-];
+-
+-type ReadiumNativeModule = { ReadiumView?: any };
+-declare const require: (moduleName: string) => ReadiumNativeModule;
+-
+-type StoredReadiumLocation = {
+-  v: typeof READIUM_LOCATION_VERSION;
+-  engine: "readium";
+-  locator: Locator;
+-  progress?: number | null;
+-};
+-
+-type LegacyReaderLocation = {
+-  v?: number;
+-  href?: string;
+-  progress?: number | null;
+-};
+ 
+-type QuoteWithLocation = Quote & {
+-  cfiRange?: string | null;
+-  highlightedByMe?: boolean | null;
++type NativeReadiumHostModule = {
++  openReader(options: {
++    libraryId: number;
++    filePath: string;
++    locatorJson?: string | null;
++    settingsJson?: string | null;
++    title?: string | null;
++  }): Promise<void>;
+ };
+ 
+-type SelectedQuote = {
+-  id: number;
+-  text: string;
+-  locatorJson?: string;
++type NativeReadiumLocationEvent = {
++  libraryId: number;
++  location: string;
++  progress: number | null;
+ };
+ 
+-type TocRow = {
+-  key: string;
+-  link: Link;
+-  depth: number;
++type NativeReadiumClosedEvent = {
++  libraryId: number;
+ };
+ 
+-function normalizePercent(value: unknown): number | null {
+-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+-  const percent = value <= 1 ? value * 100 : value;
+-  return Math.min(100, Math.max(0, Math.round(percent)));
+-}
+-
+-function progressFromLocator(locator?: Locator | null): number | null {
+-  if (!locator?.locations) return null;
+-  return normalizePercent(
+-    locator.locations.totalProgression ?? locator.locations.progression,
+-  );
+-}
+-
+-function locatorFromHref(href: string, fallbackProgress?: number | null): Locator | null {
+-  const normalized = href.trim();
+-  if (!normalized || normalized.startsWith("epubcfi(")) return null;
+-  const progress = normalizePercent(fallbackProgress);
+-  return {
+-    href: normalized,
+-    type: "application/xhtml+xml",
+-    title: "",
+-    locations: { progression: progress !== null ? progress / 100 : 0 },
+-  };
+-}
+-
+-function parseStoredReadiumLocator(
+-  value?: string | null,
+-  fallbackProgress?: number | null,
+-): Locator | null {
+-  if (!value) return null;
+-
+-  try {
+-    const parsed = JSON.parse(value) as StoredReadiumLocation | LegacyReaderLocation;
+-    if (
+-      parsed &&
+-      "engine" in parsed &&
+-      parsed.engine === "readium" &&
+-      "locator" in parsed &&
+-      parsed.locator?.href
+-    ) {
+-      return parsed.locator;
+-    }
+-
+-    if (parsed && "href" in parsed && typeof parsed.href === "string") {
+-      return locatorFromHref(parsed.href, parsed.progress ?? fallbackProgress);
+-    }
+-  } catch {
+-    // Older rows can be raw EPUB CFIs or raw hrefs.
+-  }
+-
+-  return locatorFromHref(value, fallbackProgress);
+-}
+-
+-function serializeReadiumLocation(locator: Locator): string {
+-  const snapshot: StoredReadiumLocation = {
+-    v: READIUM_LOCATION_VERSION,
+-    engine: "readium",
+-    locator,
+-    progress: progressFromLocator(locator),
+-  };
+-  return JSON.stringify(snapshot);
+-}
+-
+-function nativeFilePath(uri: string): string {
+-  return Platform.OS === "web" ? uri : uri.replace(/^file:\/\//, "");
+-}
+-
+ function isExpoGo(): boolean {
+   return Constants.appOwnership === "expo";
+ }
+ 
+-function getReadiumView(): any | null {
+-  if (Platform.OS === "web" || isExpoGo()) return null;
+-
+-  try {
+-    return require("react-native-readium").ReadiumView ?? null;
+-  } catch {
+-    return null;
+-  }
+-}
+-
+-function fontFamilyForReadium(settings: ReaderSettings): ReadiumProps["preferences"]["fontFamily"] {
+-  return settings.font === "sans" ? "sans-serif" : "serif";
+-}
+-
+-function themeForReadium(settings: ReaderSettings): ReadiumProps["preferences"]["theme"] {
+-  if (settings.theme === "dark" || settings.theme === "oled" || settings.theme === "forest") {
+-    return "dark";
+-  }
+-  if (settings.theme === "sepia") return "sepia";
+-  return "light";
+-}
+-
+-function marginScale(settings: ReaderSettings): number {
+-  const px = parseInt(MARGIN_VALUES[settings.margin], 10);
+-  if (!Number.isFinite(px)) return 1;
+-  return Math.max(0.7, Math.min(1.8, px / 24));
+-}
+-
+-function buildReadiumPreferences(settings: ReaderSettings): ReadiumProps["preferences"] {
+-  const theme = THEME_CONFIGS[settings.theme];
+-  return {
+-    theme: themeForReadium(settings),
+-    backgroundColor: theme.bg,
+-    textColor: theme.fg,
+-    fontFamily: fontFamilyForReadium(settings),
+-    fontSize: settings.fontSize,
+-    lineHeight: parseFloat(LINE_SPACING_VALUES[settings.lineSpacing]),
+-    pageMargins: marginScale(settings),
+-    publisherStyles: false,
+-    scroll: settings.scrollMode === "vertical",
+-    textAlign: "start",
+-  };
+-}
+-
+-function flattenToc(links: Link[], depth = 0): TocRow[] {
+-  return links.flatMap((link, index) => {
+-    const key = `${depth}-${index}-${link.href}`;
+-    const children = link.children ? flattenToc(link.children, depth + 1) : [];
+-    return [{ key, link, depth }, ...children];
+-  });
++function getNativeReadiumHost(): NativeReadiumHostModule | null {
++  if (Platform.OS !== "android" || isExpoGo()) return null;
++  return (NativeModules.NativeReadiumHost as NativeReadiumHostModule | undefined) ?? null;
+ }
+ 
+-function locatorFromLink(link: Link): Locator {
+-  const type = (link as Link & { type?: string }).type ?? "application/xhtml+xml";
+-  return {
+-    href: link.href,
+-    type,
+-    title: link.title ?? "",
+-    locations: { progression: 0 },
+-  };
+-}
+-
+-function quoteStoredLocation(quote: Quote): string | null {
+-  return (quote as QuoteWithLocation).cfiRange ?? null;
+-}
+-
+-function decorationFromQuote(quote: Quote, settings: ReaderSettings): Decoration | null {
+-  const locator = parseStoredReadiumLocator(quoteStoredLocation(quote));
+-  if (!locator) return null;
+-
+-  const quoteWithLocation = quote as QuoteWithLocation;
+-  const styleConfig = HIGHLIGHT_STYLE_CONFIGS[settings.highlightStyle];
+-  const isMine = quoteWithLocation.highlightedByMe === true;
+-
+-  return {
+-    id: `quote-${quote.id}`,
+-    locator,
+-    style: {
+-      type: isMine ? styleConfig.annotationType : "highlight",
+-      tint: isMine ? styleConfig.color : "#F9E04B",
+-    },
+-    extras: {
+-      quoteId: String(quote.id),
+-      selectedText: quote.text,
+-    },
+-  };
+-}
+-
+-function mergeDecorations(left: Decoration[], right: Decoration[]): Decoration[] {
+-  const map = new Map<string, Decoration>();
+-  for (const item of left) map.set(item.id, item);
+-  for (const item of right) map.set(item.id, item);
+-  return Array.from(map.values());
++function nativeFilePath(uri: string): string {
++  return uri.replace(/^file:\/\//, "");
+ }
+ 
+-function TocModal({
+-  visible,
+-  toc,
+-  onSelect,
+-  onClose,
+-}: {
+-  visible: boolean;
+-  toc: Link[];
+-  onSelect: (link: Link) => void;
+-  onClose: () => void;
+-}) {
+-  const colors = useColors();
+-  const insets = useSafeAreaInsets();
+-  const rows = useMemo(() => flattenToc(toc), [toc]);
+-
+-  return (
+-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+-      <Pressable style={styles.backdrop} onPress={onClose} />
+-      <View
+-        style={[
+-          styles.bottomPanel,
+-          {
+-            backgroundColor: colors.card,
+-            borderTopColor: colors.border,
+-            paddingBottom: insets.bottom + 10,
+-          },
+-        ]}
+-      >
+-        <View style={[styles.modalHeader, { borderBottomColor: colors.border + "80" }]}>
+-          <Text style={[styles.modalTitle, { color: colors.foreground }]}>목차</Text>
+-          <Pressable onPress={onClose} hitSlop={16}>
+-            <Feather name="x" size={20} color={colors.mutedForeground} />
+-          </Pressable>
+-        </View>
+-        {rows.length === 0 ? (
+-          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>목차를 불러오는 중이에요.</Text>
+-        ) : (
+-          <FlatList
+-            data={rows}
+-            keyExtractor={(item) => item.key}
+-            renderItem={({ item }) => (
+-              <Pressable
+-                onPress={() => onSelect(item.link)}
+-                style={({ pressed }) => [
+-                  styles.tocRow,
+-                  {
+-                    paddingLeft: 18 + item.depth * 16,
+-                    opacity: pressed ? 0.55 : 1,
+-                    borderBottomColor: colors.border + "30",
+-                  },
+-                ]}
+-              >
+-                <Text style={[styles.tocText, { color: colors.foreground }]} numberOfLines={2}>
+-                  {item.link.title ?? item.link.href}
+-                </Text>
+-              </Pressable>
+-            )}
+-          />
+-        )}
+-      </View>
+-    </Modal>
+-  );
++function percentFromProgress(value: number | null | undefined): number | null {
++  if (typeof value !== "number" || !Number.isFinite(value)) return null;
++  const percent = value <= 1 ? value * 100 : value;
++  return Math.max(0, Math.min(100, Math.round(percent)));
+ }
+ 
+-function SearchUnavailableModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
++function NativeReadiumUnavailableScreen() {
+   const colors = useColors();
+-  const insets = useSafeAreaInsets();
+ 
+   return (
+-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+-      <Pressable style={styles.backdrop} onPress={onClose} />
+-      <View
+-        style={[
+-          styles.bottomPanel,
+-          {
+-            backgroundColor: colors.card,
+-            borderTopColor: colors.border,
+-            paddingBottom: insets.bottom + 10,
+-          },
+-        ]}
++    <View style={[styles.center, { backgroundColor: colors.background, padding: 28 }]}>
++      <Feather name="book-open" size={34} color={colors.primary} />
++      <Text style={[styles.title, { color: colors.foreground, marginTop: 16 }]}>
++        Android development build needed
++      </Text>
++      <Text style={[styles.body, { color: colors.mutedForeground }]}>
++        Native Readium runs inside the Android build. Expo Go and web preview can show the app shell,
++        but the EPUB reader opens only after installing the development APK.
++      </Text>
++      <Pressable
++        style={[styles.button, { borderColor: colors.border, marginTop: 20 }]}
++        onPress={() => router.back()}
+       >
+-        <View style={[styles.modalHeader, { borderBottomColor: colors.border + "80" }]}>
+-          <Text style={[styles.modalTitle, { color: colors.foreground }]}>본문 검색</Text>
+-          <Pressable onPress={onClose} hitSlop={16}>
+-            <Feather name="x" size={20} color={colors.mutedForeground} />
+-          </Pressable>
+-        </View>
+-        <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>현재 설치된 Readium 패키지 버전은 검색 API를 아직 노출하지 않아요. 리더 안정화가 끝나면 패키지 업그레이드나 네이티브 브리지로 붙일 예정이에요.</Text>
+-      </View>
+-    </Modal>
+-  );
+-}
+-
+-function ReadiumUnavailableScreen({ title, body }: { title: string; body: string }) {
+-  const colors = useColors();
+-  const insets = useSafeAreaInsets();
+-
+-  return (
+-    <View
+-      style={[
+-        styles.center,
+-        { backgroundColor: colors.background, paddingTop: insets.top + 40, padding: 24 },
+-      ]}
+-    >
+-      <Feather name="smartphone" size={40} color={colors.primary} />
+-      <Text style={[styles.webTitle, { color: colors.foreground }]}>{title}</Text>
+-      <Text style={[styles.webBody, { color: colors.mutedForeground }]}>{body}</Text>
+-      <Pressable onPress={() => router.back()} style={[styles.webBtn, { backgroundColor: colors.primary }]}> 
+-        <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>돌아가기</Text>
++        <Feather name="arrow-left" size={16} color={colors.foreground} />
++        <Text style={[styles.buttonText, { color: colors.foreground }]}>Back</Text>
+       </Pressable>
+     </View>
+   );
+ }
+ 
+-function NotesModal({
+-  visible,
+-  quotes,
+-  onNavigate,
+-  onOpenQuote,
+-  onClose,
+-}: {
+-  visible: boolean;
+-  quotes: Quote[];
+-  onNavigate: (locator: Locator) => void;
+-  onOpenQuote: (quote: Quote) => void;
+-  onClose: () => void;
+-}) {
++export default function ReadiumRoute() {
+   const colors = useColors();
+-  const insets = useSafeAreaInsets();
+-
+-  return (
+-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+-      <Pressable style={styles.backdrop} onPress={onClose} />
+-      <View
+-        style={[
+-          styles.bottomPanel,
+-          {
+-            backgroundColor: colors.card,
+-            borderTopColor: colors.border,
+-            paddingBottom: insets.bottom + 10,
+-          },
+-        ]}
+-      >
+-        <View style={[styles.modalHeader, { borderBottomColor: colors.border + "80" }]}>
+-          <Text style={[styles.modalTitle, { color: colors.foreground }]}>내 하이라이트</Text>
+-          <Pressable onPress={onClose} hitSlop={16}>
+-            <Feather name="x" size={20} color={colors.mutedForeground} />
+-          </Pressable>
+-        </View>
+-        {quotes.length === 0 ? (
+-          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>아직 남긴 하이라이트가 없어요.</Text>
+-        ) : (
+-          <FlatList
+-            data={quotes}
+-            keyExtractor={(item) => String(item.id)}
+-            renderItem={({ item }) => {
+-              const locator = parseStoredReadiumLocator(quoteStoredLocation(item));
+-              return (
+-                <View style={[styles.noteRow, { borderBottomColor: colors.border + "30" }]}> 
+-                  <Pressable
+-                    disabled={!locator}
+-                    onPress={() => {
+-                      if (locator) {
+-                        onNavigate(locator);
+-                        onClose();
+-                      }
+-                    }}
+-                    style={styles.noteTextWrap}
+-                  >
+-                    <Text style={[styles.noteText, { color: colors.foreground }]} numberOfLines={4}>
+-                      {item.text}
+-                    </Text>
+-                    {!locator ? (
+-                      <Text style={[styles.noteMeta, { color: colors.mutedForeground }]}>이전 리더 위치라 이동할 수 없어요.</Text>
+-                    ) : null}
+-                  </Pressable>
+-                  <Pressable onPress={() => onOpenQuote(item)} style={styles.commentIconBtn}>
+-                    <Feather name="message-circle" size={18} color={colors.primary} />
+-                  </Pressable>
+-                </View>
+-              );
+-            }}
+-          />
+-        )}
+-      </View>
+-    </Modal>
+-  );
+-}
+-
+-function ReadiumReaderInner({
+-  entry,
+-  quotes,
+-  libraryId,
+-  canonicalBookId,
+-}: {
+-  entry: LibraryEntry;
+-  quotes: Quote[];
+-  libraryId: number;
+-  canonicalBookId: number | null;
+-}) {
+-  const colors = useColors();
+-  const insets = useSafeAreaInsets();
+-  const queryClient = useQueryClient();
+   const fs = useFileSystem();
+-  const readiumRef = useRef<ReadiumViewRef>(null);
+-  const ReadiumNativeView = useMemo(() => getReadiumView(), []);
+-  const createQuote = useCreateQuote();
+-  const toggleHighlight = useToggleHighlight();
++  const queryClient = useQueryClient();
+   const updateLocation = useUpdateReadingLocation();
+-  const { settings, settingsRef, update: updateSettings, reset: resetSettings, loaded } = useReaderSettings();
+-
+-  const initialLocator = useMemo(
+-    () => parseStoredReadiumLocator(entry.lastReadingLocation, entry.readingProgress ?? null),
+-    // Mount-time seed only; background refetches should not remount the reader.
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-    [],
+-  );
+-
+-  const quotesRef = useRef<Quote[]>(quotes);
+-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+-  const lastPersistedLocationRef = useRef<string | undefined>(entry.lastReadingLocation ?? undefined);
+-  const publicationReadyRef = useRef(false);
+-  const initialRestoreAppliedRef = useRef(false);
++  const { settings, loaded: settingsLoaded } = useReaderSettings();
++  const params = useLocalSearchParams<{ libraryId?: string }>();
++  const libraryId = Number(params.libraryId);
++  const nativeReadium = useMemo(() => getNativeReadiumHost(), []);
+ 
++  const openedRef = useRef(false);
+   const [localSrc, setLocalSrc] = useState<string | null>(null);
+   const [downloadError, setDownloadError] = useState<string | null>(null);
+-  const [toc, setToc] = useState<Link[]>([]);
+-  const [readProgress, setReadProgress] = useState<number | null>(
+-    initialLocator ? progressFromLocator(initialLocator) : normalizePercent(entry.readingProgress ?? null) ?? 0,
+-  );
+-  const [currentLocation, setCurrentLocation] = useState<Locator | null>(initialLocator);
+-  const [localDecorations, setLocalDecorations] = useState<Decoration[]>([]);
+-  const [settingsPanelVisible, setSettingsPanelVisible] = useState(false);
+-  const [tocVisible, setTocVisible] = useState(false);
+-  const [notesVisible, setNotesVisible] = useState(false);
+-  const [searchVisible, setSearchVisible] = useState(false);
+-  const [selectedQuote, setSelectedQuote] = useState<SelectedQuote | null>(null);
+-  const [sheetVisible, setSheetVisible] = useState(false);
++  const [status, setStatus] = useState("Preparing EPUB...");
++
++  const { data: entry, isFetching } = useGetLibraryEntry(libraryId, {
++    query: {
++      enabled: Number.isFinite(libraryId),
++      queryKey: getGetLibraryEntryQueryKey(libraryId),
++    },
++  });
+ 
+   useEffect(() => {
+-    quotesRef.current = quotes;
+-  }, [quotes]);
++    if (!Number.isFinite(libraryId)) return;
++
++    const locationSub = DeviceEventEmitter.addListener(
++      "NativeReadiumHost.locationChanged",
++      (event: NativeReadiumLocationEvent) => {
++        if (event.libraryId !== libraryId || !event.location) return;
++        updateLocation.mutate(
++          {
++            libraryId,
++            data: {
++              location: event.location,
++              readingProgress: percentFromProgress(event.progress) ?? 0,
++            },
++          },
++          {
++            onSuccess: (updated) => {
++              queryClient.setQueryData(getGetLibraryEntryQueryKey(libraryId), updated);
++            },
++          },
++        );
++      },
++    );
++
++    const closedSub = DeviceEventEmitter.addListener(
++      "NativeReadiumHost.closed",
++      (event: NativeReadiumClosedEvent) => {
++        if (event.libraryId === libraryId) router.back();
++      },
++    );
++
++    return () => {
++      locationSub.remove();
++      closedSub.remove();
++    };
++  }, [libraryId, queryClient, updateLocation]);
+ 
+   useEffect(() => {
+-    if (!fs.cacheDirectory || !ReadiumNativeView) return;
++    if (!entry || !fs.cacheDirectory || !nativeReadium) return;
++
+     let cancelled = false;
+     const remote = apiUrl(entry.epubUrl);
+-    const dest = `${fs.cacheDirectory}readium_epub_${libraryId}.epub`;
++    const dest = `${fs.cacheDirectory}native_readium_epub_${libraryId}.epub`;
+ 
+     (async () => {
++      setStatus("Checking local EPUB cache...");
+       const info = await fs.getFileInfo(dest);
+       if (cancelled) return;
++
+       if (info.exists) {
+-        setLocalSrc(dest);
++        setLocalSrc(info.uri);
+         return;
+       }
+ 
++      setStatus("Downloading EPUB...");
+       const result = await fs.downloadFile(remote, dest);
+       if (cancelled) return;
++
+       if (result.uri) {
+         setLocalSrc(result.uri);
+       } else {
+-        setDownloadError("EPUB 다운로드에 실패했어요.");
++        setDownloadError("EPUB download failed.");
+       }
+     })().catch((error) => {
+       if (!cancelled) {
+-        setDownloadError(error instanceof Error ? error.message : "EPUB 다운로드에 실패했어요.");
++        setDownloadError(error instanceof Error ? error.message : "EPUB download failed.");
+       }
+     });
+ 
+     return () => {
+       cancelled = true;
+     };
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [entry.epubUrl, libraryId, ReadiumNativeView]);
+-
+-  useEffect(() => {
+-    return () => {
+-      if (saveTimer.current) clearTimeout(saveTimer.current);
+-    };
+-  }, []);
+-
+-  const preferences = useMemo(() => buildReadiumPreferences(settings), [settings]);
+-
+-  const file = useMemo<ReadiumFile | null>(() => {
+-    if (!localSrc) return null;
+-    return { url: nativeFilePath(localSrc) };
+-  }, [localSrc]);
+-
+-  const serverDecorations = useMemo(
+-    () => quotes.map((quote) => decorationFromQuote(quote, settings)).filter((item): item is Decoration => !!item),
+-    [quotes, settings],
+-  );
+-
+-  const decorations = useMemo<DecorationGroup[]>(
+-    () => [
+-      {
+-        name: "highlights",
+-        decorations: mergeDecorations(serverDecorations, localDecorations),
+-      },
+-    ],
+-    [localDecorations, serverDecorations],
+-  );
+-
+-  const myHighlightedQuotes = useMemo(
+-    () => quotes.filter((quote) => (quote as QuoteWithLocation).highlightedByMe === true),
+-    [quotes],
+-  );
+-
+-  const ensureMatched = useCallback(() => {
+-    if (canonicalBookId) return true;
+-    Alert.alert(
+-      "먼저 책을 매칭하세요",
+-      "커뮤니티 하이라이트와 코멘트를 사용하려면 이 책을 매칭해야 해요.",
+-      [
+-        { text: "취소", style: "cancel" },
+-        { text: "매칭하기", onPress: () => router.push(`/match/${libraryId}`) },
+-      ],
+-    );
+-    return false;
+-  }, [canonicalBookId, libraryId]);
+-
+-  const addLocalDecoration = useCallback((quoteId: number, locator: Locator, text: string) => {
+-    const styleConfig = HIGHLIGHT_STYLE_CONFIGS[settingsRef.current.highlightStyle];
+-    const decoration: Decoration = {
+-      id: `quote-${quoteId}`,
+-      locator,
+-      style: {
+-        type: styleConfig.annotationType,
+-        tint: styleConfig.color,
+-      },
+-      extras: {
+-        quoteId: String(quoteId),
+-        selectedText: text,
+-      },
+-    };
+-    setLocalDecorations((prev) => mergeDecorations(prev, [decoration]));
+-  }, [settingsRef]);
+-
+-  const saveLocation = useCallback((locator: Locator) => {
+-    if (!publicationReadyRef.current) return;
+-    const serialized = serializeReadiumLocation(locator);
+-    if (lastPersistedLocationRef.current === serialized) return;
+-
+-    const progress = progressFromLocator(locator) ?? readProgress ?? 0;
+-    if (saveTimer.current) clearTimeout(saveTimer.current);
+-    saveTimer.current = setTimeout(() => {
+-      updateLocation.mutate(
+-        { libraryId, data: { location: serialized, readingProgress: progress } },
+-        {
+-          onSuccess: (updated) => {
+-            lastPersistedLocationRef.current = serialized;
+-            queryClient.setQueryData(getGetLibraryEntryQueryKey(libraryId), updated);
+-          },
+-        },
+-      );
+-    }, 1500);
+-  }, [libraryId, queryClient, readProgress, updateLocation]);
+-
+-  const handleLocationChange = useCallback((locator: Locator) => {
+-    setCurrentLocation(locator);
+-    const progress = progressFromLocator(locator);
+-    if (progress !== null) setReadProgress(progress);
+-    saveLocation(locator);
+-  }, [saveLocation]);
+-
+-  const handlePublicationReady = useCallback((event: PublicationReadyEvent) => {
+-    publicationReadyRef.current = true;
+-    setToc(event.tableOfContents ?? []);
+-    if (initialLocator && !initialRestoreAppliedRef.current) {
+-      initialRestoreAppliedRef.current = true;
+-      readiumRef.current?.goTo(initialLocator);
++  }, [entry, fs, libraryId, nativeReadium]);
++
++  const openNativeReader = useCallback(async () => {
++    if (!entry || !localSrc || !nativeReadium || !settingsLoaded) return;
++
++    try {
++      setStatus("Opening native Readium reader...");
++      await nativeReadium.openReader({
++        libraryId,
++        filePath: nativeFilePath(localSrc),
++        locatorJson: entry.lastReadingLocation ?? null,
++        settingsJson: JSON.stringify(settings),
++        title: entry.book?.title ?? entry.originalTitle ?? "Book",
++      });
++      openedRef.current = true;
++      setStatus("Reader is open.");
++    } catch (error) {
++      const message = error instanceof Error ? error.message : "Could not open native reader.";
++      setDownloadError(message);
+     }
+-  }, [initialLocator]);
++  }, [entry, libraryId, localSrc, nativeReadium, settings, settingsLoaded]);
+ 
+-  const navigateToLocator = useCallback((locator: Locator) => {
+-    if (saveTimer.current) {
+-      clearTimeout(saveTimer.current);
+-      saveTimer.current = null;
+-    }
+-    readiumRef.current?.goTo(locator);
+-    setCurrentLocation(locator);
+-    const progress = progressFromLocator(locator);
+-    if (progress !== null) setReadProgress(progress);
+-    saveLocation(locator);
+-  }, [saveLocation]);
+-
+-  const handleSelectionAction = useCallback((event: SelectionActionEvent) => {
+-    const trimmed = event.selectedText.trim();
+-    if (event.actionId === "define") {
+-      Alert.alert("사전", trimmed || "선택한 단어가 없어요.");
+-      return;
+-    }
+-
+-    if (!ensureMatched() || !canonicalBookId) return;
+-    if (trimmed.length < 8) {
+-      Alert.alert("너무 짧아요", "최소 8자 이상 선택해 주세요.");
+-      return;
+-    }
+-
+-    const locatorJson = serializeReadiumLocation(event.locator);
+-    if (event.actionId === "highlight") {
+-      createQuote.mutate(
+-        { bookId: canonicalBookId, data: { text: trimmed.slice(0, 1000) } },
+-        {
+-          onSuccess: (quote) => {
+-            addLocalDecoration(quote.id, event.locator, quote.text);
+-            toggleHighlight.mutate(
+-              { quoteId: quote.id, data: { userLibraryId: libraryId, cfiRange: locatorJson } },
+-              {
+-                onSuccess: () => {
+-                  queryClient.invalidateQueries({ queryKey: getGetBookQuotesQueryKey(canonicalBookId) });
+-                },
+-              },
+-            );
+-          },
+-          onError: () => Alert.alert("하이라이트 실패", "다시 시도해 주세요."),
+-        },
+-      );
+-      return;
+-    }
+-
+-    if (event.actionId === "comment") {
+-      createQuote.mutate(
+-        { bookId: canonicalBookId, data: { text: trimmed.slice(0, 1000) } },
+-        {
+-          onSuccess: (quote) => {
+-            setSelectedQuote({ id: quote.id, text: quote.text, locatorJson });
+-            setSheetVisible(true);
+-          },
+-          onError: () => Alert.alert("실패", "다시 시도해 주세요."),
+-        },
+-      );
+-    }
+-  }, [addLocalDecoration, canonicalBookId, createQuote, ensureMatched, libraryId, queryClient, toggleHighlight]);
+-
+-  const handleDecorationActivated = useCallback((event: DecorationActivatedEvent) => {
+-    const quoteId = Number(event.decoration.extras?.quoteId);
+-    if (!Number.isFinite(quoteId)) return;
+-    const quote = quotesRef.current.find((item) => item.id === quoteId);
+-    setSelectedQuote({
+-      id: quoteId,
+-      text: quote?.text ?? event.decoration.extras?.selectedText ?? "",
+-      locatorJson: serializeReadiumLocation(event.decoration.locator),
+-    });
+-    setSheetVisible(true);
+-  }, []);
+-
+-  const openQuoteFromNotes = useCallback((quote: Quote) => {
+-    setSelectedQuote({
+-      id: quote.id,
+-      text: quote.text,
+-      locatorJson: quoteStoredLocation(quote) ?? undefined,
+-    });
+-    setSheetVisible(true);
+-  }, []);
+-
+-  const subtitle = canonicalBookId
+-    ? `Readium · 커뮤니티 하이라이트 ${quotes.length}개`
+-    : "Readium · 매칭되지 않음";
++  useEffect(() => {
++    if (openedRef.current || !localSrc || !entry || !settingsLoaded) return;
++    openNativeReader();
++  }, [entry, localSrc, openNativeReader, settingsLoaded]);
+ 
+-  if (!ReadiumNativeView) {
+-    return (
+-      <ReadiumUnavailableScreen
+-        title="개발 빌드에서 열어주세요"
+-        body="Readium 리더는 Expo Go에서 실행할 수 없는 네이티브 모듈을 사용해요. 책 목록과 소셜 기능은 Expo Go에서 볼 수 있고, 실제 EPUB 읽기는 EAS development build에서 테스트해야 해요."
+-      />
+-    );
+-  }
++  if (!nativeReadium) return <NativeReadiumUnavailableScreen />;
+ 
+-  if (downloadError) {
++  if (!Number.isFinite(libraryId)) {
+     return (
+-      <View style={[styles.center, { backgroundColor: colors.background, padding: 24 }]}> 
+-        <Text style={{ color: "#FF6B6B", textAlign: "center" }}>{downloadError}</Text>
++      <View style={[styles.center, { backgroundColor: colors.background, padding: 24 }]}>
++        <Text style={{ color: colors.foreground }}>Invalid library entry.</Text>
+       </View>
+     );
+   }
+ 
+-  if (!loaded || !file) {
++  if (downloadError) {
+     return (
+-      <View style={[styles.center, { backgroundColor: colors.background }]}> 
+-        <ActivityIndicator color={colors.primary} />
+-        <Text style={{ color: colors.mutedForeground, marginTop: 10, fontSize: 13 }}>
+-          {!loaded ? "설정 불러오는 중..." : "EPUB 준비 중..."}
++      <View style={[styles.center, { backgroundColor: colors.background, padding: 24 }]}>
++        <Feather name="alert-circle" size={34} color="#FF6B6B" />
++        <Text style={[styles.title, { color: colors.foreground, marginTop: 16 }]}>
++          Reader could not open
+         </Text>
++        <Text style={[styles.body, { color: colors.mutedForeground }]}>{downloadError}</Text>
++        <Pressable
++          style={[styles.button, { borderColor: colors.border, marginTop: 20 }]}
++          onPress={() => {
++            setDownloadError(null);
++            openedRef.current = false;
++            openNativeReader();
++          }}
++        >
++          <Feather name="refresh-cw" size={16} color={colors.foreground} />
++          <Text style={[styles.buttonText, { color: colors.foreground }]}>Try again</Text>
++        </Pressable>
+       </View>
+     );
+   }
+ 
+   return (
+-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+-      <View
+-        style={[
+-          styles.header,
+-          {
+-            paddingTop: insets.top + 10,
+-            backgroundColor: colors.background,
+-            borderBottomColor: colors.border + "80",
+-          },
+-        ]}
+-      >
+-        <Pressable style={styles.iconBtn} onPress={() => router.back()}>
+-          <Feather name="arrow-left" size={22} color={colors.foreground} />
+-        </Pressable>
+-        <View style={styles.titleWrap}>
+-          <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
+-            {entry.book?.title ?? entry.originalTitle ?? "내 책"}
+-          </Text>
+-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]} numberOfLines={1}>
+-            {subtitle}
+-          </Text>
+-        </View>
+-        {!canonicalBookId ? (
+-          <Pressable
+-            onPress={() => router.push(`/match/${libraryId}`)}
+-            style={[styles.matchBtn, { borderColor: colors.primary }]}
+-          >
+-            <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}>매칭</Text>
+-          </Pressable>
+-        ) : null}
+-        <Pressable style={styles.iconBtn} onPress={() => setSearchVisible(true)}>
+-          <Feather name="search" size={18} color={colors.foreground} />
+-        </Pressable>
+-        <Pressable style={styles.iconBtn} onPress={() => setNotesVisible(true)}>
+-          <Feather name="bookmark" size={18} color={colors.foreground} />
+-        </Pressable>
+-        <Pressable style={styles.iconBtn} onPress={() => setTocVisible(true)}>
+-          <Feather name="list" size={19} color={colors.foreground} />
+-        </Pressable>
+-        <Pressable style={styles.iconBtn} onPress={() => setSettingsPanelVisible(true)}>
+-          <Text style={[styles.aaText, { color: colors.foreground }]}>Aa</Text>
++    <View style={[styles.center, { backgroundColor: colors.background, padding: 28 }]}>
++      <ActivityIndicator color={colors.primary} />
++      <Text style={[styles.title, { color: colors.foreground, marginTop: 18 }]}>
++        {entry?.book?.title ?? entry?.originalTitle ?? "Opening book"}
++      </Text>
++      <Text style={[styles.body, { color: colors.mutedForeground }]}>
++        {isFetching ? "Loading library entry..." : status}
++      </Text>
++      {openedRef.current ? (
++        <Pressable
++          style={[styles.button, { borderColor: colors.border, marginTop: 20 }]}
++          onPress={openNativeReader}
++        >
++          <Feather name="book-open" size={16} color={colors.foreground} />
++          <Text style={[styles.buttonText, { color: colors.foreground }]}>Reopen reader</Text>
+         </Pressable>
+-      </View>
+-
+-      <View style={{ flex: 1 }}>
+-        <ReadiumNativeView
+-          ref={readiumRef}
+-          file={file}
+-          preferences={preferences}
+-          decorations={decorations}
+-          selectionActions={selectionActions}
+-          onLocationChange={handleLocationChange}
+-          onPublicationReady={handlePublicationReady}
+-          onDecorationActivated={handleDecorationActivated}
+-          onSelectionAction={handleSelectionAction}
+-        />
+-      </View>
+-
+-      {readProgress !== null ? (
+-        <View style={[styles.progressWrap, { backgroundColor: colors.background, paddingBottom: insets.bottom + 4 }]}> 
+-          <View style={[styles.progressTrack, { backgroundColor: colors.border + "50" }]}> 
+-            <View
+-              style={[
+-                styles.progressFill,
+-                { width: `${readProgress}%` as `${number}%`, backgroundColor: colors.primary },
+-              ]}
+-            />
+-          </View>
+-          <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}> 
+-            {readProgress}%
+-            {currentLocation?.locations?.position ? ` · 위치 ${currentLocation.locations.position}` : ""}
+-          </Text>
+-        </View>
+       ) : null}
+-
+-      <ReaderSettingsPanel
+-        visible={settingsPanelVisible}
+-        settings={settings}
+-        onChange={updateSettings}
+-        onReset={() => {
+-          resetSettings();
+-          setSettingsPanelVisible(false);
+-        }}
+-        onClose={() => setSettingsPanelVisible(false)}
+-      />
+-
+-      <TocModal
+-        visible={tocVisible}
+-        toc={toc}
+-        onSelect={(link) => {
+-          navigateToLocator(locatorFromLink(link));
+-          setTocVisible(false);
+-        }}
+-        onClose={() => setTocVisible(false)}
+-      />
+-
+-      <SearchUnavailableModal
+-        visible={searchVisible}
+-        onClose={() => setSearchVisible(false)}
+-      />
+-
+-      <NotesModal
+-        visible={notesVisible}
+-        quotes={myHighlightedQuotes}
+-        onNavigate={navigateToLocator}
+-        onOpenQuote={openQuoteFromNotes}
+-        onClose={() => setNotesVisible(false)}
+-      />
+-
+-      <CommentSheet
+-        visible={sheetVisible}
+-        quoteId={selectedQuote?.id ?? null}
+-        quoteText={selectedQuote?.text ?? ""}
+-        onClose={() => setSheetVisible(false)}
+-        onCommentSaved={(visibility) => {
+-          if (!selectedQuote?.locatorJson || !canonicalBookId) return;
+-          const locator = parseStoredReadiumLocator(selectedQuote.locatorJson);
+-          if (locator) addLocalDecoration(selectedQuote.id, locator, selectedQuote.text);
+-          toggleHighlight.mutate(
+-            {
+-              quoteId: selectedQuote.id,
+-              data: { userLibraryId: libraryId, cfiRange: selectedQuote.locatorJson, visibility },
+-            },
+-            {
+-              onSuccess: () => {
+-                queryClient.invalidateQueries({ queryKey: getGetBookQuotesQueryKey(canonicalBookId) });
+-              },
+-            },
+-          );
+-        }}
+-      />
+     </View>
+   );
+ }
+ 
+-export default function ReadiumReaderScreen() {
+-  const colors = useColors();
+-  const { user } = useUser();
+-  const { libraryId: libraryIdParam } = useLocalSearchParams<{ libraryId: string }>();
+-  const libraryId = parseInt(libraryIdParam ?? "0", 10);
+-
+-  const { data: entry, isFetching } = useGetLibraryEntry(libraryId, {
+-    query: {
+-      enabled: !!libraryId && !!user?.id,
+-      queryKey: getGetLibraryEntryQueryKey(libraryId),
+-    },
+-  });
+-  const [entryReady, setEntryReady] = useState(false);
+-
+-  useEffect(() => {
+-    if (!isFetching && entry) setEntryReady(true);
+-  }, [entry, isFetching]);
+-
+-  const canonicalBookId = entry?.canonicalBookId ?? null;
+-  const { data: quotes } = useGetBookQuotes(canonicalBookId ?? 0, {
+-    query: {
+-      enabled: !!canonicalBookId,
+-      queryKey: getGetBookQuotesQueryKey(canonicalBookId ?? 0),
+-    },
+-  });
+-
+-  if (Platform.OS === "web") {
+-    return (
+-      <ReadiumUnavailableScreen
+-        title="모바일 빌드에서 읽어주세요"
+-        body="Readium 리더는 네이티브 모듈이라 웹 Preview에서는 열 수 없어요. Expo Go에서는 안내 화면만 보이고, 실제 EPUB 읽기는 EAS development build에서 테스트해야 해요."
+-      />
+-    );
+-  }
+-
+-  if (!entryReady || !entry) {
+-    return (
+-      <View style={[styles.center, { backgroundColor: colors.background }]}> 
+-        <ActivityIndicator color={colors.primary} />
+-      </View>
+-    );
+-  }
+-
+-  return (
+-    <ReadiumReaderInner
+-      entry={entry}
+-      quotes={quotes ?? []}
+-      libraryId={libraryId}
+-      canonicalBookId={canonicalBookId}
+-    />
+-  );
+-}
+-
+ const styles = StyleSheet.create({
+-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+-  header: {
+-    flexDirection: "row",
+-    alignItems: "center",
+-    gap: 8,
+-    paddingHorizontal: 12,
+-    paddingBottom: 10,
+-    borderBottomWidth: StyleSheet.hairlineWidth,
+-  },
+-  iconBtn: {
+-    width: 36,
+-    height: 36,
++  center: {
++    flex: 1,
+     alignItems: "center",
+     justifyContent: "center",
+   },
+-  titleWrap: { flex: 1, minWidth: 0 },
+-  title: { fontSize: 15, fontWeight: "700" },
+-  subtitle: { fontSize: 11, marginTop: 2 },
+-  aaText: { fontSize: 15, fontWeight: "800" },
+-  matchBtn: {
+-    height: 32,
+-    paddingHorizontal: 10,
+-    borderWidth: 1,
+-    borderRadius: 8,
+-    alignItems: "center",
+-    justifyContent: "center",
+-  },
+-  progressWrap: {
+-    paddingHorizontal: 18,
+-    paddingTop: 8,
+-  },
+-  progressTrack: {
+-    height: 3,
+-    borderRadius: 3,
+-    overflow: "hidden",
+-  },
+-  progressFill: {
+-    height: "100%",
+-    borderRadius: 3,
+-  },
+-  progressLabel: {
+-    marginTop: 5,
+-    fontSize: 11,
++  title: {
++    fontSize: 18,
++    fontWeight: "800",
+     textAlign: "center",
+   },
+-  backdrop: {
+-    ...StyleSheet.absoluteFillObject,
+-    backgroundColor: "rgba(0,0,0,0.45)",
+-  },
+-  bottomPanel: {
+-    marginTop: "auto",
+-    maxHeight: "78%",
+-    borderTopWidth: StyleSheet.hairlineWidth,
+-    borderTopLeftRadius: 8,
+-    borderTopRightRadius: 8,
+-    overflow: "hidden",
+-  },
+-  modalHeader: {
+-    height: 54,
+-    paddingHorizontal: 18,
+-    flexDirection: "row",
+-    alignItems: "center",
+-    justifyContent: "space-between",
+-    borderBottomWidth: StyleSheet.hairlineWidth,
+-  },
+-  modalTitle: { fontSize: 16, fontWeight: "800" },
+-  emptyText: {
+-    padding: 22,
+-    textAlign: "center",
+-    fontSize: 13,
++  body: {
++    marginTop: 10,
++    fontSize: 14,
+     lineHeight: 20,
++    textAlign: "center",
+   },
+-  tocRow: {
+-    minHeight: 50,
+-    paddingRight: 18,
+-    justifyContent: "center",
+-    borderBottomWidth: StyleSheet.hairlineWidth,
+-  },
+-  tocText: { fontSize: 14, lineHeight: 19, fontWeight: "600" },
+-  noteRow: {
+-    minHeight: 74,
+-    paddingHorizontal: 18,
+-    paddingVertical: 12,
+-    borderBottomWidth: StyleSheet.hairlineWidth,
++  button: {
++    minHeight: 44,
++    paddingHorizontal: 16,
++    borderWidth: 1,
++    borderRadius: 8,
+     flexDirection: "row",
+     alignItems: "center",
+-    gap: 10,
+-  },
+-  noteTextWrap: { flex: 1, minWidth: 0 },
+-  noteText: { fontSize: 14, lineHeight: 20, fontWeight: "600" },
+-  noteMeta: { marginTop: 5, fontSize: 11 },
+-  commentIconBtn: {
+-    width: 38,
+-    height: 38,
+-    alignItems: "center",
+     justifyContent: "center",
++    gap: 8,
+   },
+-  webTitle: { marginTop: 16, fontSize: 20, fontWeight: "800", textAlign: "center" },
+-  webBody: { marginTop: 10, fontSize: 14, lineHeight: 21, textAlign: "center" },
+-  webBtn: {
+-    marginTop: 18,
+-    paddingHorizontal: 18,
+-    paddingVertical: 11,
+-    borderRadius: 8,
++  buttonText: {
++    fontSize: 14,
++    fontWeight: "700",
+   },
+ });
+diff --git a/artifacts/mobile/native/readium-host/android/NativeReadiumActivity.kt b/artifacts/mobile/native/readium-host/android/NativeReadiumActivity.kt
+new file mode 100644
+index 0000000..55c36c1
+--- /dev/null
++++ b/artifacts/mobile/native/readium-host/android/NativeReadiumActivity.kt
+@@ -0,0 +1,395 @@
++package {{PACKAGE_NAME}}.readiumhost
++
++import android.app.AlertDialog
++import android.graphics.Color
++import android.net.Uri
++import android.os.Bundle
++import android.view.Gravity
++import android.view.View
++import android.widget.FrameLayout
++import android.widget.LinearLayout
++import android.widget.ProgressBar
++import android.widget.TextView
++import androidx.fragment.app.FragmentActivity
++import androidx.fragment.app.commit
++import androidx.lifecycle.Lifecycle
++import androidx.lifecycle.lifecycleScope
++import androidx.lifecycle.repeatOnLifecycle
++import com.facebook.react.bridge.Arguments
++import java.io.File
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.flow.distinctUntilChanged
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
++import org.json.JSONObject
++import org.readium.r2.navigator.HyperlinkNavigator
++import org.readium.r2.navigator.epub.EpubNavigatorFactory
++import org.readium.r2.navigator.epub.EpubNavigatorFragment
++import org.readium.r2.navigator.epub.EpubPreferences
++import org.readium.r2.navigator.preferences.FontFamily
++import org.readium.r2.navigator.preferences.TextAlign
++import org.readium.r2.navigator.preferences.Theme
++import org.readium.r2.shared.ExperimentalReadiumApi
++import org.readium.r2.shared.publication.Link
++import org.readium.r2.shared.publication.Locator
++import org.readium.r2.shared.publication.Publication
++import org.readium.r2.shared.util.AbsoluteUrl
++import org.readium.r2.shared.util.Try
++import org.readium.r2.shared.util.asset.Asset
++import org.readium.r2.shared.util.asset.AssetRetriever
++import org.readium.r2.shared.util.data.ReadError
++import org.readium.r2.shared.util.http.DefaultHttpClient
++import org.readium.r2.shared.util.mediatype.MediaType
++import org.readium.r2.streamer.PublicationOpener
++import org.readium.r2.streamer.parser.DefaultPublicationParser
++
++@OptIn(ExperimentalReadiumApi::class)
++class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
++    private var containerId: Int = View.generateViewId()
++    private var libraryId: Int = -1
++    private var publication: Publication? = null
++    private var asset: Asset? = null
++    private var navigator: EpubNavigatorFragment? = null
++    private var locationJob: Job? = null
++    private lateinit var root: LinearLayout
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++
++        libraryId = intent.getIntExtra(EXTRA_LIBRARY_ID, -1)
++        root = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setBackgroundColor(Color.rgb(14, 17, 23))
++        }
++        setContentView(root)
++        showLoading()
++
++        val filePath = intent.getStringExtra(EXTRA_FILE_PATH)
++        if (libraryId < 0 || filePath.isNullOrBlank()) {
++            showError("Reader was opened without a valid book.")
++            return
++        }
++
++        lifecycleScope.launch {
++            val result = withContext(Dispatchers.IO) {
++                openPublication(File(filePath))
++            }
++
++            when (result) {
++                is Try.Success -> showReader(result.value)
++                is Try.Failure -> showError(result.value)
++            }
++        }
++    }
++
++    private fun showLoading() {
++        root.removeAllViews()
++        root.gravity = Gravity.CENTER
++        root.addView(ProgressBar(this))
++        root.addView(
++            TextView(this).apply {
++                text = "Opening EPUB..."
++                setTextColor(Color.WHITE)
++                textSize = 15f
++                gravity = Gravity.CENTER
++                setPadding(0, 24, 0, 0)
++            }
++        )
++    }
++
++    private fun showReader(opened: OpenedPublication) {
++        root.removeAllViews()
++        root.gravity = Gravity.NO_GRAVITY
++
++        val toolbar = LinearLayout(this).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER_VERTICAL
++            setPadding(12.dp, 8.dp, 12.dp, 8.dp)
++            setBackgroundColor(Color.rgb(14, 17, 23))
++        }
++
++        toolbar.addView(toolbarButton("Back") { finish() })
++        toolbar.addView(
++            TextView(this).apply {
++                text = intent.getStringExtra(EXTRA_TITLE) ?: opened.publication.metadata.title ?: "Reader"
++                setTextColor(Color.WHITE)
++                textSize = 16f
++                maxLines = 1
++                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
++            }
++        )
++        toolbar.addView(toolbarButton("TOC") { showTableOfContents() })
++
++        val container = FrameLayout(this).apply {
++            id = containerId
++            setBackgroundColor(Color.WHITE)
++            layoutParams = LinearLayout.LayoutParams(
++                LinearLayout.LayoutParams.MATCH_PARENT,
++                0,
++                1f,
++            )
++        }
++
++        root.addView(toolbar)
++        root.addView(container)
++
++        asset = opened.asset
++        publication = opened.publication
++
++        val initialLocator = parseInitialLocator(intent.getStringExtra(EXTRA_LOCATOR_JSON))
++        val preferences = parsePreferences(intent.getStringExtra(EXTRA_SETTINGS_JSON))
++
++        supportFragmentManager.fragmentFactory =
++            EpubNavigatorFactory(opened.publication)
++                .createFragmentFactory(
++                    initialLocator = initialLocator,
++                    initialPreferences = preferences,
++                    listener = this,
++                )
++
++        supportFragmentManager.commit {
++            replace(containerId, EpubNavigatorFragment::class.java, Bundle(), NAVIGATOR_TAG)
++        }
++
++        supportFragmentManager.executePendingTransactions()
++        navigator = supportFragmentManager.findFragmentByTag(NAVIGATOR_TAG) as? EpubNavigatorFragment
++        observeLocation()
++    }
++
++    private fun toolbarButton(label: String, action: () -> Unit): TextView =
++        TextView(this).apply {
++            text = label
++            setTextColor(Color.WHITE)
++            textSize = 14f
++            gravity = Gravity.CENTER
++            setPadding(12.dp, 8.dp, 12.dp, 8.dp)
++            setOnClickListener { action() }
++        }
++
++    private fun showTableOfContents() {
++        val currentPublication = publication ?: return
++        val currentNavigator = navigator ?: return
++        val items = flattenToc(currentPublication.tableOfContents)
++
++        if (items.isEmpty()) {
++            AlertDialog.Builder(this)
++                .setTitle("Table of contents")
++                .setMessage("This EPUB does not expose a table of contents.")
++                .setPositiveButton("OK", null)
++                .show()
++            return
++        }
++
++        AlertDialog.Builder(this)
++            .setTitle("Table of contents")
++            .setItems(items.map { it.title }.toTypedArray()) { dialog, index ->
++                currentNavigator.go(items[index].link, animated = false)
++                dialog.dismiss()
++            }
++            .show()
++    }
++
++    private fun observeLocation() {
++        val currentNavigator = navigator ?: return
++        locationJob?.cancel()
++        locationJob = lifecycleScope.launch {
++            repeatOnLifecycle(Lifecycle.State.STARTED) {
++                currentNavigator.currentLocator
++                    .distinctUntilChanged()
++                    .collect { locator -> sendLocation(locator) }
++            }
++        }
++    }
++
++    private suspend fun openPublication(file: File): Try<OpenedPublication, String> {
++        if (!file.exists()) {
++            return Try.failure("EPUB file does not exist: ${file.absolutePath}")
++        }
++
++        val httpClient = DefaultHttpClient()
++        val assetRetriever = AssetRetriever(contentResolver, httpClient)
++        val retrievedAsset = assetRetriever.retrieve(file).fold(
++            onSuccess = { it },
++            onFailure = { return Try.failure("Readium could not read the EPUB asset: ${it.message}") },
++        )
++
++        val parser = DefaultPublicationParser(
++            this,
++            httpClient = httpClient,
++            assetRetriever = assetRetriever,
++            pdfFactory = null,
++        )
++        val opener = PublicationOpener(parser)
++        val openedPublication = opener.open(retrievedAsset, allowUserInteraction = true).fold(
++            onSuccess = { it },
++            onFailure = {
++                retrievedAsset.close()
++                return Try.failure("Readium could not open this EPUB: ${it.message}")
++            },
++        )
++
++        return Try.success(OpenedPublication(retrievedAsset, openedPublication))
++    }
++
++    private fun parseInitialLocator(raw: String?): Locator? {
++        val text = raw?.trim().takeUnless { it.isNullOrBlank() } ?: return null
++        return try {
++            val root = JSONObject(text)
++            val locatorJson = root.optJSONObject("locator") ?: root
++            Locator.fromJSON(locatorJson)
++        } catch (_: Exception) {
++            null
++        }
++    }
++
++    private fun parsePreferences(raw: String?): EpubPreferences {
++        val settings = try {
++            raw?.let { JSONObject(it) }
++        } catch (_: Exception) {
++            null
++        }
++
++        val theme = when (settings?.optString("theme")) {
++            "sepia" -> Theme.SEPIA
++            "light" -> Theme.LIGHT
++            else -> Theme.DARK
++        }
++
++        val fontFamily = when (settings?.optString("font")) {
++            "sans" -> FontFamily.SANS_SERIF
++            else -> FontFamily.SERIF
++        }
++
++        val fontSize = settings
++            ?.optDouble("fontSize")
++            ?.takeIf { !it.isNaN() && !it.isInfinite() && it > 0 }
++            ?.let { (it / 16.0).coerceIn(0.75, 1.8) }
++
++        return EpubPreferences(
++            theme = theme,
++            fontFamily = fontFamily,
++            fontSize = fontSize,
++            lineHeight = lineHeightScale(settings?.optString("lineSpacing")),
++            pageMargins = marginScale(settings?.optString("margin")),
++            publisherStyles = false,
++            scroll = settings?.optString("scrollMode") == "vertical",
++            textAlign = TextAlign.START,
++        )
++    }
++
++    private fun marginScale(value: String?): Double? =
++        when (value) {
++            "narrow" -> 0.8
++            "wide" -> 1.4
++            else -> 1.0
++        }
++
++    private fun lineHeightScale(value: String?): Double? =
++        when (value) {
++            "compact" -> 1.4
++            "wide" -> 2.2
++            else -> 1.85
++        }
++
++    private fun sendLocation(locator: Locator) {
++        val progress = locator.locations.totalProgression ?: locator.locations.progression
++        val snapshot = JSONObject()
++            .put("v", READIUM_LOCATION_VERSION)
++            .put("engine", "readium")
++            .put("locator", locator.toJSON())
++            .put("progress", progress)
++
++        val payload = Arguments.createMap().apply {
++            putInt("libraryId", libraryId)
++            putString("location", snapshot.toString())
++            if (progress == null) {
++                putNull("progress")
++            } else {
++                putDouble("progress", progress)
++            }
++            putString("href", locator.href.toString())
++            putString("title", locator.title)
++        }
++
++        NativeReadiumEvents.send("NativeReadiumHost.locationChanged", payload)
++    }
++
++    private fun showError(message: String) {
++        root.removeAllViews()
++        root.gravity = Gravity.CENTER
++        root.setPadding(24.dp, 24.dp, 24.dp, 24.dp)
++        root.addView(
++            TextView(this).apply {
++                text = message
++                setTextColor(Color.WHITE)
++                textSize = 15f
++                gravity = Gravity.CENTER
++            }
++        )
++    }
++
++    override fun onResourceLoadFailed(href: org.readium.r2.shared.util.Url, error: ReadError) {
++        val payload = Arguments.createMap().apply {
++            putInt("libraryId", libraryId)
++            putString("href", href.toString())
++            putString("message", error.message)
++        }
++        NativeReadiumEvents.send("NativeReadiumHost.resourceLoadFailed", payload)
++    }
++
++    override fun onJumpToLocator(locator: Locator) {
++        sendLocation(locator)
++    }
++
++    override fun shouldFollowInternalLink(link: Link, context: HyperlinkNavigator.LinkContext?): Boolean =
++        true
++
++    override fun onExternalLinkActivated(url: AbsoluteUrl) {
++        runCatching {
++            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url.toString())))
++        }
++    }
++
++    override fun onDestroy() {
++        locationJob?.cancel()
++        publication?.close()
++        asset?.close()
++        if (libraryId >= 0) {
++            val payload = Arguments.createMap().apply { putInt("libraryId", libraryId) }
++            NativeReadiumEvents.send("NativeReadiumHost.closed", payload)
++        }
++        super.onDestroy()
++    }
++
++    private data class OpenedPublication(
++        val asset: Asset,
++        val publication: Publication,
++    )
++
++    private data class TocItem(
++        val title: String,
++        val link: Link,
++    )
++
++    private fun flattenToc(links: List<Link>, depth: Int = 0): List<TocItem> =
++        links.flatMap { link ->
++            val prefix = if (depth == 0) "" else "  ".repeat(depth)
++            val title = link.title?.takeIf { it.isNotBlank() } ?: link.href.toString()
++            listOf(TocItem("$prefix$title", link)) + flattenToc(link.children, depth + 1)
++        }
++
++    private val Int.dp: Int
++        get() = (this * resources.displayMetrics.density).toInt()
++
++    companion object {
++        const val EXTRA_LIBRARY_ID = "libraryId"
++        const val EXTRA_FILE_PATH = "filePath"
++        const val EXTRA_LOCATOR_JSON = "locatorJson"
++        const val EXTRA_SETTINGS_JSON = "settingsJson"
++        const val EXTRA_TITLE = "title"
++
++        private const val NAVIGATOR_TAG = "native-readium-navigator"
++        private const val READIUM_LOCATION_VERSION = 4
++    }
++}
+diff --git a/artifacts/mobile/native/readium-host/android/NativeReadiumEvents.kt b/artifacts/mobile/native/readium-host/android/NativeReadiumEvents.kt
+new file mode 100644
+index 0000000..66d70c4
+--- /dev/null
++++ b/artifacts/mobile/native/readium-host/android/NativeReadiumEvents.kt
+@@ -0,0 +1,26 @@
++package {{PACKAGE_NAME}}.readiumhost
++
++import com.facebook.react.bridge.Arguments
++import com.facebook.react.bridge.ReactApplicationContext
++import com.facebook.react.bridge.WritableMap
++import com.facebook.react.modules.core.DeviceEventManagerModule
++
++internal object NativeReadiumEvents {
++    private var reactContext: ReactApplicationContext? = null
++
++    fun attach(context: ReactApplicationContext) {
++        reactContext = context
++    }
++
++    fun detach(context: ReactApplicationContext) {
++        if (reactContext === context) {
++            reactContext = null
++        }
++    }
++
++    fun send(name: String, payload: WritableMap = Arguments.createMap()) {
++        reactContext
++            ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
++            ?.emit(name, payload)
++    }
++}
+diff --git a/artifacts/mobile/native/readium-host/android/NativeReadiumModule.kt b/artifacts/mobile/native/readium-host/android/NativeReadiumModule.kt
+new file mode 100644
+index 0000000..e932f1f
+--- /dev/null
++++ b/artifacts/mobile/native/readium-host/android/NativeReadiumModule.kt
+@@ -0,0 +1,50 @@
++package {{PACKAGE_NAME}}.readiumhost
++
++import android.app.Activity
++import android.content.Intent
++import com.facebook.react.bridge.Promise
++import com.facebook.react.bridge.ReactApplicationContext
++import com.facebook.react.bridge.ReactContextBaseJavaModule
++import com.facebook.react.bridge.ReactMethod
++import com.facebook.react.bridge.ReadableMap
++
++class NativeReadiumModule(
++    private val reactContext: ReactApplicationContext,
++) : ReactContextBaseJavaModule(reactContext) {
++
++    override fun getName(): String = "NativeReadiumHost"
++
++    override fun initialize() {
++        super.initialize()
++        NativeReadiumEvents.attach(reactContext)
++    }
++
++    override fun invalidate() {
++        NativeReadiumEvents.detach(reactContext)
++        super.invalidate()
++    }
++
++    @ReactMethod
++    fun openReader(options: ReadableMap, promise: Promise) {
++        val activity: Activity = currentActivity
++            ?: return promise.reject("NO_ACTIVITY", "No active Android activity is available.")
++
++        val libraryId = options.getInt("libraryId")
++        val filePath = options.getString("filePath")
++            ?: return promise.reject("NO_FILE", "No EPUB file path was provided.")
++
++        val intent = Intent(activity, NativeReadiumActivity::class.java).apply {
++            putExtra(NativeReadiumActivity.EXTRA_LIBRARY_ID, libraryId)
++            putExtra(NativeReadiumActivity.EXTRA_FILE_PATH, filePath)
++            putExtra(NativeReadiumActivity.EXTRA_LOCATOR_JSON, options.optionalString("locatorJson"))
++            putExtra(NativeReadiumActivity.EXTRA_SETTINGS_JSON, options.optionalString("settingsJson"))
++            putExtra(NativeReadiumActivity.EXTRA_TITLE, options.optionalString("title"))
++        }
++
++        activity.startActivity(intent)
++        promise.resolve(null)
++    }
++}
++
++private fun ReadableMap.optionalString(key: String): String? =
++    if (hasKey(key) && !isNull(key)) getString(key) else null
+diff --git a/artifacts/mobile/native/readium-host/android/NativeReadiumPackage.kt b/artifacts/mobile/native/readium-host/android/NativeReadiumPackage.kt
+new file mode 100644
+index 0000000..bdc3c7b
+--- /dev/null
++++ b/artifacts/mobile/native/readium-host/android/NativeReadiumPackage.kt
+@@ -0,0 +1,15 @@
++package {{PACKAGE_NAME}}.readiumhost
++
++import com.facebook.react.ReactPackage
++import com.facebook.react.bridge.NativeModule
++import com.facebook.react.bridge.ReactApplicationContext
++import com.facebook.react.uimanager.ViewManager
++
++class NativeReadiumPackage : ReactPackage {
++    override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> =
++        listOf(NativeReadiumModule(reactContext))
++
++    override fun createViewManagers(
++        reactContext: ReactApplicationContext,
++    ): List<ViewManager<*, *>> = emptyList()
++}
+diff --git a/artifacts/mobile/package.json b/artifacts/mobile/package.json
+index c216f1c..357750e 100644
+--- a/artifacts/mobile/package.json
++++ b/artifacts/mobile/package.json
+@@ -48,8 +48,6 @@
+     "react-native": "0.81.5",
+     "react-native-gesture-handler": "~2.28.0",
+     "react-native-keyboard-controller": "1.18.5",
+-    "react-native-nitro-modules": "^0.35.0",
+-    "react-native-readium": "5.0.0-rc.17",
+     "react-native-reanimated": "~4.1.1",
+     "react-native-safe-area-context": "~5.6.0",
+     "react-native-screens": "~4.16.0",
+diff --git a/artifacts/mobile/plugins/withReadium.js b/artifacts/mobile/plugins/withReadium.js
+index 031aadd..27a9517 100644
+--- a/artifacts/mobile/plugins/withReadium.js
++++ b/artifacts/mobile/plugins/withReadium.js
+@@ -1,11 +1,27 @@
+ const fs = require("fs");
+ const path = require("path");
+-const { withAppBuildGradle, withDangerousMod } = require("expo/config-plugins");
++const {
++  withAndroidManifest,
++  withAppBuildGradle,
++  withDangerousMod,
++  withMainApplication,
++} = require("expo/config-plugins");
+ 
+ const READIUM_SOURCE = "source 'https://github.com/readium/podspecs'";
+ const COCOAPODS_SOURCE = "source 'https://cdn.cocoapods.org/'";
+ const DESUGAR_DEP = 'coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.2"';
+ const KOTLINX_DATETIME_DEP = 'implementation "org.jetbrains.kotlinx:kotlinx-datetime:0.6.1"';
++const READIUM_VERSION = "3.1.0";
++const NATIVE_READIUM_DEPS = [
++  `implementation "org.readium.kotlin-toolkit:readium-shared:${READIUM_VERSION}"`,
++  `implementation "org.readium.kotlin-toolkit:readium-streamer:${READIUM_VERSION}"`,
++  `implementation "org.readium.kotlin-toolkit:readium-navigator:${READIUM_VERSION}"`,
++  'implementation "org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.6.1"',
++  'implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"',
++  'implementation "androidx.fragment:fragment-ktx:1.8.5"',
++  'implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.8.7"',
++  'implementation "androidx.appcompat:appcompat:1.7.0"',
++];
+ 
+ function ensurePodSources(contents) {
+   if (contents.includes(READIUM_SOURCE)) return contents;
+@@ -120,19 +136,143 @@ function ensureKotlinxDatetimeDependency(contents) {
+   return lines.join("\n");
+ }
+ 
++function ensureNativeReadiumDependencies(contents) {
++  const missingDeps = NATIVE_READIUM_DEPS.filter((dep) => !contents.includes(dep));
++  if (missingDeps.length === 0) return contents;
++
++  const lines = contents.split("\n");
++  const dependenciesIndex = lines.findIndex((line) => /^dependencies\s*\{/.test(line.trim()));
++  const inserted = missingDeps.map((dep) => `    ${dep}`);
++
++  if (dependenciesIndex >= 0) {
++    lines.splice(dependenciesIndex + 1, 0, ...inserted);
++  } else {
++    lines.push("", "dependencies {", ...inserted, "}");
++  }
++
++  return lines.join("\n");
++}
++
+ function withReadiumAndroid(config) {
+   return withAppBuildGradle(config, (modConfig) => {
+     let contents = modConfig.modResults.contents;
+     contents = ensureCompileOptions(contents);
+     contents = ensureDesugarDependency(contents);
+     contents = ensureKotlinxDatetimeDependency(contents);
++    contents = ensureNativeReadiumDependencies(contents);
+     modConfig.modResults.contents = contents;
+     return modConfig;
+   });
+ }
+ 
++function withNativeReadiumManifest(config) {
++  return withAndroidManifest(config, (modConfig) => {
++    const packageName = modConfig.modResults.manifest.$.package
++      || config.android?.package
++      || "com.jasminmuze.commentaryreader";
++    const activityName = `${packageName}.readiumhost.NativeReadiumActivity`;
++    const application = modConfig.modResults.manifest.application?.[0];
++    if (!application) return modConfig;
++
++    application.activity = application.activity || [];
++    const exists = application.activity.some((activity) => activity.$?.["android:name"] === activityName);
++    if (!exists) {
++      application.activity.push({
++        $: {
++          "android:name": activityName,
++          "android:configChanges": "keyboard|keyboardHidden|orientation|screenSize|uiMode",
++          "android:exported": "false",
++          "android:screenOrientation": "portrait",
++        },
++      });
++    }
++
++    return modConfig;
++  });
++}
++
++function ensureMainApplicationPackage(contents, packageName) {
++  const importLine = `import ${packageName}.readiumhost.NativeReadiumPackage`;
++  let next = contents;
++
++  if (!next.includes(importLine)) {
++    const packageMatch = next.match(/^package .+$/m);
++    if (packageMatch) {
++      const insertAt = packageMatch.index + packageMatch[0].length;
++      next = `${next.slice(0, insertAt)}\n\n${importLine}${next.slice(insertAt)}`;
++    }
++  }
++
++  if (next.includes("NativeReadiumPackage()")) return next;
++
++  if (next.includes("PackageList(this).packages.apply {")) {
++    return next.replace(
++      /PackageList\(this\)\.packages\.apply\s*\{/,
++      "PackageList(this).packages.apply {\n              add(NativeReadiumPackage())",
++    );
++  }
++
++  return next.replace(
++    /(\s*)return packages/,
++    "$1packages.add(NativeReadiumPackage())\n$1return packages",
++  );
++}
++
++function withNativeReadiumMainApplication(config) {
++  return withMainApplication(config, (modConfig) => {
++    const packageName = config.android?.package || "com.jasminmuze.commentaryreader";
++    modConfig.modResults.contents = ensureMainApplicationPackage(
++      modConfig.modResults.contents,
++      packageName,
++    );
++    return modConfig;
++  });
++}
++
++function withNativeReadiumSources(config) {
++  return withDangerousMod(config, [
++    "android",
++    async (modConfig) => {
++      const packageName = config.android?.package || "com.jasminmuze.commentaryreader";
++      const packagePath = packageName.split(".").join(path.sep);
++      const sourceDir = path.join(
++        modConfig.modRequest.projectRoot,
++        "native",
++        "readium-host",
++        "android",
++      );
++      const targetDir = path.join(
++        modConfig.modRequest.platformProjectRoot,
++        "app",
++        "src",
++        "main",
++        "java",
++        packagePath,
++        "readiumhost",
++      );
++
++      fs.mkdirSync(targetDir, { recursive: true });
++
++      for (const fileName of fs.readdirSync(sourceDir)) {
++        if (!fileName.endsWith(".kt")) continue;
++        const sourcePath = path.join(sourceDir, fileName);
++        const targetPath = path.join(targetDir, fileName);
++        const source = fs
++          .readFileSync(sourcePath, "utf8")
++          .replaceAll("{{PACKAGE_NAME}}", packageName);
++        fs.writeFileSync(targetPath, source);
++      }
++
++      return modConfig;
++    },
++  ]);
++}
++
+ module.exports = function withReadium(config) {
+   config = withReadiumIos(config);
+   config = withReadiumAndroid(config);
++  config = withNativeReadiumManifest(config);
++  config = withNativeReadiumMainApplication(config);
++  config = withNativeReadiumSources(config);
+   return config;
+ };
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index dce86ac..725a728 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -342,12 +342,6 @@ importers:
+       react-native-keyboard-controller:
+         specifier: 1.18.5
+         version: 1.18.5(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+-      react-native-nitro-modules:
+-        specifier: ^0.35.0
+-        version: 0.35.10(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+-      react-native-readium:
+-        specifier: 5.0.0-rc.17
+-        version: 5.0.0-rc.17(react-native-nitro-modules@0.35.10(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+       react-native-reanimated:
+         specifier: ~4.1.1
+         version: 4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+@@ -2308,21 +2302,6 @@ packages:
+   '@react-navigation/routers@7.5.5':
+     resolution: {integrity: sha512-9/hhMte12Kgu+pMnLfA4EWJ0OQmIEAMVMX06FPH2yGkEQSQ3JhhCN/GkcRikzQhtEi97VYYQA15umptBUShcOQ==}
+ 
+-  '@readium/css@2.0.5':
+-    resolution: {integrity: sha512-rQWeDFSS9UfRTFFdWIhlko0jtkL9dOfNTqFjgMumlguromsyHC9/lGmbWDde7deEeE5ns+yBOSGKixMU0wqZ4A==}
+-
+-  '@readium/navigator-html-injectables@2.5.0':
+-    resolution: {integrity: sha512-zERZ3lj2N61XXgBLKGDDAtv+iE40fty/qnvl3NZudQOqnaTy8qerEgRC9Gl3iDFFKLx+cPEkDMMlOVgLaPqQgw==}
+-    engines: {node: '>=18'}
+-
+-  '@readium/navigator@2.6.1':
+-    resolution: {integrity: sha512-xbIvlbXrhHcxK73ctztp0G7YrkzSDEK0LwKNfBlaHoXQ9XGNNVt2ZPcm80QmQJdkDfPyC1C8DK9y/J2YM5rB7g==}
+-    engines: {node: '>=18'}
+-
+-  '@readium/shared@2.2.3':
+-    resolution: {integrity: sha512-DW6BE0J3oBdb87q9gEz1UpGBgzJkuDyDnboChuGwpaXYNfOuy57PsDl52ch426v7CzoR4hNi8VoUXL1YHn4MPA==}
+-    engines: {node: '>=18'}
+-
+   '@replit/vite-plugin-cartographer@0.5.5':
+     resolution: {integrity: sha512-iEXsvofgEQb1BSjMflHfuqVbRhWqI7n8u5ESSH+cSoxHgX4Lk8wM7qHk1h7u1BZSwqmPn8ftsRFSN4IVvUzB5w==}
+ 
+@@ -3224,10 +3203,6 @@ packages:
+     resolution: {integrity: sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==}
+     engines: {node: '>= 0.8'}
+ 
+-  dequal@2.0.3:
+-    resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
+-    engines: {node: '>=6'}
+-
+   destroy@1.2.0:
+     resolution: {integrity: sha512-2sJGJTaXIIaR1w4iJSNoN0hnMY7Gpc/n8D4qSCJw8QqFWXf7cuAgnEHxBpweaVcPevC2l3KpjYCx3NypQQgaJg==}
+     engines: {node: '>= 0.8', npm: 1.2.8000 || >= 1.4.16}
+@@ -5060,20 +5035,6 @@ packages:
+       react-native: '*'
+       react-native-reanimated: '>=3.0.0'
+ 
+-  react-native-nitro-modules@0.35.10:
+-    resolution: {integrity: sha512-KsySOAIkbSTjNiX2GvXiNT9P5DMeZd99yvtE/+Lw7RXV7Ztxh9Z+YyAbYkBqadhN5J/KXXuPjhRYgyLOIZgsbQ==}
+-    peerDependencies:
+-      react: '*'
+-      react-native: '*'
+-
+-  react-native-readium@5.0.0-rc.17:
+-    resolution: {integrity: sha512-6C9vapDWSS87W6wTRS3VuAf7mwlQaFibWdOXOyO4sOtLlvjTanSEYB0FGP5tloEzxCt/pifYoCLYFgtAm5laUw==}
+-    engines: {node: '>=20'}
+-    peerDependencies:
+-      react: '*'
+-      react-native: '>=0.78.0'
+-      react-native-nitro-modules: '*'
+-
+   react-native-reanimated@4.1.7:
+     resolution: {integrity: sha512-Q4H6xA3Tn7QL0/E/KjI86I1KK4tcf+ErRE04LH34Etka2oVQhW6oXQ+Q8ZcDCVxiWp5vgbBH6XcH8BOo4w/Rhg==}
+     peerDependencies:
+@@ -5623,10 +5584,6 @@ packages:
+   thenify@3.3.1:
+     resolution: {integrity: sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==}
+ 
+-  thorium-locales@https://codeload.github.com/edrlab/thorium-locales/tar.gz/f49f9ca149318f378d7bf996517adc446c0fd027:
+-    resolution: {tarball: https://codeload.github.com/edrlab/thorium-locales/tar.gz/f49f9ca149318f378d7bf996517adc446c0fd027}
+-    version: 1.0.0
+-
+   thread-stream@3.1.0:
+     resolution: {integrity: sha512-OqyPZ9u96VohAyMfJykzmivOrY2wfMSf3C5TtFJVgN+Hm6aj+voFhlK+kZEIv2FBh1X6Xp3DlnCOfEQ3B2J86A==}
+ 
+@@ -5660,6 +5617,7 @@ packages:
+   tsconfck@3.1.6:
+     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
+     engines: {node: ^18 || >=20}
++    deprecated: unmaintained
+     hasBin: true
+     peerDependencies:
+       typescript: ^5.0.0
+@@ -5780,11 +5738,6 @@ packages:
+       '@types/react':
+         optional: true
+ 
+-  use-deep-compare@1.3.0:
+-    resolution: {integrity: sha512-94iG+dEdEP/Sl3WWde+w9StIunlV8Dgj+vkt5wTwMoFQLaijiEZSXXy8KtcStpmEDtIptRJiNeD4ACTtVvnIKA==}
+-    peerDependencies:
+-      react: '>=16.8.0'
+-
+   use-latest-callback@0.2.6:
+     resolution: {integrity: sha512-FvRG9i1HSo0wagmX63Vrm8SnlUU3LMM3WyZkQ76RnslpBrX694AdG4A0zQBx2B3ZifFA0yv/BaEHGBnEax5rZg==}
+     peerDependencies:
+@@ -8519,16 +8472,6 @@ snapshots:
+     dependencies:
+       nanoid: 3.3.12
+ 
+-  '@readium/css@2.0.5': {}
+-
+-  '@readium/navigator-html-injectables@2.5.0': {}
+-
+-  '@readium/navigator@2.6.1': {}
+-
+-  '@readium/shared@2.2.3':
+-    dependencies:
+-      '@edrlab/thorium-locales': thorium-locales@https://codeload.github.com/edrlab/thorium-locales/tar.gz/f49f9ca149318f378d7bf996517adc446c0fd027
+-
+   '@replit/vite-plugin-cartographer@0.5.5':
+     dependencies:
+       '@babel/parser': 7.29.3
+@@ -9502,8 +9445,6 @@ snapshots:
+ 
+   depd@2.0.0: {}
+ 
+-  dequal@2.0.3: {}
+-
+   destroy@1.2.0: {}
+ 
+   detect-libc@2.1.2: {}
+@@ -11554,22 +11495,6 @@ snapshots:
+       react-native-is-edge-to-edge: 1.3.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+       react-native-reanimated: 4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+ 
+-  react-native-nitro-modules@0.35.10(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+-    dependencies:
+-      react: 19.1.0
+-      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
+-
+-  react-native-readium@5.0.0-rc.17(react-native-nitro-modules@0.35.10(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+-    dependencies:
+-      '@readium/css': 2.0.5
+-      '@readium/navigator': 2.6.1
+-      '@readium/navigator-html-injectables': 2.5.0
+-      '@readium/shared': 2.2.3
+-      react: 19.1.0
+-      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
+-      react-native-nitro-modules: 0.35.10(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+-      use-deep-compare: 1.3.0(react@19.1.0)
+-
+   react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+     dependencies:
+       react: 19.1.0
+@@ -12213,8 +12138,6 @@ snapshots:
+     dependencies:
+       any-promise: 1.3.0
+ 
+-  thorium-locales@https://codeload.github.com/edrlab/thorium-locales/tar.gz/f49f9ca149318f378d7bf996517adc446c0fd027: {}
+-
+   thread-stream@3.1.0:
+     dependencies:
+       real-require: 0.2.0
+@@ -12333,11 +12256,6 @@ snapshots:
+     optionalDependencies:
+       '@types/react': 19.2.14
+ 
+-  use-deep-compare@1.3.0(react@19.1.0):
+-    dependencies:
+-      dequal: 2.0.3
+-      react: 19.1.0
+-
+   use-latest-callback@0.2.6(react@19.1.0):
+     dependencies:
+       react: 19.1.0
