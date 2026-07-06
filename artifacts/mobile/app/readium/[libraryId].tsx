@@ -89,7 +89,14 @@ function NativeReadiumUnavailableScreen() {
 
 export default function ReadiumRoute() {
   const colors = useColors();
-  const fs = useFileSystem();
+  const {
+    cacheDirectory,
+    getFileInfo,
+    downloadFile,
+    deleteAsync,
+    readAsStringAsync,
+    moveAsync,
+  } = useFileSystem();
   const queryClient = useQueryClient();
   const updateLocation = useUpdateReadingLocation();
   const { settings, loaded: settingsLoaded } = useReaderSettings();
@@ -101,6 +108,7 @@ export default function ReadiumRoute() {
   const [localSrc, setLocalSrc] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [status, setStatus] = useState("Preparing EPUB...");
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const { data: entry, isFetching } = useGetLibraryEntry(libraryId, {
     query: {
@@ -147,32 +155,67 @@ export default function ReadiumRoute() {
   }, [libraryId, queryClient, updateLocation]);
 
   useEffect(() => {
-    if (!entry || !fs.cacheDirectory || !nativeReadium) return;
+    if (!entry || !cacheDirectory || !nativeReadium) return;
 
     let cancelled = false;
     const remote = apiUrl(entry.epubUrl);
-    const dest = `${fs.cacheDirectory}native_readium_epub_${libraryId}.epub`;
+    const dest = `${cacheDirectory}native_readium_epub_v2_${libraryId}.epub`;
+    const tmp = `${dest}.${Date.now()}.tmp`;
+
+    const isZip = async (uri: string): Promise<boolean> => {
+      const head = await readAsStringAsync(uri, {
+        encoding: "base64",
+        position: 0,
+        length: 4,
+      });
+      return head.startsWith("UEsD");
+    };
 
     (async () => {
       setStatus("Checking local EPUB cache...");
-      const info = await fs.getFileInfo(dest);
+      const info = await getFileInfo(dest);
       if (cancelled) return;
 
-      if (info.exists) {
-        setLocalSrc(info.uri);
+      if (info.exists && (info.size ?? 0) > 0 && (await isZip(dest))) {
+        if (!cancelled) setLocalSrc(info.uri);
         return;
       }
 
       setStatus("Downloading EPUB...");
-      const result = await fs.downloadFile(remote, dest);
-      if (cancelled) return;
+      const result = await downloadFile(remote, tmp);
 
-      if (result.uri) {
-        setLocalSrc(result.uri);
-      } else {
-        setDownloadError("EPUB download failed.");
+      if (!result.uri) {
+        await deleteAsync(tmp);
+        if (!cancelled) setDownloadError("EPUB download failed.");
+        return;
       }
-    })().catch((error) => {
+
+      const tmpInfo = await getFileInfo(tmp);
+      if ((tmpInfo.size ?? 0) <= 0 || !(await isZip(tmp))) {
+        await deleteAsync(tmp);
+        if (!cancelled) {
+          setDownloadError(
+            "The downloaded file is not a valid EPUB (the server may have returned an error page). Try again.",
+          );
+        }
+        return;
+      }
+
+      if (cancelled) {
+        await deleteAsync(tmp);
+        return;
+      }
+
+      await deleteAsync(dest);
+      await moveAsync(tmp, dest);
+      const finalInfo = await getFileInfo(dest);
+      if (!cancelled) setLocalSrc(finalInfo.uri);
+    })().catch(async (error) => {
+      try {
+        await deleteAsync(tmp);
+      } catch {
+        // best-effort cleanup
+      }
       if (!cancelled) {
         setDownloadError(error instanceof Error ? error.message : "EPUB download failed.");
       }
@@ -181,7 +224,18 @@ export default function ReadiumRoute() {
     return () => {
       cancelled = true;
     };
-  }, [entry, fs, libraryId, nativeReadium]);
+  }, [
+    entry,
+    cacheDirectory,
+    deleteAsync,
+    downloadFile,
+    getFileInfo,
+    libraryId,
+    moveAsync,
+    nativeReadium,
+    readAsStringAsync,
+    retryNonce,
+  ]);
 
   const openNativeReader = useCallback(async () => {
     if (!entry || !localSrc || !nativeReadium || !settingsLoaded) return;
@@ -231,7 +285,8 @@ export default function ReadiumRoute() {
           onPress={() => {
             setDownloadError(null);
             openedRef.current = false;
-            openNativeReader();
+            setLocalSrc(null);
+            setRetryNonce((value) => value + 1);
           }}
         >
           <Feather name="refresh-cw" size={16} color={colors.foreground} />

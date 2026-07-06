@@ -22,6 +22,14 @@ The original native host launches a separate full-screen `NativeReadiumActivity`
 ## Anchoring invariant (preserve)
 Community highlights/comments anchor by NORMALIZED QUOTE TEXT, not CFI/Locator positions. To place a decoration, search a distinctive LEADING SUBSTRING (~first 8 words) of the quote to survive edition drift, resolve to a Locator, then decorate. A substring match decorates only the matched span, not the full quote — accepted.
 
+## Device-confirmed bugs from build #1 (fix in Step 2 rewrite)
+- **TOC tap lands at END of chapter** (device-confirmed symptom). Current code passes the raw TOC `Link` to `navigator.go(link)`. HYPOTHESIS (not yet device-verified): resolve with `publication.locatorFromLink(link)`, and when the locator has no fragments, force `locations.progression = 0.0` before `go(locator)`; keep fragments when present. Must be validated on device in the embedded-rewrite build. The Activity's AlertDialog TOC is throwaway (replaced by the RN TOC panel), so don't burn a build fixing it there.
+- **Native error surfaces must include the full cause chain.** Readium `Error.message` at the top level is generic ("An error occurred when trying to read asset"); walk `error.cause` recursively when reporting via events, or diagnosis is impossible without logcat.
+
+## EPUB cache corruption (JS-side, fixed)
+The reader route's download effect depended on the whole `useFileSystem()` return object (new identity every render) → effect churned, spawning CONCURRENT `downloadAsync` calls writing the SAME cache file → corrupted EPUB → "could not read the EPUB asset" on every reopen.
+**How to apply:** depend on the individual stable `useCallback` helpers, never the hook's return object; download to a unique `.tmp` path, validate (size > 0 + ZIP magic `UEsD` via base64 head read), then atomically `moveAsync` onto the cache path. Cache filename was bumped (`_v2_`) to orphan poisoned files.
+
 ## Untestable-native build loop
 The Replit agent cannot build/run Android (no emulator/APK). Only the user can EAS-build and device-test.
 **How to apply:** Put the ENTIRE native surface in ONE EAS build, defensively coded; then iterate JS-only over Metro (dev-client reloads TS without rebuilds). Add a `NativeReadiumHost.log` DeviceEventEmitter event so native errors surface in Metro (agent has no logcat). Do the JS cutover (delete `app/read/[libraryId].tsx` + `@epubjs-react-native/core`, repoint `match/[libraryId].tsx`) only AFTER the user confirms the build works; keep it a one-commit switch. Verify `react-native-webview` isn't needed elsewhere before removing.

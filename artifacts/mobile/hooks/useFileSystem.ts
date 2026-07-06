@@ -56,8 +56,10 @@ export function useFileSystem() {
   }, []);
 
   const readAsStringAsync = useCallback(
-    (fileUri: string, options?: { encoding?: "utf8" | "base64" }) =>
-      FileSystem.readAsStringAsync(fileUri, options as never),
+    (
+      fileUri: string,
+      options?: { encoding?: "utf8" | "base64"; position?: number; length?: number },
+    ) => FileSystem.readAsStringAsync(fileUri, options as never),
     [],
   );
 
@@ -74,6 +76,10 @@ export function useFileSystem() {
     await FileSystem.deleteAsync(fileUri, { idempotent: true });
   }, []);
 
+  const moveAsync = useCallback(async (from: string, to: string) => {
+    await FileSystem.moveAsync({ from, to });
+  }, []);
+
   return {
     file,
     progress,
@@ -87,6 +93,7 @@ export function useFileSystem() {
     readAsStringAsync,
     writeAsStringAsync,
     deleteAsync,
+    moveAsync,
     downloadFile,
     getFileInfo,
   };
