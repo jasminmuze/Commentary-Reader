@@ -72,7 +72,11 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
 
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
-                openPublication(File(filePath))
+                try {
+                    openPublication(File(filePath))
+                } catch (t: Throwable) {
+                    Try.failure("Reader crashed while opening the EPUB:\n${describeThrowable(t)}")
+                }
             }
 
             when (result) {
@@ -183,7 +187,21 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
         AlertDialog.Builder(this)
             .setTitle("Table of contents")
             .setItems(items.map { it.title }.toTypedArray()) { dialog, index ->
-                currentNavigator.go(items[index].link, animated = false)
+                val link = items[index].link
+                val locator = currentPublication.locatorFromLink(link)
+                if (locator != null) {
+                    // Without an explicit progression, the navigator can land at the end of
+                    // the target resource. Anchor at the chapter start unless the TOC entry
+                    // points at a fragment inside the resource.
+                    val target = if (locator.locations.fragments.isEmpty() && locator.locations.progression == null) {
+                        locator.copy(locations = locator.locations.copy(progression = 0.0))
+                    } else {
+                        locator
+                    }
+                    currentNavigator.go(target, animated = false)
+                } else {
+                    currentNavigator.go(link, animated = false)
+                }
                 dialog.dismiss()
             }
             .show()
@@ -209,7 +227,7 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
         val assetRetriever = AssetRetriever(contentResolver, httpClient)
         val retrievedAsset = assetRetriever.retrieve(file).fold(
             onSuccess = { it },
-            onFailure = { return Try.failure("Readium could not read the EPUB asset: ${it.message}") },
+            onFailure = { return Try.failure("Readium could not read the EPUB asset:\n${describeError(it)}") },
         )
 
         val parser = DefaultPublicationParser(
@@ -223,11 +241,35 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
             onSuccess = { it },
             onFailure = {
                 retrievedAsset.close()
-                return Try.failure("Readium could not open this EPUB: ${it.message}")
+                return Try.failure("Readium could not open this EPUB:\n${describeError(it)}")
             },
         )
 
         return Try.success(OpenedPublication(retrievedAsset, openedPublication))
+    }
+
+    private fun describeThrowable(root: Throwable): String {
+        val parts = mutableListOf<String>()
+        var current: Throwable? = root
+        while (current != null && parts.size < 10) {
+            parts.add("${current.javaClass.simpleName}: ${current.message ?: "no message"}")
+            current = current.cause
+        }
+        return parts.joinToString("\n\u2190 ")
+    }
+
+    private fun describeError(error: org.readium.r2.shared.util.Error): String {
+        val parts = mutableListOf<String>()
+        var current: org.readium.r2.shared.util.Error? = error
+        while (current != null && parts.size < 10) {
+            parts.add(current.message)
+            val throwable = (current as? org.readium.r2.shared.util.ThrowableError<*>)?.throwable
+            if (throwable != null) {
+                parts.add(describeThrowable(throwable))
+            }
+            current = current.cause
+        }
+        return parts.distinct().joinToString("\n\u2190 ")
     }
 
     private fun parseInitialLocator(raw: String?): Locator? {

@@ -10,13 +10,20 @@ const {
 const READIUM_SOURCE = "source 'https://github.com/readium/podspecs'";
 const COCOAPODS_SOURCE = "source 'https://cdn.cocoapods.org/'";
 const DESUGAR_DEP = 'coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.2"';
-const KOTLINX_DATETIME_DEP = 'implementation "org.jetbrains.kotlinx:kotlinx-datetime:0.6.1"';
+// Readium 3.x is compiled against kotlinx-datetime 0.6.x, whose Instant/Clock classes were
+// REMOVED in 0.7.0. If any other dependency pulls 0.7+, Gradle picks the highest version and
+// Readium crashes at runtime with NoClassDefFoundError: kotlinx.datetime.Instant. The
+// "-0.6.x-compat" artifacts ship BOTH the new API and the deprecated 0.6.x classes, so we pin
+// them via resolutionStrategy.force below.
+const KOTLINX_DATETIME_VERSION = "0.7.1-0.6.x-compat";
+const KOTLINX_DATETIME_DEP = `implementation "org.jetbrains.kotlinx:kotlinx-datetime:${KOTLINX_DATETIME_VERSION}"`;
+const KOTLINX_DATETIME_FORCE_MARKER = "// readium: pin kotlinx-datetime for binary compat";
 const READIUM_VERSION = "3.1.0";
 const NATIVE_READIUM_DEPS = [
   `implementation "org.readium.kotlin-toolkit:readium-shared:${READIUM_VERSION}"`,
   `implementation "org.readium.kotlin-toolkit:readium-streamer:${READIUM_VERSION}"`,
   `implementation "org.readium.kotlin-toolkit:readium-navigator:${READIUM_VERSION}"`,
-  'implementation "org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.6.1"',
+  `implementation "org.jetbrains.kotlinx:kotlinx-datetime-jvm:${KOTLINX_DATETIME_VERSION}"`,
   'implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"',
   'implementation "androidx.fragment:fragment-ktx:1.8.5"',
   'implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.8.7"',
@@ -141,6 +148,22 @@ function ensureKotlinxDatetimeDependency(contents) {
   return lines.join("\n");
 }
 
+function ensureKotlinxDatetimeResolution(contents) {
+  if (contents.includes(KOTLINX_DATETIME_FORCE_MARKER)) return contents;
+  return [
+    contents,
+    "",
+    KOTLINX_DATETIME_FORCE_MARKER,
+    "configurations.all {",
+    "    resolutionStrategy {",
+    `        force "org.jetbrains.kotlinx:kotlinx-datetime:${KOTLINX_DATETIME_VERSION}"`,
+    `        force "org.jetbrains.kotlinx:kotlinx-datetime-jvm:${KOTLINX_DATETIME_VERSION}"`,
+    "    }",
+    "}",
+    "",
+  ].join("\n");
+}
+
 function ensureNativeReadiumDependencies(contents) {
   const missingDeps = NATIVE_READIUM_DEPS.filter((dep) => !contents.includes(dep));
   if (missingDeps.length === 0) return contents;
@@ -166,6 +189,7 @@ function withReadiumAndroid(config) {
     contents = ensureDesugarDependency(contents);
     contents = ensureKotlinxDatetimeDependency(contents);
     contents = ensureNativeReadiumDependencies(contents);
+    contents = ensureKotlinxDatetimeResolution(contents);
     modConfig.modResults.contents = contents;
     return modConfig;
   });
