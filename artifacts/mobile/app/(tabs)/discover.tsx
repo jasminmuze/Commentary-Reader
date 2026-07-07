@@ -53,7 +53,7 @@ export default function DiscoverScreen() {
 
       <FlatList<Book>
         data={books ?? []}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={(item, index) => String(item.id ?? index)}
         renderItem={({ item }) => (
           <BookCard book={item} onPress={() => router.push(`/book/${item.id}`)} />
         )}

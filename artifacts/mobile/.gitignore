@@ -12,6 +12,10 @@ expo-env.d.ts
 # Native
 ios/
 android/
+!native/
+!native/readium-host/
+!native/readium-host/android/
+!native/readium-host/android/*.kt
 *.orig.*
 *.jks
 *.p8

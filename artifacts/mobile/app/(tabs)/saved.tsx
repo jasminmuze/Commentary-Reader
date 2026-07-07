@@ -74,7 +74,7 @@ export default function SavedScreen() {
 
       <FlatList<Comment>
         data={saved ?? []}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={(item, index) => String(item.id ?? index)}
         renderItem={({ item }) => (
           <CommentCard comment={item} onLike={handleLike} onSave={handleSave} />
         )}

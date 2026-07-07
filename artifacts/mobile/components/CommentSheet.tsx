@@ -175,7 +175,7 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         <FlatList<Comment>
           style={{ flex: 1 }}
           data={replies ?? []}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item, index) => String(item.id ?? index)}
           renderItem={({ item }) => (
             <CommentCard
               comment={item}
@@ -505,7 +505,7 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
               <FlatList<Comment>
                 style={styles.list}
                 data={comments ?? []}
-                keyExtractor={(item) => String(item.id)}
+                keyExtractor={(item, index) => String(item.id ?? index)}
                 renderItem={({ item }) => (
                   <CommentCard
                     comment={item}

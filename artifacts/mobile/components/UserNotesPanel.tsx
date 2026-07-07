@@ -142,7 +142,7 @@ export function UserNotesPanel({
         ) : (
           <FlatList
             data={quotes}
-            keyExtractor={(q) => String(q.id)}
+            keyExtractor={(q, index) => String(q.id ?? index)}
             renderItem={({ item }) => (
               <QuoteNoteRow
                 quote={item}
