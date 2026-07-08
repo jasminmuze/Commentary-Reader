@@ -148,9 +148,31 @@ export default function ReadiumRoute() {
       },
     );
 
+    const debugSub = DeviceEventEmitter.addListener(
+      "NativeReadiumHost.debug",
+      (event: { libraryId: number; message: string }) => {
+        if (event.libraryId === libraryId) {
+          console.log(`[NativeReadium] ${event.message}`);
+        }
+      },
+    );
+
+    const resourceFailSub = DeviceEventEmitter.addListener(
+      "NativeReadiumHost.resourceLoadFailed",
+      (event: { libraryId: number; href?: string; message?: string }) => {
+        if (event.libraryId === libraryId) {
+          console.warn(
+            `[NativeReadium] resource load failed: ${event.href ?? "?"} — ${event.message ?? ""}`,
+          );
+        }
+      },
+    );
+
     return () => {
       locationSub.remove();
       closedSub.remove();
+      debugSub.remove();
+      resourceFailSub.remove();
     };
   }, [libraryId, queryClient, updateLocation]);
 

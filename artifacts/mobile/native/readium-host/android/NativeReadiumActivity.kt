@@ -10,8 +10,12 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
-import androidx.fragment.app.commit
+import androidx.fragment.app.commitNow
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -23,12 +27,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.readium.r2.navigator.HyperlinkNavigator
+import org.readium.r2.navigator.OverflowableNavigator
+import org.readium.r2.navigator.VisualNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.navigator.input.InputListener
+import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.preferences.FontFamily
-import org.readium.r2.navigator.preferences.TextAlign
 import org.readium.r2.navigator.preferences.Theme
+import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
@@ -39,26 +47,64 @@ import org.readium.r2.shared.util.asset.Asset
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.data.ReadError
 import org.readium.r2.shared.util.http.DefaultHttpClient
-import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.DefaultPublicationParser
 
+/**
+ * Hosts the Readium EPUB navigator, following the official readium/kotlin-toolkit
+ * test-app reader implementation (ReaderActivity + VisualReaderFragment +
+ * EpubReaderFragment + FullscreenReaderActivityDelegate + SystemUiManagement):
+ *
+ * - Navigator added via `commitNow` and looked up by tag, with a fragment factory.
+ * - `DirectionalNavigationAdapter` turns pages when tapping the screen edges.
+ * - A center tap toggles the system UI (immersive reading, official behavior).
+ * - TOC navigation is `publication.locatorFromLink(link)` -> `go(locator, true)`.
+ * - Publisher styles stay enabled by default; only user-changed settings are applied.
+ *
+ * The official test-app hides/shows system bars with legacy `systemUiVisibility`
+ * flags, which are ignored on the Android 15+ targets Expo SDK 54 builds against,
+ * so the equivalent `WindowInsetsControllerCompat` calls are used instead.
+ */
 @OptIn(ExperimentalReadiumApi::class)
 class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
-    private var containerId: Int = View.generateViewId()
+    private val containerId: Int = View.generateViewId()
     private var libraryId: Int = -1
     private var publication: Publication? = null
     private var asset: Asset? = null
     private var navigator: EpubNavigatorFragment? = null
     private var locationJob: Job? = null
-    private lateinit var root: LinearLayout
+    private lateinit var root: FrameLayout
+    private var toolbar: LinearLayout? = null
+    private var systemUiVisible = true
+
+    private val insetsController: WindowInsetsControllerCompat by lazy {
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            isAppearanceLightStatusBars = false
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Official pattern (EpubReaderFragment.onCreate): when the activity is being
+        // restored after process death, the publication is not opened yet, so fragment
+        // restoration cannot instantiate the navigator. Install the official dummy
+        // factory so `super.onCreate` does not crash, then close the reader; the user
+        // reopens it from the app (the manifest's configChanges already prevents
+        // recreation on rotation, so this only happens after process death).
+        if (savedInstanceState != null) {
+            supportFragmentManager.fragmentFactory = EpubNavigatorFragment.createDummyFactory()
+            super.onCreate(savedInstanceState)
+            finish()
+            return
+        }
+
         super.onCreate(savedInstanceState)
 
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         libraryId = intent.getIntExtra(EXTRA_LIBRARY_ID, -1)
-        root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(14, 17, 23))
         }
         setContentView(root)
@@ -80,62 +126,94 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
             }
 
             when (result) {
-                is Try.Success -> showReader(result.value)
+                is Try.Success -> {
+                    try {
+                        showReader(result.value)
+                    } catch (t: Throwable) {
+                        showError("Reader crashed while starting the navigator:\n${describeThrowable(t)}")
+                    }
+                }
                 is Try.Failure -> showError(result.value)
             }
         }
     }
 
-    private fun showLoading() {
+    private fun showCentered(vararg views: View) {
         root.removeAllViews()
-        root.gravity = Gravity.CENTER
-        root.addView(ProgressBar(this))
+        toolbar = null
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(24.dp, 24.dp, 24.dp, 24.dp)
+        }
+        views.forEach { column.addView(it) }
         root.addView(
+            column,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+    }
+
+    private fun showLoading() {
+        showCentered(
+            ProgressBar(this),
             TextView(this).apply {
                 text = "Opening EPUB..."
                 setTextColor(Color.WHITE)
                 textSize = 15f
                 gravity = Gravity.CENTER
                 setPadding(0, 24, 0, 0)
-            }
+            },
+        )
+    }
+
+    private fun showError(message: String) {
+        sendDebug("error: $message")
+        showSystemUi()
+        showCentered(
+            TextView(this).apply {
+                text = message
+                setTextColor(Color.WHITE)
+                textSize = 15f
+                gravity = Gravity.CENTER
+            },
         )
     }
 
     private fun showReader(opened: OpenedPublication) {
         root.removeAllViews()
-        root.gravity = Gravity.NO_GRAVITY
-
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(12.dp, 8.dp, 12.dp, 8.dp)
-            setBackgroundColor(Color.rgb(14, 17, 23))
-        }
-
-        toolbar.addView(toolbarButton("Back") { finish() })
-        toolbar.addView(
-            TextView(this).apply {
-                text = intent.getStringExtra(EXTRA_TITLE) ?: opened.publication.metadata.title ?: "Reader"
-                setTextColor(Color.WHITE)
-                textSize = 16f
-                maxLines = 1
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-        )
-        toolbar.addView(toolbarButton("TOC") { showTableOfContents() })
 
         val container = FrameLayout(this).apply {
             id = containerId
-            setBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            )
         }
+        root.addView(
+            container,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
 
-        root.addView(toolbar)
-        root.addView(container)
+        val toolbar = buildToolbar(opened.publication)
+        root.addView(
+            toolbar,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP,
+            ),
+        )
+        this.toolbar = toolbar
+
+        // Official pattern: pad by the system bar insets (ignoring visibility) so the
+        // toolbar never sits underneath the status bar. See SystemUiManagement.padSystemUi.
+        ViewCompat.setOnApplyWindowInsetsListener(toolbar) { view, insets ->
+            val bars = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(12.dp + bars.left, 8.dp + bars.top, 12.dp + bars.right, 8.dp)
+            insets
+        }
 
         asset = opened.asset
         publication = opened.publication
@@ -143,6 +221,8 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
         val initialLocator = parseInitialLocator(intent.getStringExtra(EXTRA_LOCATOR_JSON))
         val preferences = parsePreferences(intent.getStringExtra(EXTRA_SETTINGS_JSON))
 
+        // Official pattern (EpubReaderFragment.onCreate/onCreateView): fragment factory,
+        // then commitNow and look the navigator up by tag.
         supportFragmentManager.fragmentFactory =
             EpubNavigatorFactory(opened.publication)
                 .createFragmentFactory(
@@ -151,13 +231,60 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
                     listener = this,
                 )
 
-        supportFragmentManager.commit {
+        supportFragmentManager.commitNow {
             replace(containerId, EpubNavigatorFragment::class.java, Bundle(), NAVIGATOR_TAG)
         }
 
-        supportFragmentManager.executePendingTransactions()
-        navigator = supportFragmentManager.findFragmentByTag(NAVIGATOR_TAG) as? EpubNavigatorFragment
+        val navigatorFragment =
+            supportFragmentManager.findFragmentByTag(NAVIGATOR_TAG) as EpubNavigatorFragment
+        navigator = navigatorFragment
+
+        // Official pattern (VisualReaderFragment.onViewCreated): edge taps and arrow keys
+        // turn pages; a center tap toggles the system UI.
+        (navigatorFragment as OverflowableNavigator).apply {
+            addInputListener(DirectionalNavigationAdapter(this))
+        }
+        (navigatorFragment as VisualNavigator).apply {
+            addInputListener(object : InputListener {
+                override fun onTap(event: TapEvent): Boolean {
+                    toggleSystemUi()
+                    return true
+                }
+            })
+        }
+
         observeLocation()
+        sendDebug(
+            "opened \"${opened.publication.metadata.title}\" " +
+                "(toc=${opened.publication.tableOfContents.size}, " +
+                "initialLocator=${initialLocator != null})"
+        )
+
+        // Official behavior (FullscreenReaderActivityDelegate.onStart): while the
+        // navigator is visible, read in immersive mode. Tap the center to bring the
+        // bars and toolbar back.
+        hideSystemUi()
+    }
+
+    private fun buildToolbar(publication: Publication): LinearLayout {
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(12.dp, 8.dp, 12.dp, 8.dp)
+            setBackgroundColor(Color.argb(235, 14, 17, 23))
+        }
+        toolbar.addView(toolbarButton("Back") { finish() })
+        toolbar.addView(
+            TextView(this).apply {
+                text = intent.getStringExtra(EXTRA_TITLE) ?: publication.metadata.title ?: "Reader"
+                setTextColor(Color.WHITE)
+                textSize = 16f
+                maxLines = 1
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            },
+        )
+        toolbar.addView(toolbarButton("TOC") { showTableOfContents() })
+        return toolbar
     }
 
     private fun toolbarButton(label: String, action: () -> Unit): TextView =
@@ -169,6 +296,27 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
             setPadding(12.dp, 8.dp, 12.dp, 8.dp)
             setOnClickListener { action() }
         }
+
+    // System UI management, equivalent to the official SystemUiManagement.kt utils.
+    // The official file uses legacy `systemUiVisibility` flags, which are no-ops on
+    // the Android 15+ targets used by Expo SDK 54, so WindowInsetsControllerCompat
+    // (the platform-mandated replacement) is used here.
+
+    private fun showSystemUi() {
+        systemUiVisible = true
+        insetsController.show(WindowInsetsCompat.Type.systemBars())
+        toolbar?.visibility = View.VISIBLE
+    }
+
+    private fun hideSystemUi() {
+        systemUiVisible = false
+        insetsController.hide(WindowInsetsCompat.Type.systemBars())
+        toolbar?.visibility = View.GONE
+    }
+
+    private fun toggleSystemUi() {
+        if (systemUiVisible) hideSystemUi() else showSystemUi()
+    }
 
     private fun showTableOfContents() {
         val currentPublication = publication ?: return
@@ -188,19 +336,14 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
             .setTitle("Table of contents")
             .setItems(items.map { it.title }.toTypedArray()) { dialog, index ->
                 val link = items[index].link
+                // Official pattern (NavigationFragment.onLinkSelected +
+                // ReaderActivity.closeOutlineFragment): locatorFromLink, then go.
                 val locator = currentPublication.locatorFromLink(link)
                 if (locator != null) {
-                    // Without an explicit progression, the navigator can land at the end of
-                    // the target resource. Anchor at the chapter start unless the TOC entry
-                    // points at a fragment inside the resource.
-                    val target = if (locator.locations.fragments.isEmpty() && locator.locations.progression == null) {
-                        locator.copy(locations = locator.locations.copy(progression = 0.0))
-                    } else {
-                        locator
-                    }
-                    currentNavigator.go(target, animated = false)
+                    sendDebug("toc -> ${link.href}")
+                    currentNavigator.go(locator, animated = true)
                 } else {
-                    currentNavigator.go(link, animated = false)
+                    sendDebug("toc: no locator for ${link.href}")
                 }
                 dialog.dismiss()
             }
@@ -283,54 +426,69 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
         }
     }
 
+    /**
+     * Maps the app's reader settings onto [EpubPreferences].
+     *
+     * Follows the official test-app model: preferences default to empty, which keeps
+     * the publisher's original styles enabled. Only settings the user changed from
+     * the app defaults are applied. Line spacing / margins require disabling
+     * publisher styles (mirroring the official preferences editor, which activates
+     * that switch when those preferences are edited), so publisher styles are only
+     * turned off when the user explicitly picked a non-default value for them.
+     */
     private fun parsePreferences(raw: String?): EpubPreferences {
         val settings = try {
             raw?.let { JSONObject(it) }
         } catch (_: Exception) {
             null
-        }
+        } ?: return EpubPreferences()
 
-        val theme = when (settings?.optString("theme")) {
+        val theme = when (settings.optString("theme")) {
             "sepia" -> Theme.SEPIA
-            "light" -> Theme.LIGHT
-            else -> Theme.DARK
+            "dark", "oled", "forest" -> Theme.DARK
+            else -> null // paper/gray: Readium's default (light) theme
         }
 
-        val fontFamily = when (settings?.optString("font")) {
+        val fontFamily = when (settings.optString("font")) {
             "sans" -> FontFamily.SANS_SERIF
-            else -> FontFamily.SERIF
+            "serif" -> FontFamily.SERIF
+            else -> null // app default: keep the publisher's font
         }
 
-        val fontSize = settings
-            ?.optDouble("fontSize")
-            ?.takeIf { !it.isNaN() && !it.isInfinite() && it > 0 }
-            ?.let { (it / 16.0).coerceIn(0.75, 1.8) }
+        val fontSize = settings.optDouble("fontSize")
+            .takeIf { !it.isNaN() && !it.isInfinite() && it > 0 && it != DEFAULT_FONT_SIZE }
+            ?.let { (it / DEFAULT_FONT_SIZE).coerceIn(0.75, 2.0) }
+
+        val scroll = when (settings.optString("scrollMode")) {
+            "vertical" -> true
+            "paged" -> false
+            else -> null
+        }
+
+        val lineHeight = when (settings.optString("lineSpacing")) {
+            "compact" -> 1.2
+            "wide" -> 1.8
+            else -> null // app default: keep the publisher's line height
+        }
+
+        val pageMargins = when (settings.optString("margin")) {
+            "narrow" -> 0.5
+            "wide" -> 2.0
+            else -> null // app default: keep the publisher's margins
+        }
+
+        val publisherStyles = if (lineHeight != null || pageMargins != null) false else null
 
         return EpubPreferences(
             theme = theme,
             fontFamily = fontFamily,
             fontSize = fontSize,
-            lineHeight = lineHeightScale(settings?.optString("lineSpacing")),
-            pageMargins = marginScale(settings?.optString("margin")),
-            publisherStyles = false,
-            scroll = settings?.optString("scrollMode") == "vertical",
-            textAlign = TextAlign.START,
+            scroll = scroll,
+            lineHeight = lineHeight,
+            pageMargins = pageMargins,
+            publisherStyles = publisherStyles,
         )
     }
-
-    private fun marginScale(value: String?): Double? =
-        when (value) {
-            "narrow" -> 0.8
-            "wide" -> 1.4
-            else -> 1.0
-        }
-
-    private fun lineHeightScale(value: String?): Double? =
-        when (value) {
-            "compact" -> 1.4
-            "wide" -> 2.2
-            else -> 1.85
-        }
 
     private fun sendLocation(locator: Locator) {
         val progress = locator.locations.totalProgression ?: locator.locations.progression
@@ -355,18 +513,12 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
         NativeReadiumEvents.send("NativeReadiumHost.locationChanged", payload)
     }
 
-    private fun showError(message: String) {
-        root.removeAllViews()
-        root.gravity = Gravity.CENTER
-        root.setPadding(24.dp, 24.dp, 24.dp, 24.dp)
-        root.addView(
-            TextView(this).apply {
-                text = message
-                setTextColor(Color.WHITE)
-                textSize = 15f
-                gravity = Gravity.CENTER
-            }
-        )
+    private fun sendDebug(message: String) {
+        val payload = Arguments.createMap().apply {
+            putInt("libraryId", libraryId)
+            putString("message", message)
+        }
+        NativeReadiumEvents.send("NativeReadiumHost.debug", payload)
     }
 
     override fun onResourceLoadFailed(href: org.readium.r2.shared.util.Url, error: ReadError) {
@@ -431,5 +583,6 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
 
         private const val NAVIGATOR_TAG = "native-readium-navigator"
         private const val READIUM_LOCATION_VERSION = 4
+        private const val DEFAULT_FONT_SIZE = 19.0
     }
 }

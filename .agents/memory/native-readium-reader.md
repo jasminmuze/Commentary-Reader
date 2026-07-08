@@ -22,9 +22,18 @@ The original native host launches a separate full-screen `NativeReadiumActivity`
 ## Anchoring invariant (preserve)
 Community highlights/comments anchor by NORMALIZED QUOTE TEXT, not CFI/Locator positions. To place a decoration, search a distinctive LEADING SUBSTRING (~first 8 words) of the quote to survive edition drift, resolve to a Locator, then decorate. A substring match decorates only the matched span, not the full quote — accepted.
 
-## Device-confirmed bugs from build #1 (fix in Step 2 rewrite)
-- **TOC tap lands at END of chapter** (device-confirmed symptom). Current code passes the raw TOC `Link` to `navigator.go(link)`. HYPOTHESIS (not yet device-verified): resolve with `publication.locatorFromLink(link)`, and when the locator has no fragments, force `locations.progression = 0.0` before `go(locator)`; keep fragments when present. Must be validated on device in the embedded-rewrite build. The Activity's AlertDialog TOC is throwaway (replaced by the RN TOC panel), so don't burn a build fixing it there.
-- **Native error surfaces must include the full cause chain.** Readium `Error.message` at the top level is generic ("An error occurred when trying to read asset"); walk `error.cause` recursively when reporting via events, or diagnosis is impossible without logcat.
+## Follow the official test-app verbatim — hand-rolled "fixes" made things worse
+User mandate after a broken device build: implement exactly what readium's official kotlin-toolkit test-app does, no creative additions.
+**Why:** Hand-rolled deviations (forcing `publisherStyles=false` + textAlign/lineHeight, forcing TOC `locations.progression=0.0`) produced broken formatting and wrong TOC jumps on device. The official patterns are: TOC = `publication.locatorFromLink(link)` → `go(locator, animated=true)` (nothing else); preferences default EMPTY (publisher styles ON) with only user-changed settings applied; `lineHeight`/`pageMargins` only take effect with `publisherStyles=false`, so flip that switch only when the user picked a non-default value for them (mirrors the official editor's "activate" semantics).
+**How to apply:** Before touching reader behavior, download the matching-version test-app sources (reader/, utils/) and copy their structure. Official reference patterns also adopted: navigator via fragmentFactory + `commitNow` + tag lookup; `DirectionalNavigationAdapter` for edge-tap page turns; center tap toggles system UI; immersive mode while reading.
+
+## Android 15+ (Expo SDK 54 targets): legacy system-UI flags are no-ops
+The official test-app's `SystemUiManagement.kt` uses deprecated `systemUiVisibility` flags, which are ignored on the Android 15+ targets Expo SDK 54 builds against. Use `WindowInsetsControllerCompat` (`hide/show(Type.systemBars())`, `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) and pad overlays with `getInsetsIgnoringVisibility(systemBars)` via `ViewCompat.setOnApplyWindowInsetsListener`. Same behavior, platform-mandated API.
+
+## Fragment restore after process death crashes without a pre-restore factory
+`EpubNavigatorFragment` has an internal constructor; if the hosting Activity/Fragment is restored (savedInstanceState != null) before the publication is opened, `super.onCreate` crashes instantiating the fragment. Official fix (EpubReaderFragment.onCreate): install `EpubNavigatorFragment.createDummyFactory()` BEFORE `super.onCreate`, then bail out (finish). Rotation recreation is already suppressed via the activity's `configChanges`, so this path only fires after process death.
+
+- **Native error surfaces must include the full cause chain.** Readium `Error.message` at the top level is generic ("An error occurred when trying to read asset"); walk `error.cause` recursively when reporting via events, or diagnosis is impossible without logcat. A `NativeReadiumHost.debug` DeviceEventEmitter bridge surfaces native-side diagnostics in the Metro console (agent has no logcat).
 
 ## EPUB cache corruption (JS-side, fixed)
 The reader route's download effect depended on the whole `useFileSystem()` return object (new identity every render) → effect churned, spawning CONCURRENT `downloadAsync` calls writing the SAME cache file → corrupted EPUB → "could not read the EPUB asset" on every reopen.
