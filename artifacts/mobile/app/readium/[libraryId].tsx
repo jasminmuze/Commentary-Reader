@@ -99,7 +99,7 @@ export default function ReadiumRoute() {
   } = useFileSystem();
   const queryClient = useQueryClient();
   const updateLocation = useUpdateReadingLocation();
-  const { settings, loaded: settingsLoaded } = useReaderSettings();
+  const { settings, loaded: settingsLoaded, update: updateSettings } = useReaderSettings();
   const params = useLocalSearchParams<{ libraryId?: string }>();
   const libraryId = Number(params.libraryId);
   const nativeReadium = useMemo(() => getNativeReadiumHost(), []);
@@ -117,27 +117,57 @@ export default function ReadiumRoute() {
     },
   });
 
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingLocationRef = useRef<NativeReadiumLocationEvent | null>(null);
+
   useEffect(() => {
     if (!Number.isFinite(libraryId)) return;
+
+    const flushLocation = () => {
+      const event = pendingLocationRef.current;
+      pendingLocationRef.current = null;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (!event) return;
+      updateLocation.mutate(
+        {
+          libraryId,
+          data: {
+            location: event.location,
+            readingProgress: percentFromProgress(event.progress) ?? 0,
+          },
+        },
+        {
+          onSuccess: (updated) => {
+            queryClient.setQueryData(getGetLibraryEntryQueryKey(libraryId), updated);
+          },
+        },
+      );
+    };
 
     const locationSub = DeviceEventEmitter.addListener(
       "NativeReadiumHost.locationChanged",
       (event: NativeReadiumLocationEvent) => {
         if (event.libraryId !== libraryId || !event.location) return;
-        updateLocation.mutate(
-          {
-            libraryId,
-            data: {
-              location: event.location,
-              readingProgress: percentFromProgress(event.progress) ?? 0,
-            },
-          },
-          {
-            onSuccess: (updated) => {
-              queryClient.setQueryData(getGetLibraryEntryQueryKey(libraryId), updated);
-            },
-          },
-        );
+        // Debounce: the navigator emits a location on every scroll tick, which
+        // would flood the server with one PUT per second otherwise.
+        pendingLocationRef.current = event;
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(flushLocation, 1200);
+      },
+    );
+
+    const settingsSub = DeviceEventEmitter.addListener(
+      "NativeReadiumHost.settingsChanged",
+      (event: { libraryId: number; settings?: string }) => {
+        if (event.libraryId !== libraryId || !event.settings) return;
+        try {
+          updateSettings(JSON.parse(event.settings));
+        } catch {
+          // ignore malformed settings payloads
+        }
       },
     );
 
@@ -169,12 +199,17 @@ export default function ReadiumRoute() {
     );
 
     return () => {
+      // Flush any pending (debounced) location save so the last reading
+      // position is not lost when the reader closes.
+      flushLocation();
       locationSub.remove();
+      settingsSub.remove();
       closedSub.remove();
       debugSub.remove();
       resourceFailSub.remove();
     };
-  }, [libraryId, queryClient, updateLocation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [libraryId, queryClient, updateLocation.mutate, updateSettings]);
 
   useEffect(() => {
     if (!entry || !cacheDirectory || !nativeReadium) return;

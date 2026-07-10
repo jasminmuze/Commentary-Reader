@@ -76,6 +76,7 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
     private lateinit var root: FrameLayout
     private var toolbar: LinearLayout? = null
     private var systemUiVisible = true
+    private var settingsJson: JSONObject = JSONObject()
 
     private val insetsController: WindowInsetsControllerCompat by lazy {
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -214,12 +215,22 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
             view.setPadding(12.dp + bars.left, 8.dp + bars.top, 12.dp + bars.right, 8.dp)
             insets
         }
+        // The toolbar is attached after the window's initial insets pass, so the
+        // listener above never fires on its own and the toolbar renders with zero
+        // padding underneath the status bar. Official pattern: request a fresh
+        // dispatch (VisualReaderFragment.updateSystemUiVisibility -> requestApplyInsets).
+        ViewCompat.requestApplyInsets(toolbar)
 
         asset = opened.asset
         publication = opened.publication
 
         val initialLocator = parseInitialLocator(intent.getStringExtra(EXTRA_LOCATOR_JSON))
-        val preferences = parsePreferences(intent.getStringExtra(EXTRA_SETTINGS_JSON))
+        settingsJson = try {
+            JSONObject(intent.getStringExtra(EXTRA_SETTINGS_JSON) ?: "")
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        val preferences = parsePreferences(settingsJson)
 
         // Official pattern (EpubReaderFragment.onCreate/onCreateView): fragment factory,
         // then commitNow and look the navigator up by tag.
@@ -260,10 +271,10 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
                 "initialLocator=${initialLocator != null})"
         )
 
-        // Official behavior (FullscreenReaderActivityDelegate.onStart): while the
-        // navigator is visible, read in immersive mode. Tap the center to bring the
-        // bars and toolbar back.
-        hideSystemUi()
+        // The official test app starts immersive, but our users expect the menu to
+        // be visible when the book opens (like the previous reader). Tapping the
+        // center of the screen toggles it, same as the official behavior.
+        showSystemUi()
     }
 
     private fun buildToolbar(publication: Publication): LinearLayout {
@@ -283,8 +294,106 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             },
         )
+        toolbar.addView(toolbarButton("Aa") { showSettingsMenu() })
         toolbar.addView(toolbarButton("TOC") { showTableOfContents() })
         return toolbar
+    }
+
+    // Reader settings menu, mirroring the previous reader's "Aa" panel. Preferences
+    // are applied through the official Configurable API (submitPreferences) and the
+    // updated settings are sent back to React Native for persistence.
+
+    private fun showSettingsMenu() {
+        if (navigator == null) return
+        val sections = arrayOf("테마", "글꼴", "글자 크기", "줄 간격", "여백", "보기 방식")
+        AlertDialog.Builder(this)
+            .setTitle("보기 설정")
+            .setItems(sections) { _, index ->
+                when (index) {
+                    0 -> pickOption(
+                        "테마",
+                        "theme",
+                        "paper",
+                        listOf("paper" to "밝게 (기본)", "sepia" to "세피아", "dark" to "어둡게"),
+                    )
+                    1 -> pickOption(
+                        "글꼴",
+                        "font",
+                        "georgia",
+                        listOf(
+                            "georgia" to "출판사 기본",
+                            "serif" to "명조 (Serif)",
+                            "sans" to "고딕 (Sans)",
+                        ),
+                    )
+                    2 -> pickFontSize()
+                    3 -> pickOption(
+                        "줄 간격",
+                        "lineSpacing",
+                        "normal",
+                        listOf("compact" to "좁게", "normal" to "기본", "wide" to "넓게"),
+                    )
+                    4 -> pickOption(
+                        "여백",
+                        "margin",
+                        "normal",
+                        listOf("narrow" to "좁게", "normal" to "기본", "wide" to "넓게"),
+                    )
+                    5 -> pickOption(
+                        "보기 방식",
+                        "scrollMode",
+                        "vertical",
+                        listOf("vertical" to "스크롤", "paged" to "페이지 넘김"),
+                    )
+                }
+            }
+            .setNegativeButton("닫기", null)
+            .show()
+    }
+
+    private fun pickOption(
+        title: String,
+        key: String,
+        defaultValue: String,
+        options: List<Pair<String, String>>,
+    ) {
+        val current = settingsJson.optString(key).ifBlank { defaultValue }
+        val checked = options.indexOfFirst { it.first == current }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setSingleChoiceItems(options.map { it.second }.toTypedArray(), checked) { dialog, index ->
+                applySetting(key, options[index].first)
+                dialog.dismiss()
+            }
+            .setNegativeButton("닫기", null)
+            .show()
+    }
+
+    private fun pickFontSize() {
+        val sizes = listOf(14, 16, 18, 19, 21, 23, 26)
+        val current = settingsJson.optDouble("fontSize", DEFAULT_FONT_SIZE)
+        val checked = sizes.indexOfFirst { it.toDouble() == current }
+        val labels = sizes.map { if (it.toDouble() == DEFAULT_FONT_SIZE) "${it}pt (기본)" else "${it}pt" }
+        AlertDialog.Builder(this)
+            .setTitle("글자 크기")
+            .setSingleChoiceItems(labels.toTypedArray(), checked) { dialog, index ->
+                applySetting("fontSize", sizes[index])
+                dialog.dismiss()
+            }
+            .setNegativeButton("닫기", null)
+            .show()
+    }
+
+    private fun applySetting(key: String, value: Any) {
+        settingsJson.put(key, value)
+        navigator?.submitPreferences(parsePreferences(settingsJson))
+        sendDebug("settings: $key=$value")
+
+        val payload = Arguments.createMap().apply {
+            putInt("libraryId", libraryId)
+            putString("settings", settingsJson.toString())
+        }
+        NativeReadiumEvents.send("NativeReadiumHost.settingsChanged", payload)
     }
 
     private fun toolbarButton(label: String, action: () -> Unit): TextView =
@@ -306,6 +415,8 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
         systemUiVisible = true
         insetsController.show(WindowInsetsCompat.Type.systemBars())
         toolbar?.visibility = View.VISIBLE
+        // Official pattern: re-dispatch insets whenever the bars visibility changes.
+        toolbar?.let { ViewCompat.requestApplyInsets(it) }
     }
 
     private fun hideSystemUi() {
@@ -340,8 +451,8 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
                 // ReaderActivity.closeOutlineFragment): locatorFromLink, then go.
                 val locator = currentPublication.locatorFromLink(link)
                 if (locator != null) {
-                    sendDebug("toc -> ${link.href}")
-                    currentNavigator.go(locator, animated = true)
+                    val moved = currentNavigator.go(locator, animated = true)
+                    sendDebug("toc -> ${link.href} moved=$moved")
                 } else {
                     sendDebug("toc: no locator for ${link.href}")
                 }
@@ -436,13 +547,7 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
      * that switch when those preferences are edited), so publisher styles are only
      * turned off when the user explicitly picked a non-default value for them.
      */
-    private fun parsePreferences(raw: String?): EpubPreferences {
-        val settings = try {
-            raw?.let { JSONObject(it) }
-        } catch (_: Exception) {
-            null
-        } ?: return EpubPreferences()
-
+    private fun parsePreferences(settings: JSONObject): EpubPreferences {
         val theme = when (settings.optString("theme")) {
             "sepia" -> Theme.SEPIA
             "dark", "oled", "forest" -> Theme.DARK

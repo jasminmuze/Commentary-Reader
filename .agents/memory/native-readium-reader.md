@@ -29,6 +29,7 @@ User mandate after a broken device build: implement exactly what readium's offic
 
 ## Android 15+ (Expo SDK 54 targets): legacy system-UI flags are no-ops
 The official test-app's `SystemUiManagement.kt` uses deprecated `systemUiVisibility` flags, which are ignored on the Android 15+ targets Expo SDK 54 builds against. Use `WindowInsetsControllerCompat` (`hide/show(Type.systemBars())`, `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) and pad overlays with `getInsetsIgnoringVisibility(systemBars)` via `ViewCompat.setOnApplyWindowInsetsListener`. Same behavior, platform-mandated API.
+**Gotcha (caused a device bug):** a view attached AFTER the window's initial insets pass never receives an insets dispatch, so its listener silently never fires and the overlay renders under the status bar. Always call `ViewCompat.requestApplyInsets(view)` right after registering the listener, and re-dispatch whenever bar visibility changes (official pattern: `requestApplyInsets` in `updateSystemUiVisibility`).
 
 ## Fragment restore after process death crashes without a pre-restore factory
 `EpubNavigatorFragment` has an internal constructor; if the hosting Activity/Fragment is restored (savedInstanceState != null) before the publication is opened, `super.onCreate` crashes instantiating the fragment. Official fix (EpubReaderFragment.onCreate): install `EpubNavigatorFragment.createDummyFactory()` BEFORE `super.onCreate`, then bail out (finish). Rotation recreation is already suppressed via the activity's `configChanges`, so this path only fires after process death.
