@@ -40,6 +40,11 @@ The official test-app's `SystemUiManagement.kt` uses deprecated `systemUiVisibil
 The reader route's download effect depended on the whole `useFileSystem()` return object (new identity every render) → effect churned, spawning CONCURRENT `downloadAsync` calls writing the SAME cache file → corrupted EPUB → "could not read the EPUB asset" on every reopen.
 **How to apply:** depend on the individual stable `useCallback` helpers, never the hook's return object; download to a unique `.tmp` path, validate (size > 0 + ZIP magic `UEsD` via base64 head read), then atomically `moveAsync` onto the cache path. Cache filename was bumped (`_v2_`) to orphan poisoned files.
 
+## Embedded-view lessons (phase 2)
+- Open the publication on a coroutine scope that `dispose()` does NOT cancel, and post the result back with `UiThreadUtil.runOnUiThread`; check `disposed` there and close publication/asset. Cancelling the opening coroutine in dispose skips the cleanup branch and leaks the opened asset.
+- `useReaderSettings` loads AsyncStorage per hook INSTANCE. A parent gating on its own `loaded` does not mean a child instance is loaded — capture initial settings only after the child instance's own `loaded`, or defaults get baked into the native view.
+- RN legacy view + Fabric interop: fragment-in-RN-view needs the `requestLayout → post(measure+layout)` workaround; open the fragment in `onAfterUpdateTransaction` (all props set), dispose in `onDropViewInstance`.
+
 ## Untestable-native build loop
 The Replit agent cannot build/run Android (no emulator/APK). Only the user can EAS-build and device-test.
 **How to apply:** Put the ENTIRE native surface in ONE EAS build, defensively coded; then iterate JS-only over Metro (dev-client reloads TS without rebuilds). Add a `NativeReadiumHost.log` DeviceEventEmitter event so native errors surface in Metro (agent has no logcat). Do the JS cutover (delete `app/read/[libraryId].tsx` + `@epubjs-react-native/core`, repoint `match/[libraryId].tsx`) only AFTER the user confirms the build works; keep it a one-commit switch. Verify `react-native-webview` isn't needed elsewhere before removing.
