@@ -21,14 +21,14 @@ Bookmarks is a social ebook reader: users upload their own EPUB files, read them
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Storage: Replit Object Storage (`expo_object_storage` blueprint) — owner-private EPUB uploads (ACL-gated)
-- EPUB rendering: `@epubjs-react-native/core` + `react-native-webview`
+- EPUB rendering: native Readium (Android, custom RN ViewManager under `artifacts/mobile/native/readium-host/`)
 
 ## Where things live
 
 - DB schema (source of truth): `lib/db/src/schema/` — `books`, `quotes`, `userHighlights`, `userLibrary`, `comments`, `users`
 - API contract (source of truth): `lib/api-spec/openapi.yaml`; generated Zod in `lib/api-zod`, generated react-query hooks in `lib/api-client-react`
 - Server routes: `artifacts/api-server/src/routes/` (`books`, `quotes`, `comments`, `library`, `objects`); query helpers in `src/lib/queries.ts`; text normalization in `src/lib/text.ts`; EPUB metadata in `src/lib/epubMetadata.ts`; storage in `src/lib/objectStorage.ts` + `objectAcl.ts`
-- Mobile screens: `artifacts/mobile/app/` — `(tabs)/index.tsx` (library + upload), `(tabs)/discover.tsx` (search), `book/[id].tsx` (detail), `read/[libraryId].tsx` (WebView reader), `match/[libraryId].tsx` (match confirm)
+- Mobile screens: `artifacts/mobile/app/` — `(tabs)/index.tsx` (library + upload), `(tabs)/discover.tsx` (search), `book/[id].tsx` (detail), `readium/[libraryId].tsx` (native Readium reader), `match/[libraryId].tsx` (match confirm)
 - Mobile API base + hooks: `artifacts/mobile/lib/api.ts`, `hooks/useFileSystem.ts`, `components/CommentSheet.tsx`
 
 ## Architecture decisions
@@ -37,9 +37,9 @@ Bookmarks is a social ebook reader: users upload their own EPUB files, read them
 - Find-or-create quote is a single race-free `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` round trip. Comments also find-or-create a quote (users can comment on selections nobody highlighted).
 - No `highlightCount` denormalization — counts are computed via GROUP BY on read.
 - The reader matches a quote across editions by searching a distinctive LEADING SUBSTRING (~first 8 words), not the full quote, to survive punctuation/hyphenation drift between editions.
-- The WebView reader runs on device / Expo Go only, NOT the web preview (accepted limitation). It is platform-guarded with a fallback on web.
-- Uploaded EPUBs use a `private` object ACL with `owner = userId`. `GET /api/objects/*` enforces the ACL via `canAccessObjectEntity`; `LibraryEntry.epubUrl` carries `?userId=` so the owner's WebView fetch passes. The app has no real auth (userId is client-supplied) — this is best-effort within that model; true authz is a follow-up.
-- Reading location is persisted per library entry: `userLibrary.lastReadingLocation` (EPUB CFI). The reader passes it to `<Reader initialLocation>` to resume, and debounce-saves `onLocationChange` via `PUT /api/library/{libraryId}/location`.
+- The native Readium reader runs only in an Android dev/EAS build (NOT Expo Go or web preview). It is platform-guarded with a fallback screen elsewhere.
+- Uploaded EPUBs use a `private` object ACL with `owner = userId`. `GET /api/objects/*` enforces the ACL via `canAccessObjectEntity`; `LibraryEntry.epubUrl` carries `?userId=` so the owner's EPUB download passes. The app has no real auth (userId is client-supplied) — this is best-effort within that model; true authz is a follow-up.
+- Reading location is persisted per library entry: `userLibrary.lastReadingLocation` (Readium locator JSON). The reader passes it as the initial locator to resume, and debounce-saves location changes via `PUT /api/library/{libraryId}/location`.
 
 ## Product
 
@@ -56,7 +56,7 @@ Bookmarks is a social ebook reader: users upload their own EPUB files, read them
 
 - After `pnpm --filter @workspace/api-spec run codegen`, generated `useGetX` hooks require an explicit `queryKey` whenever you pass `query` options — use the `getGetXQueryKey(...)` helper.
 - Codegen + Metro race: while Orval is cleaning its output folder mid-codegen, Metro can bundle and cache an `Unable to resolve module ./generated/api` error that persists even after the files reappear. Restart the `artifacts/mobile: expo` workflow after running codegen to clear it.
-- Do NOT install `@epubjs-react-native/file-system` or `@epubjs-react-native/expo-file-system`; use the local `hooks/useFileSystem.ts` (imports from `expo-file-system/legacy`).
+- For EPUB download/caching use the local `hooks/useFileSystem.ts` (imports from `expo-file-system/legacy`; the root `expo-file-system` entrypoint changed APIs in SDK 54).
 - `lib/api-zod/src/index.ts` is hand-maintained — never `export * from "./generated/types"` wholesale (name collisions); list individual files.
 - `artifacts/mockup-sandbox` has pre-existing React 19 ref-type typecheck errors in `calendar.tsx`/`spinner.tsx`, unrelated to this app.
 

@@ -64,7 +64,7 @@ export default function MatchScreen() {
   const goToReader = () => {
     queryClient.invalidateQueries({ queryKey: getGetLibraryEntryQueryKey(libraryId) });
     if (user) queryClient.invalidateQueries({ queryKey: getGetUserLibraryQueryKey(user.id) });
-    router.replace(`/read/${libraryId}`);
+    router.replace(`/readium/${libraryId}`);
   };
 
   const handleMatch = (bookId: number) => {
@@ -202,7 +202,7 @@ export default function MatchScreen() {
 
               <Pressable
                 style={({ pressed }) => [styles.skipBtn, { opacity: pressed ? 0.6 : 1 }]}
-                onPress={() => router.replace(`/read/${libraryId}`)}
+                onPress={() => router.replace(`/readium/${libraryId}`)}
                 disabled={busy}
               >
                 <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>나중에 하기 · 매칭 없이 읽기</Text>

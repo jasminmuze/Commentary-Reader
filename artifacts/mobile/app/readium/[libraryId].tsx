@@ -17,7 +17,6 @@ import Constants from "expo-constants";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Section } from "@epubjs-react-native/core";
 import {
   getGetBookQuotesQueryKey,
   getGetLibraryEntryQueryKey,
@@ -36,6 +35,7 @@ import type { ReaderSettings } from "@/hooks/useReaderSettings";
 import { CommentSheet } from "@/components/CommentSheet";
 import { ReaderSettingsPanel } from "@/components/ReaderSettingsPanel";
 import { TocPanel } from "@/components/TocPanel";
+import type { TocSection } from "@/components/TocPanel";
 import { UserNotesPanel } from "@/components/UserNotesPanel";
 import { apiUrl } from "@/lib/api";
 
@@ -130,24 +130,24 @@ function quoteIdFromDecorationId(decorationId: string): number | null {
   return Number.isFinite(id) ? id : null;
 }
 
-/** Converts the native flat TOC (title/href/depth) into the Section tree TocPanel renders. */
-function tocEntriesToSections(entries: TocEntry[]): Section[] {
-  const roots: Section[] = [];
-  const stack: { node: Section; depth: number }[] = [];
+/** Converts the native flat TOC (title/href/depth) into the section tree TocPanel renders. */
+function tocEntriesToSections(entries: TocEntry[]): TocSection[] {
+  const roots: TocSection[] = [];
+  const stack: { node: TocSection; depth: number }[] = [];
   for (const entry of entries) {
-    const node = {
+    const node: TocSection = {
       id: entry.href,
       label: entry.title,
       href: entry.href,
       subitems: [],
-    } as unknown as Section;
+    };
     while (stack.length > 0 && stack[stack.length - 1].depth >= entry.depth) {
       stack.pop();
     }
     if (stack.length === 0) {
       roots.push(node);
     } else {
-      (stack[stack.length - 1].node.subitems as unknown as Section[]).push(node);
+      stack[stack.length - 1].node.subitems.push(node);
     }
     stack.push({ node, depth: entry.depth });
   }
