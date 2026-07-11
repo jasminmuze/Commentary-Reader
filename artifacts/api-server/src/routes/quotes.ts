@@ -1,26 +1,29 @@
 import { Router, type IRouter } from "express";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   booksTable,
   quotesTable,
   userHighlightsTable,
+  userLibraryTable,
   usersTable,
 } from "@workspace/db";
 import {
   GetBookQuotesParams,
   CreateQuoteParams,
   CreateQuoteBody,
+  GetQuoteReaderContextParams,
   ToggleHighlightParams,
   ToggleHighlightBody,
 } from "@workspace/api-zod";
-import type { Quote, HighlightResult } from "@workspace/api-zod";
+import type { Quote, HighlightResult, QuoteReaderContext } from "@workspace/api-zod";
 import {
   findOrCreateQuote,
   getQuoteCountsMap,
   getHighlightedQuoteIds,
   toQuote,
 } from "../lib/queries";
+import { leadingSubstring } from "../lib/text";
 import { getViewer } from "../lib/social";
 import { authenticate } from "../middlewares/authenticate.js";
 
@@ -78,6 +81,58 @@ router.post("/books/:bookId/quotes", authenticate, async (req, res): Promise<voi
   const quote = await findOrCreateQuote(params.data.bookId, body.data.text);
   const counts = (await getQuoteCountsMap([quote.id])).get(quote.id)!;
   res.json(toQuote(quote, counts, false));
+});
+
+// Where to read a quote: its canonical book plus the viewer's library entry
+// for that book (most recently opened), or null if the book isn't in their library.
+router.get("/quotes/:quoteId/reader-context", authenticate, async (req, res): Promise<void> => {
+  const params = GetQuoteReaderContextParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [quote] = await db
+    .select()
+    .from(quotesTable)
+    .where(eq(quotesTable.id, params.data.quoteId));
+  if (!quote) {
+    res.status(404).json({ error: "Quote not found" });
+    return;
+  }
+
+  // Same visibility rule as the book quotes list: never return the text of a
+  // quote that has no viewer-visible activity (private/friends-only passages).
+  const viewer = await getViewer(req.userId);
+  const counts = (await getQuoteCountsMap([quote.id], viewer)).get(quote.id)!;
+  if (counts.highlightCount === 0 && counts.commentCount === 0) {
+    res.status(404).json({ error: "Quote not found" });
+    return;
+  }
+
+  const [entry] = await db
+    .select({ id: userLibraryTable.id })
+    .from(userLibraryTable)
+    .where(
+      and(
+        eq(userLibraryTable.userId, req.userId),
+        eq(userLibraryTable.canonicalBookId, quote.canonicalBookId),
+      ),
+    )
+    .orderBy(
+      sql`${userLibraryTable.lastOpenedAt} DESC NULLS LAST`,
+      desc(userLibraryTable.id),
+    )
+    .limit(1);
+
+  const result: QuoteReaderContext = {
+    quoteId: quote.id,
+    canonicalBookId: quote.canonicalBookId,
+    quoteText: quote.text,
+    searchText: leadingSubstring(quote.text),
+    libraryId: entry?.id ?? null,
+  };
+  res.json(result);
 });
 
 // Toggle the current user's highlight on a quote.

@@ -33,6 +33,19 @@ export interface Quote {
   highlightedByMe?: boolean;
 }
 
+export interface QuoteReaderContext {
+  quoteId: number;
+  canonicalBookId: number;
+  quoteText: string;
+  /** Distinctive leading substring used to locate the quote in an EPUB */
+  searchText: string;
+  /**
+     * The viewer's library entry for this book, or null if not in their library
+     * @nullable
+     */
+  libraryId: number | null;
+}
+
 /**
  * Who can see a comment or highlight — public, friends (mutual follows), or private (author only)
  */

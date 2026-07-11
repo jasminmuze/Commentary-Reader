@@ -213,6 +213,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/HighlightResult"
 
+  /quotes/{quoteId}/reader-context:
+    get:
+      operationId: getQuoteReaderContext
+      tags: [quotes]
+      summary: Where to read this quote — its canonical book and my library entry (if any)
+      parameters:
+        - name: quoteId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reader context for the quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteReaderContext"
+        "404":
+          description: Quote not found
+
   /comments/{commentId}/like:
     post:
       operationId: likeComment
@@ -867,6 +888,23 @@ components:
           description: 0.0 to 1.0 representing community highlight strength
         highlightedByMe:
           type: boolean
+
+    QuoteReaderContext:
+      type: object
+      required: [quoteId, canonicalBookId, quoteText, searchText, libraryId]
+      properties:
+        quoteId:
+          type: integer
+        canonicalBookId:
+          type: integer
+        quoteText:
+          type: string
+        searchText:
+          type: string
+          description: Distinctive leading substring used to locate the quote in an EPUB
+        libraryId:
+          type: [integer, "null"]
+          description: The viewer's library entry for this book, or null if not in their library
 
     BookDetail:
       type: object

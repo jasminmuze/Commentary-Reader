@@ -28,6 +28,7 @@ export * from "./generated/types/pushTokenInput";
 export * from "./generated/types/notificationItemType";
 export * from "./generated/types/notificationList";
 export * from "./generated/types/quote";
+export * from "./generated/types/quoteReaderContext";
 export * from "./generated/types/saveResult";
 export * from "./generated/types/searchUsersParams";
 export * from "./generated/types/unreadCount";

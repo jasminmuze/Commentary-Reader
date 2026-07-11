@@ -193,6 +193,7 @@ function EmbeddedReader({
   localSrc,
   nativeReadium,
   onFatalError,
+  targetQuote,
 }: {
   entry: LibraryEntry;
   quotes: Quote[];
@@ -201,6 +202,7 @@ function EmbeddedReader({
   localSrc: string;
   nativeReadium: NativeReadiumHostModule;
   onFatalError: (message: string) => void;
+  targetQuote: { id: number; text: string } | null;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -410,6 +412,98 @@ function EmbeddedReader({
       })
       .finally(() => setAnchoring(false));
   }, [opened, searchable, canonicalBookId, quotes, libraryId, nativeReadium]);
+
+  // -------------------------------------------------------------------
+  // 딥링크: 목표 문장(저장한 댓글/알림에서 진입)으로 이동 후 댓글 시트 열기
+  // -------------------------------------------------------------------
+
+  const targetHandledRef = useRef(false);
+  const targetSearchStartedRef = useRef(false);
+  const targetNotifiedRef = useRef(false);
+
+  // 못 찾은 경우: 리더는 그대로 두고 한국어 안내 후 댓글 시트만 연다.
+  const notifyTargetNotFound = useCallback(
+    (message: string) => {
+      if (!targetQuote || targetNotifiedRef.current || targetHandledRef.current) return;
+      targetNotifiedRef.current = true;
+      Alert.alert("문장을 찾지 못했어요", message);
+      setSelectedQuote({ id: targetQuote.id, text: targetQuote.text });
+      setSheetVisible(true);
+    },
+    [targetQuote],
+  );
+
+  // 위치가 확보되면(커뮤니티 앵커링 or 아래의 전용 검색) 그 문장으로 이동.
+  useEffect(() => {
+    if (!targetQuote || targetHandledRef.current || !opened) return;
+    const locatorJson = locatorByQuoteIdRef.current.get(targetQuote.id);
+    if (!locatorJson) return;
+    targetHandledRef.current = true;
+    nativeReadium.goToLocator(libraryId, locatorJson).catch((error) => {
+      console.warn("[NativeReadium] 목표 문장 이동 실패:", error);
+    });
+    const quote = quotesRef.current.find((q) => q.id === targetQuote.id);
+    setSelectedQuote({
+      id: targetQuote.id,
+      text: quote?.text ?? targetQuote.text,
+      cfiRange: locatorJson,
+    });
+    setSheetVisible(true);
+  }, [targetQuote, opened, locatedVersion, libraryId, nativeReadium]);
+
+  // 목표 문장 전용 검색: 커뮤니티 목록에 없거나 아직 못 찾았을 때 직접 검색한다.
+  // (전체 텍스트 → 선행 substring 폴백, 커뮤니티 앵커링과 같은 방식)
+  useEffect(() => {
+    if (!targetQuote || !opened || targetSearchStartedRef.current) return;
+    if (targetHandledRef.current || locatorByQuoteIdRef.current.has(targetQuote.id)) return;
+    if (!searchable) {
+      notifyTargetNotFound(
+        "이 책에서는 본문 검색이 지원되지 않아 문장 위치로 이동할 수 없어요. 댓글은 계속 볼 수 있어요.",
+      );
+      return;
+    }
+    targetSearchStartedRef.current = true;
+    requestedQuoteIdsRef.current.add(targetQuote.id);
+    const fullText = targetQuote.text.replace(/\s+/g, " ").trim();
+    const leading = fullText.split(" ").slice(0, 8).join(" ");
+    (async () => {
+      let found = false;
+      if (fullText.length > 0) {
+        try {
+          const resultJson = await nativeReadium.findQuoteLocators(
+            libraryId,
+            JSON.stringify([{ quoteId: targetQuote.id, searchText: fullText }]),
+          );
+          const results = JSON.parse(resultJson) as { quoteId: number }[];
+          found = results.some((r) => r.quoteId === targetQuote.id);
+        } catch (error) {
+          console.warn("[NativeReadium] 목표 문장 전체 텍스트 검색 실패:", error);
+        }
+      }
+      if (!found && leading.length > 0 && leading !== fullText) {
+        try {
+          const resultJson = await nativeReadium.findQuoteLocators(
+            libraryId,
+            JSON.stringify([{ quoteId: targetQuote.id, searchText: leading }]),
+          );
+          const results = JSON.parse(resultJson) as { quoteId: number }[];
+          found = results.some((r) => r.quoteId === targetQuote.id);
+        } catch (error) {
+          console.warn("[NativeReadium] 목표 문장 폴백 검색 실패:", error);
+        }
+      }
+      if (!found) {
+        // locator 이벤트(커뮤니티 앵커링 or 위 검색 결과)가 약간 늦게 도착할 수
+        // 있으므로 잠시 기다렸다가 최종 판정한다 (오탐 알림 방지).
+        setTimeout(() => {
+          if (locatorByQuoteIdRef.current.has(targetQuote.id)) return;
+          notifyTargetNotFound(
+            "판본 차이로 이 책에서는 해당 문장의 위치를 찾지 못했어요. 댓글은 계속 볼 수 있어요.",
+          );
+        }, 1500);
+      }
+    })();
+  }, [targetQuote, opened, searchable, libraryId, nativeReadium, notifyTargetNotFound]);
 
   // -------------------------------------------------------------------
   // Selection actions (하이라이트 / 댓글)
@@ -776,8 +870,21 @@ export default function ReadiumRoute() {
   } = useFileSystem();
   const { user } = useUser();
   const { loaded: settingsLoaded } = useReaderSettings();
-  const params = useLocalSearchParams<{ libraryId?: string }>();
+  const params = useLocalSearchParams<{
+    libraryId?: string;
+    quoteId?: string;
+    quoteText?: string;
+  }>();
   const libraryId = Number(params.libraryId);
+  const targetQuoteId = Number(params.quoteId);
+  const targetQuoteText = typeof params.quoteText === "string" ? params.quoteText : "";
+  const targetQuote = useMemo(
+    () =>
+      Number.isFinite(targetQuoteId) && targetQuoteId > 0
+        ? { id: targetQuoteId, text: targetQuoteText }
+        : null,
+    [targetQuoteId, targetQuoteText],
+  );
   const nativeReadium = useMemo(() => getNativeReadiumHost(), []);
 
   const [localSrc, setLocalSrc] = useState<string | null>(null);
@@ -947,6 +1054,7 @@ export default function ReadiumRoute() {
       localSrc={localSrc}
       nativeReadium={nativeReadium}
       onFatalError={handleFatalError}
+      targetQuote={targetQuote}
     />
   );
 }

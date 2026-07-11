@@ -30,6 +30,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingShimmer } from "@/components/LoadingShimmer";
 import { CommentSheet } from "@/components/CommentSheet";
+import { canUseNativeReader, navigateToQuote } from "@/lib/quoteNavigation";
 import type { Comment, NotificationItem } from "@workspace/api-client-react";
 
 function timeAgo(dateStr: string | Date): string {
@@ -51,18 +52,22 @@ function NotificationCard({
   onPress,
   onAccept,
   onDecline,
+  onViewInBook,
   friendActionPending,
 }: {
   item: NotificationItem;
   onPress: (item: NotificationItem) => void;
   onAccept: (item: NotificationItem) => void;
   onDecline: (item: NotificationItem) => void;
+  onViewInBook?: (item: NotificationItem) => void;
   friendActionPending: boolean;
 }) {
   const colors = useColors();
   const isReply = item.type === "reply";
   const isFriendRequest = item.type === "friend_request";
   const isFriendAccept = item.type === "friend_accept";
+  const showViewInBook =
+    !!onViewInBook && !isFriendRequest && !isFriendAccept && !!item.quoteId;
 
   const title = isReply
     ? "님이 내 댓글에 답글을 남겼어요"
@@ -121,6 +126,22 @@ function NotificationCard({
             >
               "{item.quoteText}" 문장에서
             </Text>
+          ) : null}
+
+          {showViewInBook ? (
+            <Pressable
+              onPress={() => onViewInBook!(item)}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.viewInBookBtn,
+                { opacity: pressed ? 0.6 : 1 },
+              ]}
+            >
+              <Feather name="book-open" size={13} color={colors.primary} />
+              <Text style={[styles.viewInBookText, { color: colors.primary }]}>
+                책에서 보기
+              </Text>
+            </Pressable>
           ) : null}
 
           {isFriendRequest && !item.read ? (
@@ -197,21 +218,56 @@ export default function NotificationsScreen() {
   const [sheetQuote, setSheetQuote] = useState<{ id: number; text: string } | null>(null);
   const [sheetThread, setSheetThread] = useState<Comment | null>(null);
 
+  const markItemRead = useCallback(
+    (item: NotificationItem) => {
+      if (item.read) return;
+      markOneRead.mutate(
+        { notificationId: item.id },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({
+              queryKey: getGetNotificationsQueryKey(userId),
+            });
+          },
+        },
+      );
+    },
+    [markOneRead, queryClient, userId],
+  );
+
+  // 기존 동작: 알림이 가리키는 인용의 댓글 시트를 연다.
+  const openCommentSheetFor = useCallback(async (item: NotificationItem) => {
+    // The referenced comment was deleted — nothing to navigate to.
+    if (!item.quoteId) {
+      Alert.alert("이동할 수 없어요", "원본 댓글이 삭제되었어요.");
+      return;
+    }
+
+    // Reply/thread notifications open the parent comment's reply thread.
+    if (item.parentCommentId) {
+      try {
+        const parent = await getComment(item.parentCommentId);
+        setSheetThread(parent);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          Alert.alert("이동할 수 없어요", "댓글이 삭제되었거나 볼 수 없는 댓글이에요.");
+        } else {
+          Alert.alert("이동할 수 없어요", "댓글을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+        }
+        return;
+      }
+    } else {
+      setSheetThread(null);
+    }
+
+    setSheetQuote({ id: item.quoteId, text: item.quoteText ?? "" });
+    setSheetVisible(true);
+  }, []);
+
   const handleNotificationPress = useCallback(
     async (item: NotificationItem) => {
       // Mark this notification as read (best-effort).
-      if (!item.read) {
-        markOneRead.mutate(
-          { notificationId: item.id },
-          {
-            onSuccess: () => {
-              queryClient.invalidateQueries({
-                queryKey: getGetNotificationsQueryKey(userId),
-              });
-            },
-          },
-        );
-      }
+      markItemRead(item);
 
       // Friend notifications navigate to the actor's profile.
       if (item.type === "friend_request" || item.type === "friend_accept") {
@@ -219,33 +275,29 @@ export default function NotificationsScreen() {
         return;
       }
 
-      // The referenced comment was deleted — nothing to navigate to.
+      await openCommentSheetFor(item);
+    },
+    [markItemRead, openCommentSheetFor],
+  );
+
+  // "책에서 보기": 책이 내 서재에 있으면 리더를 해당 문장 딥링크로 열고,
+  // 서재에 없거나 실패하면 기존 댓글 시트 동작으로 폴백한다.
+  const handleViewInBook = useCallback(
+    (item: NotificationItem) => {
+      markItemRead(item);
       if (!item.quoteId) {
         Alert.alert("이동할 수 없어요", "원본 댓글이 삭제되었어요.");
         return;
       }
-
-      // Reply/thread notifications open the parent comment's reply thread.
-      if (item.parentCommentId) {
-        try {
-          const parent = await getComment(item.parentCommentId);
-          setSheetThread(parent);
-        } catch (err) {
-          if (err instanceof ApiError && err.status === 404) {
-            Alert.alert("이동할 수 없어요", "댓글이 삭제되었거나 볼 수 없는 댓글이에요.");
-          } else {
-            Alert.alert("이동할 수 없어요", "댓글을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
-          }
-          return;
-        }
-      } else {
-        setSheetThread(null);
-      }
-
-      setSheetQuote({ id: item.quoteId, text: item.quoteText ?? "" });
-      setSheetVisible(true);
+      navigateToQuote(item.quoteId, {
+        onFallback: () => {
+          void openCommentSheetFor(item);
+        },
+      }).catch(() => {
+        void openCommentSheetFor(item);
+      });
     },
-    [markOneRead, queryClient, userId],
+    [markItemRead, openCommentSheetFor],
   );
 
   const invalidateNotifications = useCallback(() => {
@@ -378,6 +430,7 @@ export default function NotificationsScreen() {
               onPress={handleNotificationPress}
               onAccept={handleAcceptFriendRequest}
               onDecline={handleDeclineFriendRequest}
+              onViewInBook={canUseNativeReader() ? handleViewInBook : undefined}
               friendActionPending={
                 acceptFriendRequest.isPending || declineFriendRequest.isPending
               }
@@ -493,6 +546,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     marginTop: 2,
+  },
+  viewInBookBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    paddingVertical: 2,
+  },
+  viewInBookText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   friendBtn: {
     paddingHorizontal: 18,

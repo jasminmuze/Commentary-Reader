@@ -212,6 +212,22 @@ export const ToggleHighlightResponse = zod.object({
 
 
 /**
+ * @summary Where to read this quote — its canonical book and my library entry (if any)
+ */
+export const GetQuoteReaderContextParams = zod.object({
+  "quoteId": zod.coerce.number()
+})
+
+export const GetQuoteReaderContextResponse = zod.object({
+  "quoteId": zod.number(),
+  "canonicalBookId": zod.number(),
+  "quoteText": zod.string(),
+  "searchText": zod.string().describe('Distinctive leading substring used to locate the quote in an EPUB'),
+  "libraryId": zod.number().nullable().describe('The viewer\'s library entry for this book, or null if not in their library')
+})
+
+
+/**
  * @summary Like a comment
  */
 export const LikeCommentParams = zod.object({

@@ -43,6 +43,7 @@ import type {
   OkResult,
   PushTokenInput,
   Quote,
+  QuoteReaderContext,
   SaveResult,
   SearchUsersParams,
   UnreadCount,
@@ -756,6 +757,83 @@ export const useToggleHighlight = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getToggleHighlightMutationOptions(options));
     }
+
+export const getGetQuoteReaderContextUrl = (quoteId: number,) => {
+
+
+
+
+  return `/api/quotes/${quoteId}/reader-context`
+}
+
+/**
+ * @summary Where to read this quote — its canonical book and my library entry (if any)
+ */
+export const getQuoteReaderContext = async (quoteId: number, options?: RequestInit): Promise<QuoteReaderContext> => {
+
+  return customFetch<QuoteReaderContext>(getGetQuoteReaderContextUrl(quoteId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetQuoteReaderContextQueryKey = (quoteId: number,) => {
+    return [
+    `/api/quotes/${quoteId}/reader-context`
+    ] as const;
+    }
+
+
+export const getGetQuoteReaderContextQueryOptions = <TData = Awaited<ReturnType<typeof getQuoteReaderContext>>, TError = ErrorType<void>>(quoteId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQuoteReaderContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetQuoteReaderContextQueryKey(quoteId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getQuoteReaderContext>>> = ({ signal }) => getQuoteReaderContext(quoteId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(quoteId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getQuoteReaderContext>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetQuoteReaderContextQueryResult = NonNullable<Awaited<ReturnType<typeof getQuoteReaderContext>>>
+export type GetQuoteReaderContextQueryError = ErrorType<void>
+
+
+/**
+ * @summary Where to read this quote — its canonical book and my library entry (if any)
+ */
+
+export function useGetQuoteReaderContext<TData = Awaited<ReturnType<typeof getQuoteReaderContext>>, TError = ErrorType<void>>(
+ quoteId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQuoteReaderContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetQuoteReaderContextQueryOptions(quoteId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getLikeCommentUrl = (commentId: number,) => {
 

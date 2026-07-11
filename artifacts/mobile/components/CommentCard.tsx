@@ -12,6 +12,7 @@ interface Props {
   onLike: (commentId: number) => void;
   onSave: (commentId: number) => void;
   onReply?: (comment: Comment) => void;
+  onPress?: (comment: Comment) => void;
   compact?: boolean;
   isReply?: boolean;
 }
@@ -30,7 +31,7 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(diffDays / 30)}mo`;
 }
 
-export function CommentCard({ comment, onLike, onSave, onReply, compact = false, isReply = false }: Props) {
+export function CommentCard({ comment, onLike, onSave, onReply, onPress, compact = false, isReply = false }: Props) {
   const colors = useColors();
 
   const handleLike = () => {
@@ -49,14 +50,17 @@ export function CommentCard({ comment, onLike, onSave, onReply, compact = false,
   };
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={onPress ? () => onPress(comment) : undefined}
+      disabled={!onPress}
+      style={({ pressed }) => [
         styles.container,
         {
           backgroundColor: colors.card,
           borderRadius: colors.radius,
           borderColor: colors.border,
           marginLeft: isReply ? 32 : 16,
+          opacity: pressed && onPress ? 0.7 : 1,
         },
       ]}
     >
@@ -123,7 +127,7 @@ export function CommentCard({ comment, onLike, onSave, onReply, compact = false,
           </Pressable>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
