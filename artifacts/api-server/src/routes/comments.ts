@@ -9,6 +9,7 @@ import {
   usersTable,
   notificationsTable,
 } from "@workspace/db";
+import { createMentionNotifications } from "../lib/notifications";
 import {
   GetQuoteCommentsParams,
   GetQuoteCommentsQueryParams,
@@ -29,10 +30,6 @@ import {
 import { authenticate } from "../middlewares/authenticate.js";
 
 const router: IRouter = Router();
-
-function parseMentionedUsernames(text: string): string[] {
-  return [...text.matchAll(/\B@(\w+)/g)].map((m) => m[1]!);
-}
 
 // GET /quotes/:quoteId/comments — top-level comments only (parentId IS NULL).
 router.get("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<void> => {
@@ -141,8 +138,23 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
       likeCount: 0,
     })
     .returning();
+  if (!comment) {
+    res.status(500).json({ error: "Failed to create comment" });
+    return;
+  }
 
-  const formatted = await formatComment(comment!, userId);
+  // 'mention' notifications for @mentioned users (best-effort, non-fatal).
+  try {
+    await createMentionNotifications({
+      text: body.data.text,
+      actorId: userId,
+      commentId: comment.id,
+    });
+  } catch (err) {
+    req.log.warn({ err }, "Failed to create mention notifications");
+  }
+
+  const formatted = await formatComment(comment, userId);
   res.status(201).json(formatted);
 });
 
@@ -255,7 +267,7 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
 
   // Fire notifications (best-effort — don't fail the request if they error).
   try {
-    const notifiedUserIds = new Set<number>([userId]);
+    const notifiedUserIds = new Set<number>();
 
     // 'reply' notification for the parent comment author.
     if (parentComment.userId !== userId) {
@@ -269,26 +281,14 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
     }
 
     // 'mention' notifications for @mentioned users.
-    const mentionedNames = parseMentionedUsernames(body.data.text);
-    if (mentionedNames.length > 0) {
-      const mentionedUsers = await db
-        .select({ id: usersTable.id })
-        .from(usersTable)
-        .where(inArray(usersTable.username, mentionedNames));
-      const toNotify = mentionedUsers.filter((u) => !notifiedUserIds.has(u.id));
-      if (toNotify.length > 0) {
-        await db.insert(notificationsTable).values(
-          toNotify.map((u) => ({
-            userId: u.id,
-            type: "mention" as const,
-            actorId: userId,
-            commentId: reply.id,
-          })),
-        );
-      }
-    }
-  } catch {
-    // Notification errors are non-fatal.
+    await createMentionNotifications({
+      text: body.data.text,
+      actorId: userId,
+      commentId: reply.id,
+      excludeUserIds: notifiedUserIds,
+    });
+  } catch (err) {
+    req.log.warn({ err }, "Failed to create reply/mention notifications");
   }
 
   const formatted = await formatComment(reply, userId);

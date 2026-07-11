@@ -167,7 +167,7 @@ paths:
     post:
       operationId: createComment
       tags: [comments]
-      summary: Create a comment on a quote
+      summary: Create a comment on a quote (parses @mentions and fires notifications)
       parameters:
         - name: quoteId
           in: path

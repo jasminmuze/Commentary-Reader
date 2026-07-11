@@ -27,13 +27,13 @@ function timeAgo(dateStr: string | Date): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffMins < 1) return "방금 전";
+  if (diffMins < 60) return `${diffMins}분 전`;
   const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffHours < 24) return `${diffHours}시간 전`;
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}d ago`;
-  return `${Math.floor(diffDays / 30)}mo ago`;
+  if (diffDays < 30) return `${diffDays}일 전`;
+  return `${Math.floor(diffDays / 30)}개월 전`;
 }
 
 function NotificationCard({ item }: { item: NotificationItem }) {
@@ -67,8 +67,8 @@ function NotificationCard({ item }: { item: NotificationItem }) {
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
             <Text style={styles.bold}>{item.actorUsername}</Text>
             {isReply
-              ? " replied to your comment"
-              : " mentioned you in a reply"}
+              ? "님이 내 댓글에 답글을 남겼어요"
+              : "님이 나를 멘션했어요"}
           </Text>
 
           {item.commentText ? (
@@ -87,7 +87,7 @@ function NotificationCard({ item }: { item: NotificationItem }) {
               style={[styles.quoteLabel, { color: colors.mutedForeground }]}
               numberOfLines={1}
             >
-              on "{item.quoteText}"
+              "{item.quoteText}" 문장에서
             </Text>
           ) : null}
 
@@ -145,7 +145,7 @@ export default function NotificationsScreen() {
     >
       <View style={[styles.header, { borderColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>
-          Notifications
+          알림
           {unreadCount > 0 ? (
             <Text style={[styles.badge, { color: colors.primary }]}>
               {" "}
@@ -160,7 +160,7 @@ export default function NotificationsScreen() {
           >
             <Feather name="check-circle" size={16} color={colors.primary} />
             <Text style={[styles.markBtnText, { color: colors.primary }]}>
-              Mark all read
+              모두 읽음
             </Text>
           </Pressable>
         ) : null}
@@ -197,8 +197,8 @@ export default function NotificationsScreen() {
           ListEmptyComponent={
             <EmptyState
               icon="bell"
-              title="No notifications"
-              subtitle="When someone replies to your comment or mentions you, it will appear here"
+              title="알림이 없어요"
+              subtitle="누군가 내 댓글에 답글을 남기거나 나를 멘션하면 여기에 표시돼요"
             />
           }
         />
