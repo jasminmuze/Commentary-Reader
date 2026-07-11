@@ -619,7 +619,7 @@ export const getCreateCommentUrl = (quoteId: number,) => {
 }
 
 /**
- * @summary Create a comment on a quote
+ * @summary Create a comment on a quote (parses @mentions and fires notifications)
  */
 export const createComment = async (quoteId: number,
     commentInput: CommentInput, options?: RequestInit): Promise<Comment> => {
@@ -669,7 +669,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateCommentMutationError = ErrorType<unknown>
 
     /**
- * @summary Create a comment on a quote
+ * @summary Create a comment on a quote (parses @mentions and fires notifications)
  */
 export const useCreateComment = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createComment>>, TError,{quoteId: number;data: BodyType<CommentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -893,6 +893,83 @@ export const useSaveComment = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getSaveCommentMutationOptions(options));
     }
+
+export const getGetCommentUrl = (commentId: number,) => {
+
+
+
+
+  return `/api/comments/${commentId}`
+}
+
+/**
+ * @summary Get a single comment by id (visibility-gated)
+ */
+export const getComment = async (commentId: number, options?: RequestInit): Promise<Comment> => {
+
+  return customFetch<Comment>(getGetCommentUrl(commentId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCommentQueryKey = (commentId: number,) => {
+    return [
+    `/api/comments/${commentId}`
+    ] as const;
+    }
+
+
+export const getGetCommentQueryOptions = <TData = Awaited<ReturnType<typeof getComment>>, TError = ErrorType<void>>(commentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getComment>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCommentQueryKey(commentId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getComment>>> = ({ signal }) => getComment(commentId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(commentId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getComment>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCommentQueryResult = NonNullable<Awaited<ReturnType<typeof getComment>>>
+export type GetCommentQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a single comment by id (visibility-gated)
+ */
+
+export function useGetComment<TData = Awaited<ReturnType<typeof getComment>>, TError = ErrorType<void>>(
+ commentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getComment>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCommentQueryOptions(commentId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetCommentRepliesUrl = (commentId: number,) => {
 
@@ -2307,5 +2384,75 @@ export const useMarkNotificationsRead = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getMarkNotificationsReadMutationOptions(options));
+    }
+
+export const getMarkNotificationReadUrl = (notificationId: number,) => {
+
+
+
+
+  return `/api/notifications/${notificationId}/read`
+}
+
+/**
+ * @summary Mark a single notification as read (must belong to the authenticated user)
+ */
+export const markNotificationRead = async (notificationId: number, options?: RequestInit): Promise<UnreadCount> => {
+
+  return customFetch<UnreadCount>(getMarkNotificationReadUrl(notificationId),
+  {
+    ...options,
+    method: 'PUT'
+
+
+  }
+);}
+
+
+
+
+export const getMarkNotificationReadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,{notificationId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,{notificationId: number}, TContext> => {
+
+const mutationKey = ['markNotificationRead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markNotificationRead>>, {notificationId: number}> = (props) => {
+          const {notificationId} = props ?? {};
+
+          return  markNotificationRead(notificationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkNotificationReadMutationResult = NonNullable<Awaited<ReturnType<typeof markNotificationRead>>>
+
+    export type MarkNotificationReadMutationError = ErrorType<void>
+
+    /**
+ * @summary Mark a single notification as read (must belong to the authenticated user)
+ */
+export const useMarkNotificationRead = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,{notificationId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markNotificationRead>>,
+        TError,
+        {notificationId: number},
+        TContext
+      > => {
+      return useMutation(getMarkNotificationReadMutationOptions(options));
     }
 

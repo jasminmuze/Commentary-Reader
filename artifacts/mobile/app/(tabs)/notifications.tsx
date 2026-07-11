@@ -1,5 +1,6 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -12,7 +13,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useGetNotifications,
   useMarkNotificationsRead,
+  useMarkNotificationRead,
   getGetNotificationsQueryKey,
+  getComment,
+  ApiError,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
@@ -20,7 +24,8 @@ import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "@/components/UserAvatar";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingShimmer } from "@/components/LoadingShimmer";
-import type { NotificationItem } from "@workspace/api-client-react";
+import { CommentSheet } from "@/components/CommentSheet";
+import type { Comment, NotificationItem } from "@workspace/api-client-react";
 
 function timeAgo(dateStr: string | Date): string {
   const date = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
@@ -36,18 +41,26 @@ function timeAgo(dateStr: string | Date): string {
   return `${Math.floor(diffDays / 30)}개월 전`;
 }
 
-function NotificationCard({ item }: { item: NotificationItem }) {
+function NotificationCard({
+  item,
+  onPress,
+}: {
+  item: NotificationItem;
+  onPress: (item: NotificationItem) => void;
+}) {
   const colors = useColors();
   const isReply = item.type === "reply";
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={() => onPress(item)}
+      style={({ pressed }) => [
         styles.card,
         {
           backgroundColor: item.read ? colors.background : colors.card,
           borderColor: colors.border,
           borderRadius: colors.radius,
+          opacity: pressed ? 0.7 : 1,
         },
       ]}
     >
@@ -96,7 +109,7 @@ function NotificationCard({ item }: { item: NotificationItem }) {
           </Text>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -118,6 +131,56 @@ export default function NotificationsScreen() {
   );
 
   const markRead = useMarkNotificationsRead();
+  const markOneRead = useMarkNotificationRead();
+
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [sheetQuote, setSheetQuote] = useState<{ id: number; text: string } | null>(null);
+  const [sheetThread, setSheetThread] = useState<Comment | null>(null);
+
+  const handleNotificationPress = useCallback(
+    async (item: NotificationItem) => {
+      // Mark this notification as read (best-effort).
+      if (!item.read) {
+        markOneRead.mutate(
+          { notificationId: item.id },
+          {
+            onSuccess: () => {
+              queryClient.invalidateQueries({
+                queryKey: getGetNotificationsQueryKey(userId),
+              });
+            },
+          },
+        );
+      }
+
+      // The referenced comment was deleted — nothing to navigate to.
+      if (!item.quoteId) {
+        Alert.alert("이동할 수 없어요", "원본 댓글이 삭제되었어요.");
+        return;
+      }
+
+      // Reply/thread notifications open the parent comment's reply thread.
+      if (item.parentCommentId) {
+        try {
+          const parent = await getComment(item.parentCommentId);
+          setSheetThread(parent);
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 404) {
+            Alert.alert("이동할 수 없어요", "댓글이 삭제되었거나 볼 수 없는 댓글이에요.");
+          } else {
+            Alert.alert("이동할 수 없어요", "댓글을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+          }
+          return;
+        }
+      } else {
+        setSheetThread(null);
+      }
+
+      setSheetQuote({ id: item.quoteId, text: item.quoteText ?? "" });
+      setSheetVisible(true);
+    },
+    [markOneRead, queryClient, userId],
+  );
 
   const handleMarkAllRead = useCallback(() => {
     if (!userId) return;
@@ -180,7 +243,9 @@ export default function NotificationsScreen() {
         <FlatList<NotificationItem>
           data={notifications}
           keyExtractor={(item, index) => String(item.id ?? index)}
-          renderItem={({ item }) => <NotificationCard item={item} />}
+          renderItem={({ item }) => (
+            <NotificationCard item={item} onPress={handleNotificationPress} />
+          )}
           contentContainerStyle={{
             paddingHorizontal: 16,
             paddingVertical: 8,
@@ -203,6 +268,14 @@ export default function NotificationsScreen() {
           }
         />
       )}
+
+      <CommentSheet
+        visible={sheetVisible}
+        quoteId={sheetQuote?.id ?? null}
+        quoteText={sheetQuote?.text ?? ""}
+        initialReplyThread={sheetThread}
+        onClose={() => setSheetVisible(false)}
+      />
     </View>
   );
 }

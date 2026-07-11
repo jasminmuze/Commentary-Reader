@@ -10,6 +10,7 @@ import {
 import {
   GetNotificationsParams,
   MarkNotificationsReadParams,
+  MarkNotificationReadParams,
 } from "@workspace/api-zod";
 import type { NotificationItem } from "@workspace/api-zod";
 import { authenticate } from "../middlewares/authenticate.js";
@@ -103,6 +104,43 @@ router.put("/users/:userId/notifications/read-all", authenticate, async (req, re
     );
 
   res.json({ unreadCount: 0 });
+});
+
+// PUT /notifications/:notificationId/read — mark a single notification as read.
+// Only the owner may mark it; others get 404 (no existence leak).
+router.put("/notifications/:notificationId/read", authenticate, async (req, res): Promise<void> => {
+  const params = MarkNotificationReadParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [updated] = await db
+    .update(notificationsTable)
+    .set({ read: true })
+    .where(
+      and(
+        eq(notificationsTable.id, params.data.notificationId),
+        eq(notificationsTable.userId, req.userId),
+      ),
+    )
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: "Notification not found" });
+    return;
+  }
+
+  const remaining = await db
+    .select({ id: notificationsTable.id })
+    .from(notificationsTable)
+    .where(
+      and(
+        eq(notificationsTable.userId, req.userId),
+        eq(notificationsTable.read, false),
+      ),
+    );
+
+  res.json({ unreadCount: remaining.length });
 });
 
 export default router;

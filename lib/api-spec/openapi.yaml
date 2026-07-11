@@ -251,6 +251,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/SaveResult"
 
+  /comments/{commentId}:
+    get:
+      operationId: getComment
+      tags: [comments]
+      summary: Get a single comment by id (visibility-gated)
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "404":
+          description: Comment not found or not visible
+
   /comments/{commentId}/replies:
     get:
       operationId: getCommentReplies
@@ -658,6 +679,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UnreadCount"
+
+  /notifications/{notificationId}/read:
+    put:
+      operationId: markNotificationRead
+      tags: [users]
+      summary: Mark a single notification as read (must belong to the authenticated user)
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Unread count after marking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCount"
+        "404":
+          description: Notification not found
 
 components:
   schemas:

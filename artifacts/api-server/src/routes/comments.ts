@@ -13,6 +13,7 @@ import { createMentionNotifications } from "../lib/notifications";
 import {
   GetQuoteCommentsParams,
   GetQuoteCommentsQueryParams,
+  GetCommentParams,
   CreateCommentParams,
   CreateCommentBody,
   LikeCommentParams,
@@ -156,6 +157,36 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
 
   const formatted = await formatComment(comment, userId);
   res.status(201).json(formatted);
+});
+
+// GET /comments/:commentId — single comment by id (visibility-gated).
+// Used by the mobile app to open a reply thread from a notification.
+router.get("/comments/:commentId", authenticate, async (req, res): Promise<void> => {
+  const params = GetCommentParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const userId = req.userId;
+  const viewer = await getViewer(userId);
+  const [comment] = await db
+    .select()
+    .from(commentsTable)
+    .where(
+      and(
+        eq(commentsTable.id, params.data.commentId),
+        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer),
+      ),
+    )
+    .limit(1);
+  if (!comment) {
+    res.status(404).json({ error: "Comment not found" });
+    return;
+  }
+
+  const formatted = await formatComment(comment, userId);
+  res.json(formatted);
 });
 
 // GET /comments/:commentId/replies — flat chronological replies (visibility-gated).

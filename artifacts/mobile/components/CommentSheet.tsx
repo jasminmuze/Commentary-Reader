@@ -83,6 +83,8 @@ interface Props {
   quoteText: string;
   onClose: () => void;
   onCommentSaved?: (visibility: Visibility) => void;
+  /** When set, the sheet opens directly on this comment's reply thread. */
+  initialReplyThread?: Comment | null;
 }
 
 // ── Reply thread sub-view ────────────────────────────────────────────────────
@@ -340,7 +342,14 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
 
 // ── Main CommentSheet ────────────────────────────────────────────────────────
 
-export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSaved }: Props) {
+export function CommentSheet({
+  visible,
+  quoteId,
+  quoteText,
+  onClose,
+  onCommentSaved,
+  initialReplyThread,
+}: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useUser();
@@ -351,10 +360,15 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
   const [replyThread, setReplyThread] = useState<Comment | null>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  // Reset reply thread when sheet closes.
+  // Reset reply thread when sheet closes; jump straight into the requested
+  // thread (e.g. from a tapped notification) when it opens.
   useEffect(() => {
-    if (!visible) setReplyThread(null);
-  }, [visible]);
+    if (!visible) {
+      setReplyThread(null);
+    } else if (initialReplyThread) {
+      setReplyThread(initialReplyThread);
+    }
+  }, [visible, initialReplyThread]);
 
   useEffect(() => {
     if (visible) setVisibility(user?.defaultVisibility ?? "public");
