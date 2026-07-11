@@ -201,6 +201,19 @@ export interface User {
   token?: string;
 }
 
+/**
+ * Friend relationship between the viewer and this profile: none = no relationship, requested = viewer sent a pending request, incoming = this profile sent the viewer a pending request, friends = mutual follow (friends). Always "none" on your own profile.
+ */
+export type UserProfileFriendStatus = typeof UserProfileFriendStatus[keyof typeof UserProfileFriendStatus];
+
+
+export const UserProfileFriendStatus = {
+  none: 'none',
+  requested: 'requested',
+  incoming: 'incoming',
+  friends: 'friends',
+} as const;
+
 export interface UserProfile {
   id: number;
   username: string;
@@ -216,6 +229,8 @@ export interface UserProfile {
   followsMe: boolean;
   /** Whether this profile is the requesting user */
   isMe: boolean;
+  /** Friend relationship between the viewer and this profile: none = no relationship, requested = viewer sent a pending request, incoming = this profile sent the viewer a pending request, friends = mutual follow (friends). Always "none" on your own profile. */
+  friendStatus: UserProfileFriendStatus;
 }
 
 export interface UpdateUserSettings {
@@ -249,8 +264,12 @@ export interface FriendInput {
   friendId: number;
 }
 
+export interface FriendRequestInput {
+  recipientId: number;
+}
+
 /**
- * reply = someone replied to your comment; mention = you were @mentioned
+ * reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted
  */
 export type NotificationItemType = typeof NotificationItemType[keyof typeof NotificationItemType];
 
@@ -258,16 +277,18 @@ export type NotificationItemType = typeof NotificationItemType[keyof typeof Noti
 export const NotificationItemType = {
   reply: 'reply',
   mention: 'mention',
+  friend_request: 'friend_request',
+  friend_accept: 'friend_accept',
 } as const;
 
 export interface NotificationItem {
   id: number;
-  /** reply = someone replied to your comment; mention = you were @mentioned */
+  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted */
   type: NotificationItemType;
   actorId: number;
   actorUsername: string;
   actorAvatarColor: string;
-  /** The reply comment that triggered the notification */
+  /** The reply comment that triggered the notification (0 for friend_* notifications) */
   commentId: number;
   /** Preview of the reply text */
   commentText: string;

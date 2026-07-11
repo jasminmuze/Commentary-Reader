@@ -601,6 +601,42 @@ export const RemoveFriendParams = zod.object({
 
 
 /**
+ * @summary Send a friend request (requester taken from bearer token)
+ */
+export const SendFriendRequestBody = zod.object({
+  "recipientId": zod.number()
+})
+
+export const SendFriendRequestResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Accept a pending friend request sent to the authenticated user
+ */
+export const AcceptFriendRequestParams = zod.object({
+  "requesterId": zod.coerce.number()
+})
+
+export const AcceptFriendRequestResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Decline a pending friend request sent to the authenticated user
+ */
+export const DeclineFriendRequestParams = zod.object({
+  "requesterId": zod.coerce.number()
+})
+
+export const DeclineFriendRequestResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
  * @summary Get saved comments for a user
  */
 export const GetSavedCommentsParams = zod.object({
@@ -644,7 +680,8 @@ export const GetUserProfileResponse = zod.object({
   "commentCount": zod.number(),
   "isFollowedByMe": zod.boolean().describe('Whether the requesting user follows this profile'),
   "followsMe": zod.boolean().describe('Whether this profile follows the requesting user'),
-  "isMe": zod.boolean().describe('Whether this profile is the requesting user')
+  "isMe": zod.boolean().describe('Whether this profile is the requesting user'),
+  "friendStatus": zod.enum(['none', 'requested', 'incoming', 'friends']).describe('Friend relationship between the viewer and this profile: none = no relationship, requested = viewer sent a pending request, incoming = this profile sent the viewer a pending request, friends = mutual follow (friends). Always \"none\" on your own profile.')
 })
 
 
@@ -679,11 +716,11 @@ export const GetNotificationsParams = zod.object({
 export const GetNotificationsResponse = zod.object({
   "notifications": zod.array(zod.object({
   "id": zod.number(),
-  "type": zod.enum(['reply', 'mention']).describe('reply = someone replied to your comment; mention = you were @mentioned'),
+  "type": zod.enum(['reply', 'mention', 'friend_request', 'friend_accept']).describe('reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted'),
   "actorId": zod.number(),
   "actorUsername": zod.string(),
   "actorAvatarColor": zod.string(),
-  "commentId": zod.number().describe('The reply comment that triggered the notification'),
+  "commentId": zod.number().describe('The reply comment that triggered the notification (0 for friend_\* notifications)'),
   "commentText": zod.string().describe('Preview of the reply text'),
   "parentCommentId": zod.number().nullable().describe('The original top-level comment (null for mention-only notifications)'),
   "quoteId": zod.number(),

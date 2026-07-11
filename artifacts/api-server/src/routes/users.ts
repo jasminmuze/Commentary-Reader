@@ -4,6 +4,7 @@ import {
   db,
   usersTable,
   friendshipsTable,
+  friendRequestsTable,
   commentsTable,
   commentSavesTable,
   quotesTable,
@@ -202,6 +203,41 @@ router.get("/users/:userId/profile", authenticate, async (req, res): Promise<voi
       ),
     );
 
+  const isFollowedByMe = isMe ? false : await isFollowing(req.userId, targetId);
+  const followsMe = isMe ? false : await isFollowing(targetId, req.userId);
+
+  // Friend status: friends = mutual follow; otherwise check pending requests.
+  let friendStatus: "none" | "requested" | "incoming" | "friends" = "none";
+  if (!isMe) {
+    if (isFollowedByMe && followsMe) {
+      friendStatus = "friends";
+    } else {
+      const [outgoing] = await db
+        .select({ id: friendRequestsTable.id })
+        .from(friendRequestsTable)
+        .where(
+          and(
+            eq(friendRequestsTable.requesterId, req.userId),
+            eq(friendRequestsTable.recipientId, targetId),
+          ),
+        );
+      if (outgoing) {
+        friendStatus = "requested";
+      } else {
+        const [incoming] = await db
+          .select({ id: friendRequestsTable.id })
+          .from(friendRequestsTable)
+          .where(
+            and(
+              eq(friendRequestsTable.requesterId, targetId),
+              eq(friendRequestsTable.recipientId, req.userId),
+            ),
+          );
+        if (incoming) friendStatus = "incoming";
+      }
+    }
+  }
+
   res.json({
     id: user.id,
     username: user.username,
@@ -211,9 +247,10 @@ router.get("/users/:userId/profile", authenticate, async (req, res): Promise<voi
     followingCount: Number(followingRow?.c ?? 0),
     highlightCount: Number(highlightRow?.c ?? 0),
     commentCount: Number(commentRow?.c ?? 0),
-    isFollowedByMe: isMe ? false : await isFollowing(req.userId, targetId),
-    followsMe: isMe ? false : await isFollowing(targetId, req.userId),
+    isFollowedByMe,
+    followsMe,
     isMe,
+    friendStatus,
   });
 });
 

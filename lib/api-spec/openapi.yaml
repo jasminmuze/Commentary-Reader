@@ -575,6 +575,71 @@ paths:
         "204":
           description: Friend removed
 
+  /friend-requests:
+    post:
+      operationId: sendFriendRequest
+      tags: [users]
+      summary: Send a friend request (requester taken from bearer token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FriendRequestInput"
+      responses:
+        "200":
+          description: Request created (idempotent — ok even if already pending or already friends)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "400":
+          description: Cannot send a friend request to yourself
+        "404":
+          description: Recipient not found
+
+  /friend-requests/{requesterId}/accept:
+    post:
+      operationId: acceptFriendRequest
+      tags: [users]
+      summary: Accept a pending friend request sent to the authenticated user
+      parameters:
+        - name: requesterId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request accepted — both users now follow each other
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "404":
+          description: No pending request from this user
+
+  /friend-requests/{requesterId}/decline:
+    post:
+      operationId: declineFriendRequest
+      tags: [users]
+      summary: Decline a pending friend request sent to the authenticated user
+      parameters:
+        - name: requesterId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request declined (removed; the requester may request again)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "404":
+          description: No pending request from this user
+
   /users/{userId}/saved-comments:
     get:
       operationId: getSavedComments
@@ -1069,6 +1134,7 @@ components:
           isFollowedByMe,
           followsMe,
           isMe,
+          friendStatus,
         ]
       properties:
         id:
@@ -1097,6 +1163,14 @@ components:
         isMe:
           type: boolean
           description: Whether this profile is the requesting user
+        friendStatus:
+          type: string
+          enum: [none, requested, incoming, friends]
+          description: >-
+            Friend relationship between the viewer and this profile:
+            none = no relationship, requested = viewer sent a pending request,
+            incoming = this profile sent the viewer a pending request,
+            friends = mutual follow (friends). Always "none" on your own profile.
 
     UpdateUserSettings:
       type: object
@@ -1149,6 +1223,13 @@ components:
         friendId:
           type: integer
 
+    FriendRequestInput:
+      type: object
+      required: [recipientId]
+      properties:
+        recipientId:
+          type: integer
+
     NotificationItem:
       type: object
       required: [id, type, actorId, actorUsername, actorAvatarColor, commentId, commentText, parentCommentId, quoteId, read, createdAt]
@@ -1157,8 +1238,8 @@ components:
           type: integer
         type:
           type: string
-          enum: [reply, mention]
-          description: "reply = someone replied to your comment; mention = you were @mentioned"
+          enum: [reply, mention, friend_request, friend_accept]
+          description: "reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted"
         actorId:
           type: integer
         actorUsername:
@@ -1167,7 +1248,7 @@ components:
           type: string
         commentId:
           type: integer
-          description: The reply comment that triggered the notification
+          description: The reply comment that triggered the notification (0 for friend_* notifications)
         commentText:
           type: string
           description: Preview of the reply text

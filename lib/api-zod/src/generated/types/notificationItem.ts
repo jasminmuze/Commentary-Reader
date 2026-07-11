@@ -9,12 +9,12 @@ import type { NotificationItemType } from './notificationItemType';
 
 export interface NotificationItem {
   id: number;
-  /** reply = someone replied to your comment; mention = you were @mentioned */
+  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted */
   type: NotificationItemType;
   actorId: number;
   actorUsername: string;
   actorAvatarColor: string;
-  /** The reply comment that triggered the notification */
+  /** The reply comment that triggered the notification (0 for friend_* notifications) */
   commentId: number;
   /** Preview of the reply text */
   commentText: string;

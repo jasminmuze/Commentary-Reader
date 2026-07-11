@@ -9,12 +9,17 @@ import {
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useGetNotifications,
   useMarkNotificationsRead,
   useMarkNotificationRead,
+  useAcceptFriendRequest,
+  useDeclineFriendRequest,
   getGetNotificationsQueryKey,
+  getGetUserProfileQueryKey,
+  getGetFriendsQueryKey,
   getComment,
   ApiError,
 } from "@workspace/api-client-react";
@@ -44,12 +49,28 @@ function timeAgo(dateStr: string | Date): string {
 function NotificationCard({
   item,
   onPress,
+  onAccept,
+  onDecline,
+  friendActionPending,
 }: {
   item: NotificationItem;
   onPress: (item: NotificationItem) => void;
+  onAccept: (item: NotificationItem) => void;
+  onDecline: (item: NotificationItem) => void;
+  friendActionPending: boolean;
 }) {
   const colors = useColors();
   const isReply = item.type === "reply";
+  const isFriendRequest = item.type === "friend_request";
+  const isFriendAccept = item.type === "friend_accept";
+
+  const title = isReply
+    ? "님이 내 댓글에 답글을 남겼어요"
+    : isFriendRequest
+      ? "님이 친구 요청을 보냈어요"
+      : isFriendAccept
+        ? "님이 친구 요청을 수락했어요"
+        : "님이 나를 멘션했어요";
 
   return (
     <Pressable
@@ -79,9 +100,7 @@ function NotificationCard({
         <View style={styles.cardBody}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
             <Text style={styles.bold}>{item.actorUsername}</Text>
-            {isReply
-              ? "님이 내 댓글에 답글을 남겼어요"
-              : "님이 나를 멘션했어요"}
+            {title}
           </Text>
 
           {item.commentText ? (
@@ -102,6 +121,45 @@ function NotificationCard({
             >
               "{item.quoteText}" 문장에서
             </Text>
+          ) : null}
+
+          {isFriendRequest && !item.read ? (
+            <View style={styles.friendActions}>
+              <Pressable
+                onPress={() => onAccept(item)}
+                disabled={friendActionPending}
+                style={({ pressed }) => [
+                  styles.friendBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    borderRadius: colors.radius,
+                    opacity: pressed || friendActionPending ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.friendBtnText, { color: colors.primaryForeground }]}>
+                  수락
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => onDecline(item)}
+                disabled={friendActionPending}
+                style={({ pressed }) => [
+                  styles.friendBtn,
+                  {
+                    backgroundColor: colors.muted,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: colors.radius,
+                    opacity: pressed || friendActionPending ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.friendBtnText, { color: colors.mutedForeground }]}>
+                  거절
+                </Text>
+              </Pressable>
+            </View>
           ) : null}
 
           <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
@@ -132,6 +190,8 @@ export default function NotificationsScreen() {
 
   const markRead = useMarkNotificationsRead();
   const markOneRead = useMarkNotificationRead();
+  const acceptFriendRequest = useAcceptFriendRequest();
+  const declineFriendRequest = useDeclineFriendRequest();
 
   const [sheetVisible, setSheetVisible] = useState(false);
   const [sheetQuote, setSheetQuote] = useState<{ id: number; text: string } | null>(null);
@@ -151,6 +211,12 @@ export default function NotificationsScreen() {
             },
           },
         );
+      }
+
+      // Friend notifications navigate to the actor's profile.
+      if (item.type === "friend_request" || item.type === "friend_accept") {
+        router.push(`/user/${item.actorId}`);
+        return;
       }
 
       // The referenced comment was deleted — nothing to navigate to.
@@ -180,6 +246,69 @@ export default function NotificationsScreen() {
       setSheetVisible(true);
     },
     [markOneRead, queryClient, userId],
+  );
+
+  const invalidateNotifications = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: getGetNotificationsQueryKey(userId),
+    });
+  }, [queryClient, userId]);
+
+  // Accept/decline also changes the requester's profile status and (on
+  // accept) the friends list — refresh those caches too.
+  const invalidateFriendState = useCallback(
+    (actorId: number) => {
+      invalidateNotifications();
+      queryClient.invalidateQueries({
+        queryKey: getGetUserProfileQueryKey(actorId),
+      });
+      if (userId) {
+        queryClient.invalidateQueries({
+          queryKey: getGetFriendsQueryKey(userId),
+        });
+      }
+    },
+    [invalidateNotifications, queryClient, userId],
+  );
+
+  const handleAcceptFriendRequest = useCallback(
+    (item: NotificationItem) => {
+      acceptFriendRequest.mutate(
+        { requesterId: item.actorId },
+        {
+          onSuccess: () => invalidateFriendState(item.actorId),
+          onError: (err) => {
+            if (err instanceof ApiError && err.status === 404) {
+              Alert.alert("이미 처리된 요청이에요", "요청이 취소되었거나 이미 처리되었어요.");
+            } else {
+              Alert.alert("오류", "요청을 수락하지 못했어요. 잠시 후 다시 시도해 주세요.");
+            }
+            invalidateFriendState(item.actorId);
+          },
+        },
+      );
+    },
+    [acceptFriendRequest, invalidateFriendState],
+  );
+
+  const handleDeclineFriendRequest = useCallback(
+    (item: NotificationItem) => {
+      declineFriendRequest.mutate(
+        { requesterId: item.actorId },
+        {
+          onSuccess: () => invalidateFriendState(item.actorId),
+          onError: (err) => {
+            if (err instanceof ApiError && err.status === 404) {
+              Alert.alert("이미 처리된 요청이에요", "요청이 취소되었거나 이미 처리되었어요.");
+            } else {
+              Alert.alert("오류", "요청을 거절하지 못했어요. 잠시 후 다시 시도해 주세요.");
+            }
+            invalidateFriendState(item.actorId);
+          },
+        },
+      );
+    },
+    [declineFriendRequest, invalidateFriendState],
   );
 
   const handleMarkAllRead = useCallback(() => {
@@ -244,7 +373,15 @@ export default function NotificationsScreen() {
           data={notifications}
           keyExtractor={(item, index) => String(item.id ?? index)}
           renderItem={({ item }) => (
-            <NotificationCard item={item} onPress={handleNotificationPress} />
+            <NotificationCard
+              item={item}
+              onPress={handleNotificationPress}
+              onAccept={handleAcceptFriendRequest}
+              onDecline={handleDeclineFriendRequest}
+              friendActionPending={
+                acceptFriendRequest.isPending || declineFriendRequest.isPending
+              }
+            />
           )}
           contentContainerStyle={{
             paddingHorizontal: 16,
@@ -351,6 +488,21 @@ const styles = StyleSheet.create({
   },
   quoteLabel: {
     fontSize: 11,
+  },
+  friendActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 2,
+  },
+  friendBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 7,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  friendBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
   },
   timeText: {
     fontSize: 11,

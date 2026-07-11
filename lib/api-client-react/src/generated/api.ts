@@ -28,6 +28,7 @@ import type {
   CreateLibraryInput,
   CreateQuoteInput,
   FriendInput,
+  FriendRequestInput,
   GetQuoteCommentsParams,
   HealthStatus,
   HighlightInput,
@@ -2013,6 +2014,217 @@ export const useRemoveFriend = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRemoveFriendMutationOptions(options));
+    }
+
+export const getSendFriendRequestUrl = () => {
+
+
+
+
+  return `/api/friend-requests`
+}
+
+/**
+ * @summary Send a friend request (requester taken from bearer token)
+ */
+export const sendFriendRequest = async (friendRequestInput: FriendRequestInput, options?: RequestInit): Promise<OkResult> => {
+
+  return customFetch<OkResult>(getSendFriendRequestUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      friendRequestInput,)
+  }
+);}
+
+
+
+
+export const getSendFriendRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendFriendRequest>>, TError,{data: BodyType<FriendRequestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendFriendRequest>>, TError,{data: BodyType<FriendRequestInput>}, TContext> => {
+
+const mutationKey = ['sendFriendRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendFriendRequest>>, {data: BodyType<FriendRequestInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendFriendRequest(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendFriendRequestMutationResult = NonNullable<Awaited<ReturnType<typeof sendFriendRequest>>>
+    export type SendFriendRequestMutationBody = BodyType<FriendRequestInput>
+    export type SendFriendRequestMutationError = ErrorType<void>
+
+    /**
+ * @summary Send a friend request (requester taken from bearer token)
+ */
+export const useSendFriendRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendFriendRequest>>, TError,{data: BodyType<FriendRequestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendFriendRequest>>,
+        TError,
+        {data: BodyType<FriendRequestInput>},
+        TContext
+      > => {
+      return useMutation(getSendFriendRequestMutationOptions(options));
+    }
+
+export const getAcceptFriendRequestUrl = (requesterId: number,) => {
+
+
+
+
+  return `/api/friend-requests/${requesterId}/accept`
+}
+
+/**
+ * @summary Accept a pending friend request sent to the authenticated user
+ */
+export const acceptFriendRequest = async (requesterId: number, options?: RequestInit): Promise<OkResult> => {
+
+  return customFetch<OkResult>(getAcceptFriendRequestUrl(requesterId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getAcceptFriendRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptFriendRequest>>, TError,{requesterId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acceptFriendRequest>>, TError,{requesterId: number}, TContext> => {
+
+const mutationKey = ['acceptFriendRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptFriendRequest>>, {requesterId: number}> = (props) => {
+          const {requesterId} = props ?? {};
+
+          return  acceptFriendRequest(requesterId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcceptFriendRequestMutationResult = NonNullable<Awaited<ReturnType<typeof acceptFriendRequest>>>
+
+    export type AcceptFriendRequestMutationError = ErrorType<void>
+
+    /**
+ * @summary Accept a pending friend request sent to the authenticated user
+ */
+export const useAcceptFriendRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptFriendRequest>>, TError,{requesterId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof acceptFriendRequest>>,
+        TError,
+        {requesterId: number},
+        TContext
+      > => {
+      return useMutation(getAcceptFriendRequestMutationOptions(options));
+    }
+
+export const getDeclineFriendRequestUrl = (requesterId: number,) => {
+
+
+
+
+  return `/api/friend-requests/${requesterId}/decline`
+}
+
+/**
+ * @summary Decline a pending friend request sent to the authenticated user
+ */
+export const declineFriendRequest = async (requesterId: number, options?: RequestInit): Promise<OkResult> => {
+
+  return customFetch<OkResult>(getDeclineFriendRequestUrl(requesterId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDeclineFriendRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof declineFriendRequest>>, TError,{requesterId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof declineFriendRequest>>, TError,{requesterId: number}, TContext> => {
+
+const mutationKey = ['declineFriendRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof declineFriendRequest>>, {requesterId: number}> = (props) => {
+          const {requesterId} = props ?? {};
+
+          return  declineFriendRequest(requesterId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeclineFriendRequestMutationResult = NonNullable<Awaited<ReturnType<typeof declineFriendRequest>>>
+
+    export type DeclineFriendRequestMutationError = ErrorType<void>
+
+    /**
+ * @summary Decline a pending friend request sent to the authenticated user
+ */
+export const useDeclineFriendRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof declineFriendRequest>>, TError,{requesterId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof declineFriendRequest>>,
+        TError,
+        {requesterId: number},
+        TContext
+      > => {
+      return useMutation(getDeclineFriendRequestMutationOptions(options));
     }
 
 export const getGetSavedCommentsUrl = (userId: number,) => {

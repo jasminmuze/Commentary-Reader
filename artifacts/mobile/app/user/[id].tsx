@@ -17,8 +17,11 @@ import {
   useGetUserProfile,
   useAddFriend,
   useRemoveFriend,
+  useSendFriendRequest,
+  useAcceptFriendRequest,
   getGetUserProfileQueryKey,
   getGetFriendsQueryKey,
+  getGetNotificationsQueryKey,
 } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
@@ -42,10 +45,15 @@ export default function UserProfileScreen() {
 
   const addFriend = useAddFriend();
   const removeFriend = useRemoveFriend();
+  const sendFriendRequest = useSendFriendRequest();
+  const acceptFriendRequest = useAcceptFriendRequest();
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: getGetUserProfileQueryKey(profileId) });
-    if (user) queryClient.invalidateQueries({ queryKey: getGetFriendsQueryKey(user.id) });
+    if (user) {
+      queryClient.invalidateQueries({ queryKey: getGetFriendsQueryKey(user.id) });
+      queryClient.invalidateQueries({ queryKey: getGetNotificationsQueryKey(user.id) });
+    }
   }, [queryClient, profileId, user]);
 
   const handleToggleFollow = useCallback(() => {
@@ -58,17 +66,34 @@ export default function UserProfileScreen() {
     }
   }, [user, profile, addFriend, removeFriend, invalidate]);
 
+  const handleFriendAction = useCallback(() => {
+    if (!user || !profile) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (profile.friendStatus === "none") {
+      sendFriendRequest.mutate(
+        { data: { recipientId: profile.id } },
+        { onSuccess: invalidate },
+      );
+    } else if (profile.friendStatus === "incoming") {
+      acceptFriendRequest.mutate(
+        { requesterId: profile.id },
+        { onSuccess: invalidate, onError: invalidate },
+      );
+    }
+  }, [user, profile, sendFriendRequest, acceptFriendRequest, invalidate]);
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const pending = addFriend.isPending || removeFriend.isPending;
+  const followPending = addFriend.isPending || removeFriend.isPending;
+  const friendPending = sendFriendRequest.isPending || acceptFriendRequest.isPending;
 
   const Header = (
     <View style={[styles.navBar, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
       <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
         <Feather name="arrow-left" size={22} color={colors.foreground} />
       </Pressable>
-      <Text style={[styles.navTitle, { color: colors.foreground }]}>Profile</Text>
+      <Text style={[styles.navTitle, { color: colors.foreground }]}>프로필</Text>
       <View style={styles.backBtn} />
     </View>
   );
@@ -80,7 +105,7 @@ export default function UserProfileScreen() {
         <View style={styles.center}>
           <Feather name="user-x" size={40} color={colors.mutedForeground} />
           <Text style={[styles.notFound, { color: colors.mutedForeground }]}>
-            This reader could not be found.
+            사용자를 찾을 수 없어요.
           </Text>
         </View>
       </View>
@@ -98,22 +123,44 @@ export default function UserProfileScreen() {
     );
   }
 
-  const memberSince = new Date(profile.createdAt).toLocaleDateString("en-US", {
-    month: "long",
+  const memberSince = new Date(profile.createdAt).toLocaleDateString("ko-KR", {
     year: "numeric",
+    month: "long",
   });
 
   const followLabel = profile.isFollowedByMe
-    ? "Following"
+    ? "팔로잉"
     : profile.followsMe
-      ? "Follow back"
-      : "Follow";
+      ? "맞팔로우"
+      : "팔로우";
+
+  const friendStatus = profile.friendStatus;
+  const friendLabel =
+    friendStatus === "friends"
+      ? "친구"
+      : friendStatus === "requested"
+        ? "요청됨"
+        : friendStatus === "incoming"
+          ? "요청 수락"
+          : "친구 추가";
+  const friendIcon: React.ComponentProps<typeof Feather>["name"] =
+    friendStatus === "friends"
+      ? "check"
+      : friendStatus === "requested"
+        ? "clock"
+        : friendStatus === "incoming"
+          ? "user-check"
+          : "users";
+  const friendDisabled =
+    friendPending || friendStatus === "friends" || friendStatus === "requested";
+  // Filled style when actionable, muted when resolved/pending.
+  const friendActive = friendStatus === "none" || friendStatus === "incoming";
 
   const stats: { label: string; value: number }[] = [
-    { label: "Followers", value: profile.followerCount },
-    { label: "Following", value: profile.followingCount },
-    { label: "Highlights", value: profile.highlightCount },
-    { label: "Comments", value: profile.commentCount },
+    { label: "팔로워", value: profile.followerCount },
+    { label: "팔로잉", value: profile.followingCount },
+    { label: "하이라이트", value: profile.highlightCount },
+    { label: "댓글", value: profile.commentCount },
   ];
 
   return (
@@ -127,11 +174,11 @@ export default function UserProfileScreen() {
           <UserAvatar username={profile.username} avatarColor={profile.avatarColor} size={88} />
           <Text style={[styles.name, { color: colors.foreground }]}>{profile.username}</Text>
           <Text style={[styles.since, { color: colors.mutedForeground }]}>
-            Member since {memberSince}
+            {memberSince}부터 함께 읽는 중
           </Text>
           {profile.followsMe && !profile.isMe ? (
             <View style={[styles.followsBadge, { backgroundColor: colors.muted, borderRadius: colors.radius }]}>
-              <Text style={[styles.followsBadgeText, { color: colors.mutedForeground }]}>Follows you</Text>
+              <Text style={[styles.followsBadgeText, { color: colors.mutedForeground }]}>나를 팔로우함</Text>
             </View>
           ) : null}
         </View>
@@ -146,39 +193,75 @@ export default function UserProfileScreen() {
         </View>
 
         {!profile.isMe ? (
-          <Pressable
-            style={({ pressed }) => [
-              styles.followBtn,
-              {
-                backgroundColor: profile.isFollowedByMe ? colors.muted : colors.primary,
-                borderColor: profile.isFollowedByMe ? colors.border : colors.primary,
-                borderRadius: colors.radius,
-                opacity: pressed || pending ? 0.8 : 1,
-              },
-            ]}
-            onPress={handleToggleFollow}
-            disabled={pending}
-          >
-            {pending ? (
-              <ActivityIndicator color={profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground} />
-            ) : (
-              <>
-                <Feather
-                  name={profile.isFollowedByMe ? "user-check" : "user-plus"}
-                  size={16}
-                  color={profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground}
-                />
-                <Text
-                  style={[
-                    styles.followBtnText,
-                    { color: profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground },
-                  ]}
-                >
-                  {followLabel}
-                </Text>
-              </>
-            )}
-          </Pressable>
+          <View style={styles.actionRow}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionBtn,
+                {
+                  backgroundColor: profile.isFollowedByMe ? colors.muted : colors.primary,
+                  borderColor: profile.isFollowedByMe ? colors.border : colors.primary,
+                  borderRadius: colors.radius,
+                  opacity: pressed || followPending ? 0.8 : 1,
+                },
+              ]}
+              onPress={handleToggleFollow}
+              disabled={followPending}
+            >
+              {followPending ? (
+                <ActivityIndicator color={profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground} />
+              ) : (
+                <>
+                  <Feather
+                    name={profile.isFollowedByMe ? "user-check" : "user-plus"}
+                    size={16}
+                    color={profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.actionBtnText,
+                      { color: profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground },
+                    ]}
+                  >
+                    {followLabel}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionBtn,
+                {
+                  backgroundColor: friendActive ? colors.card : colors.muted,
+                  borderColor: friendActive ? colors.primary : colors.border,
+                  borderRadius: colors.radius,
+                  opacity: pressed || friendPending ? 0.8 : 1,
+                },
+              ]}
+              onPress={handleFriendAction}
+              disabled={friendDisabled}
+            >
+              {friendPending ? (
+                <ActivityIndicator color={colors.mutedForeground} />
+              ) : (
+                <>
+                  <Feather
+                    name={friendIcon}
+                    size={16}
+                    color={friendActive ? colors.primary : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.actionBtnText,
+                      { color: friendActive ? colors.primary : colors.mutedForeground },
+                    ]}
+                  >
+                    {friendLabel}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          </View>
         ) : null}
       </ScrollView>
     </View>
@@ -257,17 +340,22 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
   },
-  followBtn: {
+  actionRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 24,
+  },
+  actionBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     height: 48,
-    marginHorizontal: 16,
-    marginTop: 24,
     borderWidth: 1,
   },
-  followBtnText: {
+  actionBtnText: {
     fontSize: 15,
     fontWeight: "700",
   },

@@ -5,6 +5,7 @@ export * from "./comments";
 export * from "./commentLikes";
 export * from "./commentSaves";
 export * from "./friendships";
+export * from "./friendRequests";
 export * from "./userHighlights";
 export * from "./userLibrary";
 export * from "./notifications";

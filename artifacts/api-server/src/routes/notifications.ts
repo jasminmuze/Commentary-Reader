@@ -43,11 +43,20 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
   }
 
   const actorIds = [...new Set(notifs.map((n) => n.actorId))];
-  const commentIds = [...new Set(notifs.map((n) => n.commentId))];
+  // friend_* notifications have no comment.
+  const commentIds = [
+    ...new Set(
+      notifs
+        .map((n) => n.commentId)
+        .filter((id): id is number => id != null),
+    ),
+  ];
 
   const [actors, comments] = await Promise.all([
     db.select().from(usersTable).where(inArray(usersTable.id, actorIds)),
-    db.select().from(commentsTable).where(inArray(commentsTable.id, commentIds)),
+    commentIds.length
+      ? db.select().from(commentsTable).where(inArray(commentsTable.id, commentIds))
+      : Promise.resolve([]),
   ]);
 
   const actorMap = new Map(actors.map((a) => [a.id, a]));
@@ -61,7 +70,7 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
 
   const items: NotificationItem[] = notifs.map((n) => {
     const actor = actorMap.get(n.actorId);
-    const comment = commentMap.get(n.commentId);
+    const comment = n.commentId != null ? commentMap.get(n.commentId) : undefined;
     const quote = comment ? quoteMap.get(comment.quoteId) : undefined;
     return {
       id: n.id,
@@ -69,7 +78,7 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
       actorId: n.actorId,
       actorUsername: actor?.username ?? "unknown",
       actorAvatarColor: actor?.avatarColor ?? "#7A8BAA",
-      commentId: n.commentId,
+      commentId: n.commentId ?? 0,
       commentText: comment?.text ?? "",
       parentCommentId: comment?.parentId ?? null,
       quoteId: comment?.quoteId ?? 0,

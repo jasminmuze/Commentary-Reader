@@ -1,17 +1,22 @@
 import { pgTable, serial, integer, text, boolean, timestamp } from "drizzle-orm/pg-core";
 
-export type NotificationType = "reply" | "mention";
+export type NotificationType =
+  | "reply"
+  | "mention"
+  | "friend_request"
+  | "friend_accept";
 
 export const notificationsTable = pgTable("notifications", {
   id: serial("id").primaryKey(),
   // Recipient of the notification.
   userId: integer("user_id").notNull(),
-  // "reply": someone replied to your comment. "mention": you were @mentioned in a comment or reply.
+  // "reply": someone replied to your comment. "mention": you were @mentioned.
+  // "friend_request": someone sent you a friend request. "friend_accept": your request was accepted.
   type: text("type").notNull().$type<NotificationType>(),
-  // Actor who triggered the notification (the comment/reply author).
+  // Actor who triggered the notification.
   actorId: integer("actor_id").notNull(),
-  // The comment or reply that triggered the notification.
-  commentId: integer("comment_id").notNull(),
+  // The comment or reply that triggered the notification (null for friend_* types).
+  commentId: integer("comment_id"),
   read: boolean("read").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
