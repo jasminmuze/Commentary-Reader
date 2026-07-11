@@ -2,3 +2,4 @@
 - [EAS builds from Replit](eas-builds-from-replit.md) — how dev-client builds/connect work for the `mobile` artifact, and the projectId-ownership gotcha.
 - [Auth model decision](auth-model.md) — self-issued HMAC bearer tokens + bcrypt passwords were kept over Clerk; extend the existing scheme, don't swap providers.
 - [Android push needs user-side FCM setup](android-push-fcm.md) — empty push_tokens on Android means missing google-services.json/FCM key, not a server bug; delivery is only verifiable by the user on-device.
+- [Long-running builds](long-builds-need-workflows.md) — background processes die with agent sessions; run >2min builds via a temporary console workflow, and free port 8081 (mockup-sandbox) for the mobile prod build.

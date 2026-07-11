@@ -43,3 +43,6 @@ yarn-error.*
 .vercel
 
 .env
+
+# expo static production build output
+static-build/
