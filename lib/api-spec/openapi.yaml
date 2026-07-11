@@ -701,6 +701,54 @@ paths:
         "404":
           description: Notification not found
 
+  /users/{userId}/push-tokens:
+    post:
+      operationId: registerPushToken
+      tags: [users]
+      summary: Register an Expo push token for the user (upsert; reassigns the token on account switch)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenInput"
+      responses:
+        "200":
+          description: Token registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+    delete:
+      operationId: unregisterPushToken
+      tags: [users]
+      summary: Unregister an Expo push token for the user (e.g. on logout)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenInput"
+      responses:
+        "200":
+          description: Token unregistered (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
 components:
   schemas:
     HealthStatus:
@@ -1154,3 +1202,20 @@ components:
       properties:
         unreadCount:
           type: integer
+
+    PushTokenInput:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: Expo push token, e.g. ExponentPushToken[xxxxxxxx]
+
+    OkResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean

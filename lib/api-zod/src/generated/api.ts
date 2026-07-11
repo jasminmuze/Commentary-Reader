@@ -719,3 +719,43 @@ export const MarkNotificationReadResponse = zod.object({
 })
 
 
+/**
+ * @summary Register an Expo push token for the user (upsert; reassigns the token on account switch)
+ */
+export const RegisterPushTokenParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const registerPushTokenBodyTokenMax = 4096;
+
+
+
+export const RegisterPushTokenBody = zod.object({
+  "token": zod.string().min(1).max(registerPushTokenBodyTokenMax).describe('Expo push token, e.g. ExponentPushToken[xxxxxxxx]')
+})
+
+export const RegisterPushTokenResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Unregister an Expo push token for the user (e.g. on logout)
+ */
+export const UnregisterPushTokenParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const unregisterPushTokenBodyTokenMax = 4096;
+
+
+
+export const UnregisterPushTokenBody = zod.object({
+  "token": zod.string().min(1).max(unregisterPushTokenBodyTokenMax).describe('Expo push token, e.g. ExponentPushToken[xxxxxxxx]')
+})
+
+export const UnregisterPushTokenResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+

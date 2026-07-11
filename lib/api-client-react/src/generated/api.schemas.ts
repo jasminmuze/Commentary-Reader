@@ -292,6 +292,19 @@ export interface UnreadCount {
   unreadCount: number;
 }
 
+export interface PushTokenInput {
+  /**
+     * Expo push token, e.g. ExponentPushToken[xxxxxxxx]
+     * @minLength 1
+     * @maxLength 4096
+     */
+  token: string;
+}
+
+export interface OkResult {
+  ok: boolean;
+}
+
 export type ListBooksParams = {
 q?: string;
 };

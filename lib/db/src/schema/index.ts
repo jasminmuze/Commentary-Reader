@@ -8,3 +8,4 @@ export * from "./friendships";
 export * from "./userHighlights";
 export * from "./userLibrary";
 export * from "./notifications";
+export * from "./pushTokens";

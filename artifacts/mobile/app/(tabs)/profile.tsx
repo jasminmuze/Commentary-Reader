@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -29,8 +30,30 @@ const VISIBILITY_SETTINGS: {
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, setUser } = useUser();
+  const { user, setUser, logout } = useUser();
   const updateSettings = useUpdateUserSettings();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const performLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
+  const handleLogout = () => {
+    if (Platform.OS === "web") {
+      void performLogout();
+      return;
+    }
+    Alert.alert("로그아웃", "정말 로그아웃할까요? 이 기기로 오던 푸시 알림도 중단돼요.", [
+      { text: "취소", style: "cancel" },
+      { text: "로그아웃", style: "destructive", onPress: () => void performLogout() },
+    ]);
+  };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -157,6 +180,33 @@ export default function ProfileScreen() {
           ))}
         </View>
       </View>
+
+      {/* Account */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>ACCOUNT</Text>
+        <Pressable
+          onPress={handleLogout}
+          disabled={loggingOut}
+          style={({ pressed }) => [
+            styles.card,
+            styles.logoutButton,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+              opacity: pressed || loggingOut ? 0.6 : 1,
+            },
+          ]}
+        >
+          <Feather name="log-out" size={18} color={colors.destructive} />
+          <Text style={[styles.logoutText, { color: colors.destructive }]}>
+            {loggingOut ? "로그아웃 중..." : "로그아웃"}
+          </Text>
+        </Pressable>
+        <Text style={[styles.helperText, { color: colors.mutedForeground }]}>
+          로그아웃하면 이 기기로 오던 푸시 알림이 중단됩니다.
+        </Text>
+      </View>
     </ScrollView>
   );
 }
@@ -249,5 +299,15 @@ const styles = StyleSheet.create({
   highlightSub: {
     fontSize: 12,
     marginTop: 1,
+  },
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  logoutText: {
+    fontSize: 15,
+    fontWeight: "600",
   },
 });

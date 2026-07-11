@@ -15,6 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { setBaseUrl } from "@workspace/api-client-react";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PushTokenRegistrar } from "@/components/PushTokenRegistrar";
 import { UserProvider } from "@/context/UserContext";
 
 // Configure base URL for API calls from Expo (which runs outside the web proxy)
@@ -63,6 +64,7 @@ export default function RootLayout() {
           <GestureHandlerRootView>
             <KeyboardProvider>
               <UserProvider>
+                <PushTokenRegistrar />
                 <RootLayoutNav />
               </UserProvider>
             </KeyboardProvider>

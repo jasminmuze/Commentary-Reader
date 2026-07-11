@@ -7,6 +7,7 @@ import libraryRouter from "./library";
 import usersRouter from "./users";
 import objectsRouter from "./objects";
 import notificationsRouter from "./notifications";
+import pushTokensRouter from "./pushTokens";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(libraryRouter);
 router.use(usersRouter);
 router.use(objectsRouter);
 router.use(notificationsRouter);
+router.use(pushTokensRouter);
 
 export default router;

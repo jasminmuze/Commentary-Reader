@@ -9,7 +9,7 @@ import {
   usersTable,
   notificationsTable,
 } from "@workspace/db";
-import { createMentionNotifications } from "../lib/notifications";
+import { createMentionNotifications, sendReplyPush } from "../lib/notifications";
 import {
   GetQuoteCommentsParams,
   GetQuoteCommentsQueryParams,
@@ -309,6 +309,12 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
         commentId: reply.id,
       });
       notifiedUserIds.add(parentComment.userId);
+      sendReplyPush({
+        recipientId: parentComment.userId,
+        actorId: userId,
+        commentId: reply.id,
+        text: body.data.text,
+      });
     }
 
     // 'mention' notifications for @mentioned users.

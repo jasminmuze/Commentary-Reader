@@ -30,6 +30,8 @@ export * from './matchResultStatus';
 export * from './notificationItem';
 export * from './notificationItemType';
 export * from './notificationList';
+export * from './okResult';
+export * from './pushTokenInput';
 export * from './quote';
 export * from './saveResult';
 export * from './searchUsersParams';

@@ -26,6 +26,7 @@ import {
 import type { Visibility } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { apiUrl } from "@/lib/api";
+import { PUSH_TOKEN_KEY, takeRememberedPushToken } from "@/lib/pushNotifications";
 
 const USER_ID_KEY = "bookmarks_user_id";
 const TOKEN_KEY = "bookmarks_token";
@@ -45,12 +46,14 @@ interface UserContextType {
   user: CurrentUser | null;
   isInitialized: boolean;
   setUser: (user: CurrentUser) => void;
+  logout: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType>({
   user: null,
   isInitialized: false,
   setUser: () => {},
+  logout: async () => {},
 });
 
 export function useUser() {
@@ -266,7 +269,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             setUserState({ id: data.id, username: data.username, avatarColor: data.avatarColor, defaultVisibility: data.defaultVisibility ?? "public" });
           } else if (res.status === 401) {
             // Expired/invalid token — clear stored credentials and show login.
-            await AsyncStorage.multiRemove([USER_ID_KEY, TOKEN_KEY]);
+            await AsyncStorage.multiRemove([USER_ID_KEY, TOKEN_KEY, PUSH_TOKEN_KEY]);
           }
         } catch {
           // ignore fetch errors, show onboarding
@@ -280,6 +283,32 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     setUserState(u);
   }, []);
 
+  const logout = useCallback(async () => {
+    // Unregister this device's push token first (best-effort) so the
+    // logged-out account stops receiving pushes on this device.
+    try {
+      const [pushToken, authToken] = await Promise.all([
+        takeRememberedPushToken(),
+        AsyncStorage.getItem(TOKEN_KEY),
+      ]);
+      if (user && pushToken && authToken) {
+        await fetch(apiUrl(`/api/users/${user.id}/push-tokens`), {
+          method: "DELETE",
+          headers: {
+            "content-type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({ token: pushToken }),
+        });
+      }
+    } catch {
+      // Best-effort: the server also prunes dead tokens on push failures,
+      // and re-registration under another account reassigns the token.
+    }
+    await AsyncStorage.multiRemove([USER_ID_KEY, TOKEN_KEY, PUSH_TOKEN_KEY]);
+    setUserState(null);
+  }, [user]);
+
   if (!isInitialized) {
     return null;
   }
@@ -289,7 +318,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <UserContext.Provider value={{ user, isInitialized, setUser }}>
+    <UserContext.Provider value={{ user, isInitialized, setUser, logout }}>
       {children}
     </UserContext.Provider>
   );
