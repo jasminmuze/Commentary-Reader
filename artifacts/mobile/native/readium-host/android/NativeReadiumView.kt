@@ -1,9 +1,13 @@
 package {{PACKAGE_NAME}}.readiumhost
 
+import android.graphics.Rect
 import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
 import android.widget.FrameLayout
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.commitNow
@@ -96,6 +100,29 @@ class NativeReadiumView(
     private var navigator: EpubNavigatorFragment? = null
     private var locationJob: Job? = null
     private val listenedGroups = mutableSetOf<String>()
+
+    // ------------------------------------------------------------------
+    // Chapter pull (scroll mode only): observe-only overscroll tracking.
+    // Touch events are NEVER consumed or intercepted here — dispatchTouchEvent
+    // just watches the stream and forwards everything to super, so text
+    // selection, decoration taps, edge taps and normal scrolling are untouched.
+    // Any unexpected error permanently disables the detector for this view
+    // (pullDetectionBroken) and the reader keeps working as before.
+    // ------------------------------------------------------------------
+    private var scrollModeEnabled = false
+    private var selectionModeActive = false
+    private var pullDetectionBroken = false
+    private var lastChapterJumpAtMs = 0L
+
+    // Per-gesture state (reset on ACTION_DOWN).
+    private var pullGestureActive = false
+    private var pullInProgress = false
+    private var pullDirection = 0 // +1 next chapter, -1 previous chapter
+    private var pullAnchorY = 0f
+    private var pullLastY = 0f
+    private var pullTargetIndex = -1
+    private var pullTargetTitle: String? = null
+    private var pullLastSentProgress = -1f
 
     init {
         addView(
@@ -229,8 +256,216 @@ class NativeReadiumView(
             })
         }
 
+        scrollModeEnabled = isScrollModeEnabled()
+
         observeLocation(fragment)
         sendOpened(opened.publication)
+    }
+
+    // ---------------------------------------------------------------------
+    // Chapter pull detection (observe-only).
+    // ---------------------------------------------------------------------
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (!pullDetectionBroken) {
+            try {
+                observeChapterPull(ev)
+            } catch (t: Throwable) {
+                // Fail closed: disable the detector, keep the reader working.
+                pullDetectionBroken = true
+                if (pullInProgress) sendChapterPull("cancel", pullDirection, 0f, pullTargetTitle)
+                resetPullGesture()
+                sendDebug("chapter pull disabled after error: ${describeThrowable(t)}")
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun observeChapterPull(ev: MotionEvent) {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                resetPullGesture()
+                pullGestureActive = scrollModeEnabled &&
+                    !selectionModeActive &&
+                    navigator != null &&
+                    (System.currentTimeMillis() - lastChapterJumpAtMs) > CHAPTER_JUMP_COOLDOWN_MS
+                pullLastY = ev.y
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                // Multi-touch (pinch/zoom): abort until the next gesture.
+                if (pullInProgress) sendChapterPull("cancel", pullDirection, 0f, pullTargetTitle)
+                resetPullGesture()
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!pullGestureActive) return
+                if (selectionModeActive) {
+                    // Text selection started mid-gesture: bail out entirely.
+                    if (pullInProgress) sendChapterPull("cancel", pullDirection, 0f, pullTargetTitle)
+                    resetPullGesture()
+                    return
+                }
+                val y = ev.y
+                val dy = y - pullLastY
+                pullLastY = y
+                if (!pullInProgress) {
+                    maybeStartPull(dy, y)
+                } else {
+                    val distance = (pullAnchorY - y) * pullDirection
+                    if (distance <= 0f) {
+                        // Dragged back past the anchor: cancel, but keep watching —
+                        // the same gesture may pull again.
+                        sendChapterPull("cancel", pullDirection, 0f, pullTargetTitle)
+                        pullInProgress = false
+                        pullDirection = 0
+                        pullTargetIndex = -1
+                        pullTargetTitle = null
+                        pullLastSentProgress = -1f
+                        return
+                    }
+                    val progress = (distance / pullThresholdPx()).coerceAtMost(1.5f)
+                    if (kotlin.math.abs(progress - pullLastSentProgress) >= 0.01f) {
+                        pullLastSentProgress = progress
+                        sendChapterPull("pull", pullDirection, progress, pullTargetTitle)
+                    }
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                if (pullInProgress) {
+                    val distance = (pullAnchorY - ev.y) * pullDirection
+                    if (distance >= pullThresholdPx()) {
+                        commitChapterJump()
+                    } else {
+                        sendChapterPull("cancel", pullDirection, 0f, pullTargetTitle)
+                    }
+                }
+                resetPullGesture()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                if (pullInProgress) sendChapterPull("cancel", pullDirection, 0f, pullTargetTitle)
+                resetPullGesture()
+            }
+        }
+    }
+
+    private fun maybeStartPull(dy: Float, y: Float) {
+        if (kotlin.math.abs(dy) < 0.5f) return
+        val webView = findVisibleWebView() ?: return
+        val direction = when {
+            // Finger moving up while the content can no longer scroll down -> pull for NEXT.
+            dy < 0 && !webView.canScrollVertically(1) -> 1
+            // Finger moving down while the content can no longer scroll up -> pull for PREVIOUS.
+            dy > 0 && !webView.canScrollVertically(-1) -> -1
+            else -> return
+        }
+        val target = resolveAdjacentChapter(direction) ?: return
+        pullInProgress = true
+        pullDirection = direction
+        pullAnchorY = y
+        pullTargetIndex = target.first
+        pullTargetTitle = target.second
+        pullLastSentProgress = 0f
+        sendChapterPull("pull", direction, 0f, pullTargetTitle)
+    }
+
+    /** Returns (readingOrder index, chapter title) of the adjacent resource, or null at the book boundary. */
+    private fun resolveAdjacentChapter(direction: Int): Pair<Int, String?>? {
+        val pub = publication ?: return null
+        val nav = navigator ?: return null
+        val currentHref = nav.currentLocator.value.href.toString().substringBefore('#')
+        val index = pub.readingOrder.indexOfFirst {
+            it.href.toString().substringBefore('#') == currentHref
+        }
+        if (index < 0) return null
+        val targetIndex = index + direction
+        if (targetIndex < 0 || targetIndex > pub.readingOrder.lastIndex) return null
+        return targetIndex to chapterTitleFor(pub, pub.readingOrder[targetIndex])
+    }
+
+    private fun chapterTitleFor(publication: Publication, link: Link): String? {
+        link.title?.takeIf { it.isNotBlank() }?.let { return it }
+        val target = link.href.toString().substringBefore('#')
+        fun search(links: List<Link>): String? {
+            for (candidate in links) {
+                if (candidate.href.toString().substringBefore('#') == target) {
+                    candidate.title?.takeIf { it.isNotBlank() }?.let { return it }
+                }
+                search(candidate.children)?.let { return it }
+            }
+            return null
+        }
+        return search(publication.tableOfContents)
+    }
+
+    private fun commitChapterJump() {
+        val pub = publication ?: return
+        val nav = navigator ?: return
+        val targetIndex = pullTargetIndex
+        if (targetIndex < 0 || targetIndex > pub.readingOrder.lastIndex) return
+        val link = pub.readingOrder[targetIndex]
+        var locator = pub.locatorFromLink(link) ?: return
+        if (pullDirection < 0) {
+            // Going backwards lands at the END of the previous chapter.
+            locator = locator.copy(locations = locator.locations.copy(progression = 1.0))
+        }
+        sendChapterPull("commit", pullDirection, 1f, pullTargetTitle)
+        lastChapterJumpAtMs = System.currentTimeMillis()
+        nav.go(locator, animated = true)
+    }
+
+    /** The currently visible resource WebView inside the navigator, found via view-tree walk only. */
+    private fun findVisibleWebView(): WebView? {
+        val root = navigator?.view ?: return null
+        val visibleRect = Rect()
+        fun search(view: View): WebView? {
+            if (view is WebView) {
+                // The pager keeps offscreen neighbours attached; require actual
+                // on-screen coverage so we only inspect the current resource.
+                return if (
+                    view.isShown &&
+                    view.getGlobalVisibleRect(visibleRect) &&
+                    visibleRect.width() > this.width / 2
+                ) {
+                    view
+                } else {
+                    null
+                }
+            }
+            if (view is ViewGroup) {
+                for (i in 0 until view.childCount) {
+                    search(view.getChildAt(i))?.let { return it }
+                }
+            }
+            return null
+        }
+        return search(root)
+    }
+
+    private fun resetPullGesture() {
+        pullGestureActive = false
+        pullInProgress = false
+        pullDirection = 0
+        pullAnchorY = 0f
+        pullLastY = 0f
+        pullTargetIndex = -1
+        pullTargetTitle = null
+        pullLastSentProgress = -1f
+    }
+
+    private fun pullThresholdPx(): Float =
+        PULL_THRESHOLD_DP * resources.displayMetrics.density
+
+    private fun isScrollModeEnabled(): Boolean =
+        parseSettingsJson().optString("scrollMode") == "vertical"
+
+    private fun sendChapterPull(phase: String, direction: Int, progress: Float, title: String?) {
+        val payload = Arguments.createMap().apply {
+            putInt("libraryId", libraryId)
+            putString("phase", phase)
+            putString("direction", if (direction > 0) "next" else "prev")
+            putDouble("progress", progress.toDouble())
+            if (title == null) putNull("targetTitle") else putString("targetTitle", title)
+        }
+        NativeReadiumEvents.send("NativeReadiumHost.chapterPull", payload)
     }
 
     private fun observeLocation(fragment: EpubNavigatorFragment) {
@@ -252,6 +487,11 @@ class NativeReadiumView(
         settingsJson = newSettingsJson
         try {
             currentNavigator.submitPreferences(ReaderPreferencesMapper.parse(parseSettingsJson()))
+            scrollModeEnabled = isScrollModeEnabled()
+            if (!scrollModeEnabled && pullInProgress) {
+                sendChapterPull("cancel", pullDirection, 0f, pullTargetTitle)
+                resetPullGesture()
+            }
             promise?.resolve(true)
         } catch (t: Throwable) {
             promise?.reject("SETTINGS_ERROR", describeThrowable(t))
@@ -433,9 +673,14 @@ class NativeReadiumView(
 
     private val selectionCallback = object : BaseActionModeCallback() {
         override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+            selectionModeActive = true
             menu.add(Menu.NONE, MENU_ID_HIGHLIGHT, 0, "하이라이트")
             menu.add(Menu.NONE, MENU_ID_COMMENT, 1, "댓글")
             return true
+        }
+
+        override fun onDestroyActionMode(mode: ActionMode) {
+            selectionModeActive = false
         }
 
         override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
@@ -692,5 +937,7 @@ class NativeReadiumView(
         private const val READIUM_LOCATION_VERSION = 4
         private const val MENU_ID_HIGHLIGHT = 0x5241
         private const val MENU_ID_COMMENT = 0x5242
+        private const val PULL_THRESHOLD_DP = 80f
+        private const val CHAPTER_JUMP_COOLDOWN_MS = 700L
     }
 }

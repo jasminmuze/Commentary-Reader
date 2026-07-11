@@ -46,6 +46,11 @@ The reader route's download effect depended on the whole `useFileSystem()` retur
 - `useReaderSettings` loads AsyncStorage per hook INSTANCE. A parent gating on its own `loaded` does not mean a child instance is loaded — capture initial settings only after the child instance's own `loaded`, or defaults get baked into the native view.
 - RN legacy view + Fabric interop: fragment-in-RN-view needs the `requestLayout → post(measure+layout)` workaround; open the fragment in `onAfterUpdateTransaction` (all props set), dispose in `onDropViewInstance`.
 
+## Gesture extensions must be observe-only (never consume touches)
+Chapter-pull (scroll mode overscroll → next/prev chapter) is implemented by overriding `dispatchTouchEvent` on the RN host view: watch the MotionEvent stream, always forward to super, never intercept/consume.
+**Why:** Consuming or intercepting touches breaks WebView text selection, decoration taps, and edge-tap page turns — the platform's most fragile surfaces here. Observe-only means any failure degrades to the pre-existing swipe behavior.
+**How to apply:** Gate on scroll mode + an ActionMode-active flag (set/cleared in the selection callback); detect "at edge" via `WebView.canScrollVertically` on the WebView found by public view-tree walk (require `getGlobalVisibleRect` coverage — the pager keeps offscreen neighbours attached). Wrap the whole observer in try/catch that permanently disables it on error. Commit navigates with `publication.locatorFromLink(readingOrder[i±1])` (+`progression=1.0` for prev) via `navigator.go`. All indicator UI lives in RN (chapterPull events), so visuals iterate JS-only without rebuilds.
+
 ## Untestable-native build loop
 The Replit agent cannot build/run Android (no emulator/APK). Only the user can EAS-build and device-test.
 **How to apply:** Put the ENTIRE native surface in ONE EAS build, defensively coded; then iterate JS-only over Metro (dev-client reloads TS without rebuilds). Add a `NativeReadiumHost.log` DeviceEventEmitter event so native errors surface in Metro (agent has no logcat). The old epub.js/WebView reader and its deps have since been removed — the Readium route is the only reader. Any change to Kotlin under `native/readium-host/` still requires a fresh user-run EAS build before it can be observed.

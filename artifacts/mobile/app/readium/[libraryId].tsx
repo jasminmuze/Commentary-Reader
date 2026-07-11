@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import Constants from "expo-constants";
+import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -32,6 +33,8 @@ import { useUser } from "@/context/UserContext";
 import { useFileSystem } from "@/hooks/useFileSystem";
 import { useReaderSettings, HIGHLIGHT_STYLE_CONFIGS } from "@/hooks/useReaderSettings";
 import type { ReaderSettings } from "@/hooks/useReaderSettings";
+import { ChapterPullIndicator } from "@/components/ChapterPullIndicator";
+import type { ChapterPullState } from "@/components/ChapterPullIndicator";
 import { CommentSheet } from "@/components/CommentSheet";
 import { ReaderSettingsPanel } from "@/components/ReaderSettingsPanel";
 import { TocPanel } from "@/components/TocPanel";
@@ -76,6 +79,13 @@ type TextSelectedEvent = {
   locatorJson: string;
 };
 type QuoteLocatedEvent = { libraryId: number; quoteId: number; locatorJson: string };
+type ChapterPullEvent = {
+  libraryId: number;
+  phase: "pull" | "cancel" | "commit";
+  direction: "next" | "prev";
+  progress: number;
+  targetTitle?: string | null;
+};
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
@@ -237,6 +247,9 @@ function EmbeddedReader({
     cfiRange?: string;
   } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
+  // 스크롤 모드 챕터 당김 인디케이터 (네이티브 chapterPull 이벤트로 구동)
+  const [chapterPull, setChapterPull] = useState<ChapterPullState | null>(null);
+  const pullArmedRef = useRef(false);
 
   // 초기 위치/설정은 한 번만 캡처 — 뷰가 이미 열린 뒤 prop 이 바뀌어도
   // 네이티브 쪽에서 재오픈하지 않으므로 여기서도 고정한다.
@@ -643,6 +656,30 @@ function EmbeddedReader({
         },
       ),
       DeviceEventEmitter.addListener(
+        "NativeReadiumHost.chapterPull",
+        (event: ChapterPullEvent) => {
+          if (event.libraryId !== libraryId) return;
+          if (event.phase === "pull") {
+            const armed = event.progress >= 1;
+            if (armed && !pullArmedRef.current) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            }
+            pullArmedRef.current = armed;
+            setChapterPull({
+              direction: event.direction,
+              progress: event.progress,
+              targetTitle: event.targetTitle ?? null,
+            });
+          } else {
+            if (event.phase === "commit") {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+            }
+            pullArmedRef.current = false;
+            setChapterPull(null);
+          }
+        },
+      ),
+      DeviceEventEmitter.addListener(
         "NativeReadiumHost.error",
         (event: { libraryId: number; message?: string }) => {
           if (event.libraryId !== libraryId) return;
@@ -731,6 +768,14 @@ function EmbeddedReader({
             책 여는 중…
           </Text>
         </View>
+      ) : null}
+
+      {settings.scrollMode === "vertical" && chapterPull ? (
+        <ChapterPullIndicator
+          state={chapterPull}
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+        />
       ) : null}
 
       {chromeVisible ? (
