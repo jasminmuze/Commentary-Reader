@@ -72,7 +72,7 @@ export default function MatchScreen() {
       { libraryId, data: { canonicalBookId: bookId } },
       {
         onSuccess: goToReader,
-        onError: () => Alert.alert("매칭 실패", "다시 시도해 주세요."),
+        onError: () => Alert.alert("Match failed", "Please try again."),
       }
     );
   };
@@ -81,7 +81,7 @@ export default function MatchScreen() {
     const title = (entry?.originalTitle ?? query).trim();
     const author = (entry?.originalAuthor ?? "").trim();
     if (title.length < 1) {
-      Alert.alert("제목이 필요해요", "새 책으로 등록하려면 제목이 필요합니다. 위 검색창에 제목을 입력해 주세요.");
+      Alert.alert("Title required", "A title is needed to add a new book. Please enter one in the search field above.");
       return;
     }
     createBook.mutate(
@@ -94,7 +94,7 @@ export default function MatchScreen() {
       },
       {
         onSuccess: (book) => handleMatch(book.id),
-        onError: () => Alert.alert("등록 실패", "새 책을 만들지 못했어요. 다시 시도해 주세요."),
+        onError: () => Alert.alert("Couldn't add book", "We couldn't create the new book. Please try again."),
       }
     );
   };
@@ -109,7 +109,7 @@ export default function MatchScreen() {
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>책 매칭</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Match book</Text>
         <View style={{ width: 30 }} />
       </View>
 
@@ -125,24 +125,24 @@ export default function MatchScreen() {
                 <Feather name="file-text" size={20} color={colors.primary} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.fileTitle, { color: colors.foreground }]} numberOfLines={1}>
-                    {entry?.originalTitle ?? "제목 미상"}
+                    {entry?.originalTitle ?? "Untitled"}
                   </Text>
                   <Text style={[styles.fileAuthor, { color: colors.mutedForeground }]} numberOfLines={1}>
-                    {entry?.originalAuthor ?? "저자 미상"}
+                    {entry?.originalAuthor ?? "Unknown author"}
                     {entry?.originalIsbn ? ` · ISBN ${entry.originalIsbn}` : ""}
                   </Text>
                 </View>
               </View>
 
               <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                업로드한 파일을 커뮤니티의 책과 연결하면 다른 독자들의 하이라이트와 코멘트를 함께 볼 수 있어요.
+                Linking your uploaded file to a community book lets you see other readers' highlights and comments too.
               </Text>
 
               <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
                 <Feather name="search" size={18} color={colors.mutedForeground} />
                 <TextInput
                   style={[styles.searchInput, { color: colors.foreground }]}
-                  placeholder="제목 또는 저자로 검색"
+                  placeholder="Search by title or author"
                   placeholderTextColor={colors.mutedForeground}
                   value={query}
                   onChangeText={setQuery}
@@ -151,7 +151,7 @@ export default function MatchScreen() {
                 />
               </View>
 
-              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>추천 후보</Text>
+              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>SUGGESTED MATCHES</Text>
             </View>
           }
           renderItem={({ item }) => (
@@ -168,7 +168,7 @@ export default function MatchScreen() {
                 <Text style={[styles.bookTitle, { color: colors.foreground }]} numberOfLines={2}>{item.title}</Text>
                 <Text style={[styles.bookAuthor, { color: colors.mutedForeground }]} numberOfLines={1}>{item.author}</Text>
                 <Text style={[styles.bookMeta, { color: colors.mutedForeground }]}>
-                  {item.highlightCount} 하이라이트 · {item.commentCount} 코멘트
+                  {item.highlightCount} highlights · {item.commentCount} comments
                 </Text>
               </View>
               <Feather name="chevron-right" size={20} color={colors.mutedForeground} />
@@ -179,7 +179,7 @@ export default function MatchScreen() {
               <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
             ) : (
               <Text style={[styles.emptyLine, { color: colors.mutedForeground }]}>
-                일치하는 책이 없어요. 아래에서 새 책으로 등록할 수 있어요.
+                No matching books found. You can add a new book below.
               </Text>
             )
           }
@@ -195,7 +195,7 @@ export default function MatchScreen() {
                 ) : (
                   <>
                     <Feather name="plus-circle" size={18} color={colors.primary} />
-                    <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>새 책으로 등록하기</Text>
+                    <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>Add as a new book</Text>
                   </>
                 )}
               </Pressable>
@@ -205,7 +205,7 @@ export default function MatchScreen() {
                 onPress={() => router.replace(`/readium/${libraryId}`)}
                 disabled={busy}
               >
-                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>나중에 하기 · 매칭 없이 읽기</Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>Do it later · read without matching</Text>
               </Pressable>
             </View>
           }

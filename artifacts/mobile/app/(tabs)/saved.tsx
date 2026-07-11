@@ -62,13 +62,13 @@ export default function SavedScreen() {
     );
   };
 
-  // 저장한 댓글 탭: 항목을 탭하면 책이 서재에 있을 때 리더가 해당 문장에서
-  // 열리고, 없으면 책 상세로 이동한다 (분기는 navigateToQuote 가 처리).
+  // Saved comments tab: tapping an item opens the reader at that passage when the
+  // book is in the library, otherwise it navigates to the book detail (navigateToQuote handles the branch).
   const handleOpenInBook = useCallback((comment: Comment) => {
     navigateToQuote(comment.quoteId).catch(() => {
       Alert.alert(
-        "이동할 수 없어요",
-        "문장 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+        "Can't open this",
+        "Couldn't load the passage. Please try again in a moment.",
       );
     });
   }, []);
@@ -79,9 +79,9 @@ export default function SavedScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>저장됨</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>Saved</Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          북마크한 댓글 · 탭하면 책 속 문장으로 이동해요
+          Bookmarked comments · tap to jump to the passage in the book
         </Text>
       </View>
 
@@ -110,8 +110,8 @@ export default function SavedScreen() {
           ) : (
             <EmptyState
               icon="bookmark"
-              title="저장한 댓글이 없어요"
-              subtitle="댓글의 북마크 아이콘을 탭하면 여기에 저장돼요"
+              title="No saved comments yet"
+              subtitle="Tap the bookmark icon on a comment to save it here"
             />
           )
         }

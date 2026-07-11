@@ -33,9 +33,9 @@ type Mode = "books" | "highlights";
 function BookRecordCard({ item }: { item: UserRecordsBook }) {
   const colors = useColors();
   const counts: string[] = [];
-  if (item.highlightCount > 0) counts.push(`하이라이트 ${item.highlightCount}`);
-  if (item.commentCount > 0) counts.push(`댓글 ${item.commentCount}`);
-  if (item.savedCount > 0) counts.push(`저장 ${item.savedCount}`);
+  if (item.highlightCount > 0) counts.push(`${item.highlightCount} highlights`);
+  if (item.commentCount > 0) counts.push(`${item.commentCount} comments`);
+  if (item.savedCount > 0) counts.push(`${item.savedCount} saved`);
 
   return (
     <Pressable
@@ -96,7 +96,7 @@ function HighlightRow({
           {item.quoteText}
         </Text>
         <Text style={[styles.highlightMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
-          {item.bookTitle} · {new Date(item.createdAt).toLocaleDateString("ko-KR")}
+          {item.bookTitle} · {new Date(item.createdAt).toLocaleDateString("en-US")}
         </Text>
       </View>
     </Pressable>
@@ -135,8 +135,8 @@ export default function RecordsScreen() {
   const handleOpenHighlight = useCallback((item: UserHighlightItem) => {
     navigateToQuote(item.quoteId).catch(() => {
       Alert.alert(
-        "이동할 수 없어요",
-        "문장 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+        "Can't open this",
+        "Couldn't load the passage. Please try again in a moment.",
       );
     });
   }, []);
@@ -163,16 +163,16 @@ export default function RecordsScreen() {
           <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
             <Feather name="arrow-left" size={22} color={colors.foreground} />
           </Pressable>
-          <Text style={[styles.title, { color: colors.foreground }]}>내 기록</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>My records</Text>
         </View>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          내가 남긴 하이라이트·댓글·저장을 책별로 모아봐요
+          Your highlights, comments, and saves gathered by book
         </Text>
         <View style={[styles.segment, { backgroundColor: colors.muted, borderRadius: colors.radius }]}>
           {(
             [
-              { value: "books", label: "책별" },
-              { value: "highlights", label: "전체 하이라이트" },
+              { value: "books", label: "By book" },
+              { value: "highlights", label: "All highlights" },
             ] as { value: Mode; label: string }[]
           ).map((opt) => {
             const active = mode === opt.value;
@@ -213,8 +213,8 @@ export default function RecordsScreen() {
             ) : (
               <EmptyState
                 icon="book-open"
-                title="아직 기록이 없어요"
-                subtitle="책을 읽으며 하이라이트나 댓글을 남기면 여기에 모여요"
+                title="No records yet"
+                subtitle="Highlights and comments you leave while reading will show up here"
               />
             )
           }
@@ -241,8 +241,8 @@ export default function RecordsScreen() {
             ) : (
               <EmptyState
                 icon="edit-3"
-                title="아직 하이라이트가 없어요"
-                subtitle="책에서 문장을 선택해 하이라이트를 남겨 보세요"
+                title="No highlights yet"
+                subtitle="Select a passage in a book to create a highlight"
               />
             )
           }

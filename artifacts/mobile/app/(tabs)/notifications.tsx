@@ -38,13 +38,13 @@ function timeAgo(dateStr: string | Date): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "방금 전";
-  if (diffMins < 60) return `${diffMins}분 전`;
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
   const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}시간 전`;
+  if (diffHours < 24) return `${diffHours}h ago`;
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}일 전`;
-  return `${Math.floor(diffDays / 30)}개월 전`;
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return `${Math.floor(diffDays / 30)}mo ago`;
 }
 
 function NotificationCard({
@@ -70,12 +70,12 @@ function NotificationCard({
     !!onViewInBook && !isFriendRequest && !isFriendAccept && !!item.quoteId;
 
   const title = isReply
-    ? "님이 내 댓글에 답글을 남겼어요"
+    ? " replied to your comment"
     : isFriendRequest
-      ? "님이 친구 요청을 보냈어요"
+      ? " sent you a friend request"
       : isFriendAccept
-        ? "님이 친구 요청을 수락했어요"
-        : "님이 나를 멘션했어요";
+        ? " accepted your friend request"
+        : " mentioned you";
 
   return (
     <Pressable
@@ -124,7 +124,7 @@ function NotificationCard({
               style={[styles.quoteLabel, { color: colors.mutedForeground }]}
               numberOfLines={1}
             >
-              "{item.quoteText}" 문장에서
+              on "{item.quoteText}"
             </Text>
           ) : null}
 
@@ -139,7 +139,7 @@ function NotificationCard({
             >
               <Feather name="book-open" size={13} color={colors.primary} />
               <Text style={[styles.viewInBookText, { color: colors.primary }]}>
-                책에서 보기
+                View in book
               </Text>
             </Pressable>
           ) : null}
@@ -159,7 +159,7 @@ function NotificationCard({
                 ]}
               >
                 <Text style={[styles.friendBtnText, { color: colors.primaryForeground }]}>
-                  수락
+                  Accept
                 </Text>
               </Pressable>
               <Pressable
@@ -177,7 +177,7 @@ function NotificationCard({
                 ]}
               >
                 <Text style={[styles.friendBtnText, { color: colors.mutedForeground }]}>
-                  거절
+                  Decline
                 </Text>
               </Pressable>
             </View>
@@ -235,11 +235,11 @@ export default function NotificationsScreen() {
     [markOneRead, queryClient, userId],
   );
 
-  // 기존 동작: 알림이 가리키는 인용의 댓글 시트를 연다.
+  // Default behavior: open the comment sheet for the quote the notification points to.
   const openCommentSheetFor = useCallback(async (item: NotificationItem) => {
     // The referenced comment was deleted — nothing to navigate to.
     if (!item.quoteId) {
-      Alert.alert("이동할 수 없어요", "원본 댓글이 삭제되었어요.");
+      Alert.alert("Can't open this", "The original comment was deleted.");
       return;
     }
 
@@ -250,9 +250,9 @@ export default function NotificationsScreen() {
         setSheetThread(parent);
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
-          Alert.alert("이동할 수 없어요", "댓글이 삭제되었거나 볼 수 없는 댓글이에요.");
+          Alert.alert("Can't open this", "This comment was deleted or isn't available.");
         } else {
-          Alert.alert("이동할 수 없어요", "댓글을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+          Alert.alert("Can't open this", "Couldn't load the comment. Please try again in a moment.");
         }
         return;
       }
@@ -280,13 +280,13 @@ export default function NotificationsScreen() {
     [markItemRead, openCommentSheetFor],
   );
 
-  // "책에서 보기": 책이 내 서재에 있으면 리더를 해당 문장 딥링크로 열고,
-  // 서재에 없거나 실패하면 기존 댓글 시트 동작으로 폴백한다.
+  // "View in book": if the book is in the library, open the reader deep-linked to the
+  // passage; if it isn't in the library or the attempt fails, fall back to the comment sheet.
   const handleViewInBook = useCallback(
     (item: NotificationItem) => {
       markItemRead(item);
       if (!item.quoteId) {
-        Alert.alert("이동할 수 없어요", "원본 댓글이 삭제되었어요.");
+        Alert.alert("Can't open this", "The original comment was deleted.");
         return;
       }
       navigateToQuote(item.quoteId, {
@@ -331,9 +331,9 @@ export default function NotificationsScreen() {
           onSuccess: () => invalidateFriendState(item.actorId),
           onError: (err) => {
             if (err instanceof ApiError && err.status === 404) {
-              Alert.alert("이미 처리된 요청이에요", "요청이 취소되었거나 이미 처리되었어요.");
+              Alert.alert("Request already handled", "This request was canceled or has already been handled.");
             } else {
-              Alert.alert("오류", "요청을 수락하지 못했어요. 잠시 후 다시 시도해 주세요.");
+              Alert.alert("Error", "Couldn't accept the request. Please try again in a moment.");
             }
             invalidateFriendState(item.actorId);
           },
@@ -351,9 +351,9 @@ export default function NotificationsScreen() {
           onSuccess: () => invalidateFriendState(item.actorId),
           onError: (err) => {
             if (err instanceof ApiError && err.status === 404) {
-              Alert.alert("이미 처리된 요청이에요", "요청이 취소되었거나 이미 처리되었어요.");
+              Alert.alert("Request already handled", "This request was canceled or has already been handled.");
             } else {
-              Alert.alert("오류", "요청을 거절하지 못했어요. 잠시 후 다시 시도해 주세요.");
+              Alert.alert("Error", "Couldn't decline the request. Please try again in a moment.");
             }
             invalidateFriendState(item.actorId);
           },
@@ -389,7 +389,7 @@ export default function NotificationsScreen() {
     >
       <View style={[styles.header, { borderColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>
-          알림
+          Notifications
           {unreadCount > 0 ? (
             <Text style={[styles.badge, { color: colors.primary }]}>
               {" "}
@@ -404,7 +404,7 @@ export default function NotificationsScreen() {
           >
             <Feather name="check-circle" size={16} color={colors.primary} />
             <Text style={[styles.markBtnText, { color: colors.primary }]}>
-              모두 읽음
+              Mark all read
             </Text>
           </Pressable>
         ) : null}
@@ -452,8 +452,8 @@ export default function NotificationsScreen() {
           ListEmptyComponent={
             <EmptyState
               icon="bell"
-              title="알림이 없어요"
-              subtitle="누군가 내 댓글에 답글을 남기거나 나를 멘션하면 여기에 표시돼요"
+              title="No notifications yet"
+              subtitle="When someone replies to your comment or mentions you, it'll show up here"
             />
           }
         />

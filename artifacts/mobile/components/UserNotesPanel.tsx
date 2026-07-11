@@ -70,7 +70,7 @@ function QuoteNoteRow({
         {myComment ? (
           <View style={styles.commentBox}>
             <Text style={[styles.commentLabel, { color: colors.primary }]}>
-              내 코멘트
+              My comment
             </Text>
             <Text
               style={[styles.commentText, { color: colors.mutedForeground }]}
@@ -79,13 +79,13 @@ function QuoteNoteRow({
               {myComment.text}
             </Text>
             <Text style={[styles.date, { color: colors.mutedForeground }]}>
-              {new Date(myComment.createdAt).toLocaleDateString("ko-KR")}
+              {new Date(myComment.createdAt).toLocaleDateString("en-US")}
             </Text>
           </View>
         ) : null}
         {!cfi ? (
           <Text style={[styles.noNav, { color: colors.mutedForeground + "80" }]}>
-            위치 정보 없음
+            No location info
           </Text>
         ) : null}
       </View>
@@ -126,18 +126,18 @@ export function UserNotesPanel({
           style={[styles.header, { borderBottomColor: colors.border + "80" }]}
         >
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            내 하이라이트
+            My highlights
           </Text>
           <Pressable onPress={onClose} hitSlop={16} style={styles.closeBtn}>
             <Text style={[styles.closeTxt, { color: colors.mutedForeground }]}>
-              닫기
+              Close
             </Text>
           </Pressable>
         </View>
 
         {quotes.length === 0 ? (
           <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-            아직 남긴 하이라이트나 메모가 없어요.
+            You haven't added any highlights or notes yet.
           </Text>
         ) : (
           <FlatList

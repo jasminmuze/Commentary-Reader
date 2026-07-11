@@ -126,24 +126,24 @@ export default function BookDetailScreen() {
               <View style={styles.statsRow}>
                 <View style={styles.stat}>
                   <Text style={[styles.statNum, { color: colors.foreground }]}>{book.highlightCount}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>하이라이트</Text>
+                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Highlights</Text>
                 </View>
                 <View style={styles.stat}>
                   <Text style={[styles.statNum, { color: colors.foreground }]}>{book.commentCount}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>코멘트</Text>
+                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Comments</Text>
                 </View>
                 <View style={styles.stat}>
                   <Text style={[styles.statNum, { color: colors.foreground }]}>{book.quoteCount}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>구절</Text>
+                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Passages</Text>
                 </View>
               </View>
             </View>
           </View>
 
           {/* Top quotes */}
-          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>가장 많이 하이라이트된 구절</Text>
+          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Most highlighted passages</Text>
           {book.topQuotes.length === 0 ? (
-            <Text style={[styles.emptyLine, { color: colors.mutedForeground }]}>아직 하이라이트된 구절이 없어요.</Text>
+            <Text style={[styles.emptyLine, { color: colors.mutedForeground }]}>No highlighted passages yet.</Text>
           ) : (
             book.topQuotes.map((q) => (
               <QuoteRow key={q.id} quote={q} colors={colors} onPress={() => openQuote(q.id, q.text)} />
@@ -151,9 +151,9 @@ export default function BookDetailScreen() {
           )}
 
           {/* Best comments */}
-          <Text style={[styles.sectionTitle, { color: colors.mutedForeground, marginTop: 24 }]}>베스트 코멘트</Text>
+          <Text style={[styles.sectionTitle, { color: colors.mutedForeground, marginTop: 24 }]}>Top comments</Text>
           {book.bestComments.length === 0 ? (
-            <Text style={[styles.emptyLine, { color: colors.mutedForeground }]}>아직 코멘트가 없어요.</Text>
+            <Text style={[styles.emptyLine, { color: colors.mutedForeground }]}>No comments yet.</Text>
           ) : (
             book.bestComments.map((c) => (
               <Pressable key={c.id} onPress={() => openQuote(c.quoteId, c.quoteText ?? "")}>

@@ -79,8 +79,8 @@ export default function BookRecordsScreen() {
   const handleOpenQuote = useCallback((quoteId: number) => {
     navigateToQuote(quoteId).catch(() => {
       Alert.alert(
-        "이동할 수 없어요",
-        "문장 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+        "Can't open this",
+        "Couldn't load the passage. Please try again in a moment.",
       );
     });
   }, []);
@@ -89,9 +89,9 @@ export default function BookRecordsScreen() {
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const sections: { value: Section; label: string; count: number }[] = [
-    { value: "highlights", label: "하이라이트", count: data?.highlights.length ?? 0 },
-    { value: "comments", label: "내 댓글", count: data?.comments.length ?? 0 },
-    { value: "saved", label: "저장", count: data?.savedComments.length ?? 0 },
+    { value: "highlights", label: "Highlights", count: data?.highlights.length ?? 0 },
+    { value: "comments", label: "My comments", count: data?.comments.length ?? 0 },
+    { value: "saved", label: "Saved", count: data?.savedComments.length ?? 0 },
   ];
 
   const rows: Row[] =
@@ -103,16 +103,16 @@ export default function BookRecordsScreen() {
 
   const emptyCopy: Record<Section, { title: string; subtitle: string }> = {
     highlights: {
-      title: "이 책에 남긴 하이라이트가 없어요",
-      subtitle: "책에서 문장을 선택해 하이라이트를 남겨 보세요",
+      title: "No highlights in this book yet",
+      subtitle: "Select a passage in the book to create a highlight",
     },
     comments: {
-      title: "이 책에 남긴 댓글이 없어요",
-      subtitle: "하이라이트를 탭해 생각을 남겨 보세요",
+      title: "No comments in this book yet",
+      subtitle: "Tap a highlight to share your thoughts",
     },
     saved: {
-      title: "이 책에서 저장한 댓글이 없어요",
-      subtitle: "댓글의 북마크 아이콘을 탭하면 여기에 저장돼요",
+      title: "No saved comments in this book yet",
+      subtitle: "Tap the bookmark icon on a comment to save it here",
     },
   };
 
@@ -133,7 +133,7 @@ export default function BookRecordsScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
-              {data?.book.title ?? "내 기록"}
+              {data?.book.title ?? "My records"}
             </Text>
             {data ? (
               <Text style={[styles.author, { color: colors.mutedForeground }]} numberOfLines={1}>
@@ -201,7 +201,7 @@ export default function BookRecordsScreen() {
                   {item.highlight.quoteText}
                 </Text>
                 <Text style={[styles.highlightMeta, { color: colors.mutedForeground }]}>
-                  {new Date(item.highlight.createdAt).toLocaleDateString("ko-KR")}
+                  {new Date(item.highlight.createdAt).toLocaleDateString("en-US")}
                 </Text>
               </View>
               <Feather name="chevron-right" size={16} color={colors.mutedForeground} />

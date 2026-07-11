@@ -70,7 +70,7 @@ export function ReaderSettingsPanel({
     }
   }, [visible, slideAnim]);
 
-  const panelBg = colors.card ?? "#161B22";
+  const panelBg = colors.card ?? "#FFFFFF";
   const selected = (active: boolean) => ({
     borderColor: active ? colors.primary : colors.border,
     backgroundColor: active ? colors.primary + "22" : "transparent",
@@ -103,7 +103,7 @@ export function ReaderSettingsPanel({
           ]}
         >
           <View style={[styles.panelHeader, { borderBottomColor: colors.border + "60" }]}>
-            <Text style={[styles.panelTitle, { color: colors.foreground }]}>읽기 설정</Text>
+            <Text style={[styles.panelTitle, { color: colors.foreground }]}>Reading settings</Text>
             <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={12}>
               <Feather name="x" size={20} color={colors.mutedForeground} />
             </Pressable>
@@ -114,7 +114,7 @@ export function ReaderSettingsPanel({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            <Section label="테마" colors={colors}>
+            <Section label="Theme" colors={colors}>
               <View style={styles.themeRow}>
                 {THEMES.map((t) => {
                   const cfg = THEME_CONFIGS[t];
@@ -145,7 +145,7 @@ export function ReaderSettingsPanel({
               </View>
             </Section>
 
-            <Section label="글꼴" colors={colors}>
+            <Section label="Font" colors={colors}>
               <View style={styles.pillRow}>
                 {FONTS.map((f) => {
                   const cfg = FONT_CONFIGS[f];
@@ -168,7 +168,7 @@ export function ReaderSettingsPanel({
               </View>
             </Section>
 
-            <Section label="글자 크기" colors={colors}>
+            <Section label="Font size" colors={colors}>
               <View style={styles.fontSizeRow}>
                 <Pressable
                   onPress={() => {
@@ -214,7 +214,7 @@ export function ReaderSettingsPanel({
               </Text>
             </Section>
 
-            <Section label="줄 간격" colors={colors}>
+            <Section label="Line spacing" colors={colors}>
               <SegmentedControl
                 options={LINE_SPACINGS}
                 labels={LINE_SPACINGS.map((k) => LINE_SPACING_LABELS[k])}
@@ -224,7 +224,7 @@ export function ReaderSettingsPanel({
               />
             </Section>
 
-            <Section label="하이라이트 색상" colors={colors}>
+            <Section label="Highlight color" colors={colors}>
               <View style={styles.highlightRow}>
                 {HIGHLIGHT_STYLES.map((hs) => {
                   const cfg = HIGHLIGHT_STYLE_CONFIGS[hs];
@@ -277,10 +277,10 @@ export function ReaderSettingsPanel({
               </View>
             </Section>
 
-            <Section label="스크롤 모드" colors={colors}>
+            <Section label="Scroll mode" colors={colors}>
               <SegmentedControl
                 options={["vertical", "paged"] as ScrollMode[]}
-                labels={["수직 스크롤", "페이지"]}
+                labels={["Scroll", "Paged"]}
                 selected={settings.scrollMode}
                 onSelect={(v) => onChange({ scrollMode: v as ScrollMode })}
                 colors={colors}
@@ -292,7 +292,7 @@ export function ReaderSettingsPanel({
               style={[styles.resetBtn, { borderColor: colors.border }]}
             >
               <Text style={[styles.resetText, { color: colors.mutedForeground }]}>
-                기본값으로 초기화
+                Reset to defaults
               </Text>
             </Pressable>
           </ScrollView>

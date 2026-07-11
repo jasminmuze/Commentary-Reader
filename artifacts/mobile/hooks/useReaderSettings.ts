@@ -50,9 +50,9 @@ export const FONT_CONFIGS: Record<ReaderFont, { css: string; label: string }> = 
 };
 
 export const LINE_SPACING_LABELS: Record<LineSpacing, string> = {
-  compact: "좁게",
-  normal:  "기본",
-  wide:    "넓게",
+  compact: "Compact",
+  normal:  "Normal",
+  wide:    "Wide",
 };
 
 export const LINE_SPACING_VALUES: Record<LineSpacing, string> = {
@@ -62,9 +62,9 @@ export const LINE_SPACING_VALUES: Record<LineSpacing, string> = {
 };
 
 export const MARGIN_LABELS: Record<MarginSize, string> = {
-  narrow: "좁게",
-  normal: "기본",
-  wide:   "넓게",
+  narrow: "Narrow",
+  normal: "Normal",
+  wide:   "Wide",
 };
 
 export const MARGIN_VALUES: Record<MarginSize, string> = {
@@ -77,13 +77,13 @@ export const HIGHLIGHT_STYLE_CONFIGS: Record<
   HighlightStyle,
   { color: string; annotationType: "highlight" | "underline"; label: string }
 > = {
-  yellow:    { color: "#F9E04B", annotationType: "highlight", label: "노랑" },
-  green:     { color: "#86EFAC", annotationType: "highlight", label: "초록" },
-  blue:      { color: "#93C5FD", annotationType: "highlight", label: "파랑" },
-  pink:      { color: "#F9A8D4", annotationType: "highlight", label: "핑크" },
-  purple:    { color: "#C4B5FD", annotationType: "highlight", label: "보라" },
-  orange:    { color: "#FCA96A", annotationType: "highlight", label: "주황" },
-  underline: { color: "#D4891A", annotationType: "underline", label: "밑줄" },
+  yellow:    { color: "#F9E04B", annotationType: "highlight", label: "Yellow" },
+  green:     { color: "#86EFAC", annotationType: "highlight", label: "Green" },
+  blue:      { color: "#93C5FD", annotationType: "highlight", label: "Blue" },
+  pink:      { color: "#F9A8D4", annotationType: "highlight", label: "Pink" },
+  purple:    { color: "#C4B5FD", annotationType: "highlight", label: "Purple" },
+  orange:    { color: "#FCA96A", annotationType: "highlight", label: "Orange" },
+  underline: { color: "#D4891A", annotationType: "underline", label: "Underline" },
 };
 
 export const FONT_SIZES = [14, 16, 18, 19, 21, 23, 26] as const;

@@ -27,7 +27,7 @@ export function UserAvatar({ username, avatarColor, size = 36 }: Props) {
       <Text
         style={[
           styles.initial,
-          { fontSize: size * 0.42, color: "#0E1117" },
+          { fontSize: size * 0.42, color: "#2C2621" },
         ]}
       >
         {initial}

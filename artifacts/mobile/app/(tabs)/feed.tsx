@@ -29,13 +29,13 @@ function timeAgo(dateStr: string): string {
   const date = new Date(dateStr);
   const diffMs = Date.now() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "방금 전";
-  if (diffMins < 60) return `${diffMins}분 전`;
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
   const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}시간 전`;
+  if (diffHours < 24) return `${diffHours}h ago`;
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}일 전`;
-  return `${Math.floor(diffDays / 30)}개월 전`;
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return `${Math.floor(diffDays / 30)}mo ago`;
 }
 
 function FeedCard({
@@ -74,8 +74,8 @@ function FeedCard({
             <Text style={styles.username}>{item.username}</Text>
             <Text style={{ color: colors.mutedForeground }}>
               {isComment
-                ? " 님이 댓글을 남겼어요"
-                : " 님이 문장을 하이라이트했어요"}
+                ? " left a comment"
+                : " highlighted a passage"}
             </Text>
           </Text>
           <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
@@ -148,8 +148,8 @@ export default function FeedScreen() {
       onFallback: () => router.push(`/book/${item.bookId}`),
     }).catch(() => {
       Alert.alert(
-        "이동할 수 없어요",
-        "문장 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+        "Can't open this",
+        "Couldn't load the passage. Please try again in a moment.",
       );
     });
   }, []);
@@ -168,7 +168,7 @@ export default function FeedScreen() {
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>Feed</Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          팔로우한 사람들의 하이라이트와 댓글을 모아봐요
+          Highlights and comments from people you follow
         </Text>
       </View>
 
@@ -190,8 +190,8 @@ export default function FeedScreen() {
           ) : (
             <EmptyState
               icon="users"
-              title="아직 피드가 비어 있어요"
-              subtitle="친구를 팔로우하면 그들의 하이라이트와 댓글이 여기에 모여요"
+              title="Your feed is empty"
+              subtitle="Follow friends to see their highlights and comments here"
             />
           )
         }

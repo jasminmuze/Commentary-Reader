@@ -34,13 +34,13 @@ export default function DiscoverScreen() {
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>Discover</Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          커뮤니티가 읽고 있는 책을 둘러보세요
+          Browse the books the community is reading
         </Text>
         <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
           <Feather name="search" size={18} color={colors.mutedForeground} />
           <TextInput
             style={[styles.searchInput, { color: colors.foreground }]}
-            placeholder="제목 또는 저자 검색"
+            placeholder="Search by title or author"
             placeholderTextColor={colors.mutedForeground}
             value={query}
             onChangeText={setQuery}
@@ -63,8 +63,8 @@ export default function DiscoverScreen() {
           ) : (
             <EmptyState
               icon="search"
-              title="검색 결과가 없어요"
-              subtitle="다른 검색어를 입력하거나 EPUB을 업로드해 새 책을 추가하세요"
+              title="No results found"
+              subtitle="Try a different search, or upload an EPUB to add a new book"
             />
           )
         }

@@ -10,9 +10,9 @@ export type ChapterPullState = {
 };
 
 /**
- * 스크롤 모드에서 챕터 끝/처음을 지나 계속 당길 때 나타나는 오버레이.
- * 네이티브 chapterPull 이벤트의 진행률(0~1+)에 비례해 점진적으로 표시되고,
- * 임계치(1.0)를 넘으면 "놓으면 이동" 상태로 바뀐다. 터치를 가로채지 않는다.
+ * Overlay that appears in scroll mode when you keep pulling past the end/start of a chapter.
+ * It fades in gradually in proportion to the native chapterPull event's progress (0~1+),
+ * and once it crosses the threshold (1.0) it switches to the "release to go" state. It does not intercept touches.
  */
 export function ChapterPullIndicator({
   state,
@@ -30,11 +30,11 @@ export function ChapterPullIndicator({
 
   const label = isNext
     ? armed
-      ? "놓으면 다음 챕터로 이동"
-      : "당겨서 다음 챕터"
+      ? "Release to go to the next chapter"
+      : "Pull for next chapter"
     : armed
-      ? "놓으면 이전 챕터로 이동"
-      : "당겨서 이전 챕터";
+      ? "Release to go to the previous chapter"
+      : "Pull for previous chapter";
 
   return (
     <View

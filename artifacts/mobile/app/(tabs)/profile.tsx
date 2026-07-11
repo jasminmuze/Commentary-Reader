@@ -50,9 +50,9 @@ export default function ProfileScreen() {
       void performLogout();
       return;
     }
-    Alert.alert("로그아웃", "정말 로그아웃할까요? 이 기기로 오던 푸시 알림도 중단돼요.", [
-      { text: "취소", style: "cancel" },
-      { text: "로그아웃", style: "destructive", onPress: () => void performLogout() },
+    Alert.alert("Log out", "Are you sure you want to log out? Push notifications to this device will also stop.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Log out", style: "destructive", onPress: () => void performLogout() },
     ]);
   };
 
@@ -101,7 +101,7 @@ export default function ProfileScreen() {
 
       {/* My records */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>내 활동</Text>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>My activity</Text>
         <Pressable
           onPress={() => router.push("/records")}
           style={({ pressed }) => [
@@ -124,9 +124,9 @@ export default function ProfileScreen() {
             <Feather name="book-open" size={16} color={colors.primaryForeground} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.visLabel, { color: colors.foreground }]}>내 기록</Text>
+            <Text style={[styles.visLabel, { color: colors.foreground }]}>My records</Text>
             <Text style={[styles.visDesc, { color: colors.mutedForeground }]}>
-              책별 하이라이트·댓글·저장 모아보기
+              Highlights, comments, and saves by book
             </Text>
           </View>
           <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
@@ -235,11 +235,11 @@ export default function ProfileScreen() {
         >
           <Feather name="log-out" size={18} color={colors.destructive} />
           <Text style={[styles.logoutText, { color: colors.destructive }]}>
-            {loggingOut ? "로그아웃 중..." : "로그아웃"}
+            {loggingOut ? "Logging out..." : "Log out"}
           </Text>
         </Pressable>
         <Text style={[styles.helperText, { color: colors.mutedForeground }]}>
-          로그아웃하면 이 기기로 오던 푸시 알림이 중단됩니다.
+          Logging out stops push notifications to this device.
         </Text>
       </View>
     </ScrollView>

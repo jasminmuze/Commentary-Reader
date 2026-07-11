@@ -41,7 +41,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("default", {
-      name: "알림",
+      name: "Notifications",
       importance: Notifications.AndroidImportance.DEFAULT,
       vibrationPattern: [0, 250, 250, 250],
     });

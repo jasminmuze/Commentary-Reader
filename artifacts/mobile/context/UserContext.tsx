@@ -99,23 +99,23 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
   const handleSubmit = useCallback(async () => {
     const trimmed = username.trim();
     if (trimmed.length < 2) {
-      setError("사용자 이름은 2자 이상이어야 해요");
+      setError("Username must be at least 2 characters");
       return;
     }
     if (trimmed.length > 30) {
-      setError("사용자 이름은 30자 이하여야 해요");
+      setError("Username must be 30 characters or fewer");
       return;
     }
     if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-      setError("영문, 숫자, 밑줄(_)만 사용할 수 있어요");
+      setError("Only letters, numbers, and underscores (_) are allowed");
       return;
     }
     if (mode === "signup" && password.length < 8) {
-      setError("비밀번호는 8자 이상이어야 해요");
+      setError("Password must be at least 8 characters");
       return;
     }
     if (mode === "login" && password.length === 0) {
-      setError("비밀번호를 입력해 주세요");
+      setError("Please enter your password");
       return;
     }
     setError("");
@@ -130,15 +130,15 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
         onError: (err: unknown) => {
           if (err instanceof ApiError) {
             if (err.status === 409) {
-              setError("이미 사용 중인 이름이에요. 로그인하시겠어요?");
+              setError("That username is already taken. Want to log in instead?");
               return;
             }
             if (err.status === 401) {
-              setError("이름 또는 비밀번호가 올바르지 않아요");
+              setError("Incorrect username or password");
               return;
             }
           }
-          setError("문제가 발생했어요. 잠시 후 다시 시도해 주세요.");
+          setError("Something went wrong. Please try again in a moment.");
         },
       },
     );
@@ -159,12 +159,12 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
           Bookmarks
         </Text>
         <Text style={[styles.onboardingSubtitle, { color: colors.mutedForeground }]}>
-          함께 읽어요. 마음을 움직인 문장에 남긴 다른 독자들의 생각을 만나 보세요.
+          Read together. Discover what other readers thought about the passages that moved them.
         </Text>
 
         <View style={styles.onboardingForm}>
           <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
-            사용자 이름
+            Username
           </Text>
           <TextInput
             style={[
@@ -176,7 +176,7 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
                 borderRadius: colors.radius,
               },
             ]}
-            placeholder="예: bookworm42"
+            placeholder="e.g. bookworm42"
             placeholderTextColor={colors.mutedForeground}
             value={username}
             onChangeText={(t) => { setUsername(t); setError(""); }}
@@ -186,7 +186,7 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
           />
 
           <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
-            비밀번호
+            Password
           </Text>
           <TextInput
             style={[
@@ -198,7 +198,7 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
                 borderRadius: colors.radius,
               },
             ]}
-            placeholder={mode === "signup" ? "8자 이상" : "비밀번호"}
+            placeholder={mode === "signup" ? "At least 8 characters" : "Password"}
             placeholderTextColor={colors.mutedForeground}
             value={password}
             onChangeText={(t) => { setPassword(t); setError(""); }}
@@ -228,7 +228,7 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
               <ActivityIndicator color={colors.primaryForeground} />
             ) : (
               <Text style={[styles.onboardingButtonText, { color: colors.primaryForeground }]}>
-                {mode === "signup" ? "가입하고 읽기 시작" : "로그인"}
+                {mode === "signup" ? "Sign up and start reading" : "Log in"}
               </Text>
             )}
           </Pressable>
@@ -242,8 +242,8 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
           >
             <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
               {mode === "signup"
-                ? "이미 계정이 있나요? 로그인"
-                : "계정이 없나요? 회원가입"}
+                ? "Already have an account? Log in"
+                : "Don't have an account? Sign up"}
             </Text>
           </Pressable>
         </View>
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
   onboardingIconText: {
     fontSize: 40,
     fontWeight: "800",
-    color: "#0E1117",
+    color: "#FFFFFF",
   },
   onboardingTitle: {
     fontSize: 32,

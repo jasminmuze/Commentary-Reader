@@ -33,9 +33,9 @@ function LibraryCard({ entry, onOpen, onMatch }: {
   onMatch: () => void;
 }) {
   const colors = useColors();
-  const title = entry.book?.title ?? entry.originalTitle ?? "제목 미상";
-  const author = entry.book?.author ?? entry.originalAuthor ?? "저자 미상";
-  const spineColor = entry.book?.coverColor ?? "#3A3F4B";
+  const title = entry.book?.title ?? entry.originalTitle ?? "Untitled";
+  const author = entry.book?.author ?? entry.originalAuthor ?? "Unknown author";
+  const spineColor = entry.book?.coverColor ?? "#A08B76";
   const matched = !!entry.canonicalBookId;
 
   return (
@@ -62,13 +62,13 @@ function LibraryCard({ entry, onOpen, onMatch }: {
           <View style={styles.chipRow}>
             <View style={[styles.chip, { backgroundColor: `${colors.primary}22` }]}>
               <Feather name="check-circle" size={12} color={colors.primary} />
-              <Text style={[styles.chipText, { color: colors.primary }]}>매칭됨 · {entry.book?.highlightCount ?? 0} 하이라이트</Text>
+              <Text style={[styles.chipText, { color: colors.primary }]}>Matched · {entry.book?.highlightCount ?? 0} highlights</Text>
             </View>
           </View>
         ) : (
           <Pressable onPress={onMatch} style={[styles.matchInline, { borderColor: colors.primary }]}>
             <Feather name="link" size={12} color={colors.primary} />
-            <Text style={[styles.chipText, { color: colors.primary }]}>커뮤니티 책과 매칭하기</Text>
+            <Text style={[styles.chipText, { color: colors.primary }]}>Match to a community book</Text>
           </Pressable>
         )}
 
@@ -86,7 +86,7 @@ function LibraryCard({ entry, onOpen, onMatch }: {
               />
             </View>
             <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>
-              {entry.readingProgress}% 읽음
+              {entry.readingProgress}% read
             </Text>
           </View>
         )}
@@ -121,7 +121,7 @@ export default function LibraryScreen() {
       if (picked.canceled || !picked.assets?.[0]) return;
       const asset = picked.assets[0];
       if (!/\.epub$/i.test(asset.name ?? "")) {
-        Alert.alert("EPUB 파일만 가능해요", "확장자가 .epub인 파일을 선택해 주세요.");
+        Alert.alert("EPUB files only", "Please choose a file with the .epub extension.");
         return;
       }
       setUploading(true);
@@ -138,14 +138,14 @@ export default function LibraryScreen() {
             }
           },
           onError: () => {
-            Alert.alert("업로드 실패", "라이브러리에 추가하지 못했어요. 다시 시도해 주세요.");
+            Alert.alert("Upload failed", "Couldn't add this to your library. Please try again.");
           },
           onSettled: () => setUploading(false),
         }
       );
     } catch (e) {
       setUploading(false);
-      Alert.alert("업로드 실패", e instanceof Error ? e.message : "파일을 업로드하지 못했어요.");
+      Alert.alert("Upload failed", e instanceof Error ? e.message : "Couldn't upload the file.");
     }
   }, [user, uploading, createLibraryEntry, queryClient]);
 
@@ -193,8 +193,8 @@ export default function LibraryScreen() {
           ) : (
             <EmptyState
               icon="upload"
-              title="라이브러리가 비어 있어요"
-              subtitle="오른쪽 위 + 버튼을 눌러 EPUB 파일을 업로드하고 읽기를 시작하세요"
+              title="Your library is empty"
+              subtitle="Tap the + button in the top right to upload an EPUB and start reading"
             />
           )
         }

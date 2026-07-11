@@ -66,18 +66,18 @@ export function TocPanel({ visible, toc, onSelect, onClose }: Props) {
       >
         <View style={[styles.header, { borderBottomColor: colors.border + "80" }]}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            목차
+            Contents
           </Text>
           <Pressable onPress={onClose} hitSlop={16} style={styles.closeBtn}>
             <Text style={[styles.closeTxt, { color: colors.mutedForeground }]}>
-              닫기
+              Close
             </Text>
           </Pressable>
         </View>
 
         {flatItems.length === 0 ? (
           <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-            목차 정보가 없어요
+            No table of contents available
           </Text>
         ) : (
           <FlatList

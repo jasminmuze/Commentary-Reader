@@ -174,18 +174,18 @@ function NativeReadiumUnavailableScreen() {
     <View style={[styles.center, { backgroundColor: colors.background, padding: 28 }]}>
       <Feather name="book-open" size={34} color={colors.primary} />
       <Text style={[styles.title, { color: colors.foreground, marginTop: 16 }]}>
-        Android 개발 빌드가 필요해요
+        An Android development build is required
       </Text>
       <Text style={[styles.body, { color: colors.mutedForeground }]}>
-        네이티브 Readium 리더는 Android 빌드 안에서 동작해요. Expo Go와 웹 미리보기에서는 앱
-        셸만 확인할 수 있고, EPUB 리더는 개발용 APK를 설치한 뒤에 열 수 있어요.
+        The native Readium reader only runs inside an Android build. In Expo Go and the web preview you can
+        only see the app shell; the EPUB reader opens once you install the development APK.
       </Text>
       <Pressable
         style={[styles.button, { borderColor: colors.border, marginTop: 20 }]}
         onPress={() => router.back()}
       >
         <Feather name="arrow-left" size={16} color={colors.foreground} />
-        <Text style={[styles.buttonText, { color: colors.foreground }]}>돌아가기</Text>
+        <Text style={[styles.buttonText, { color: colors.foreground }]}>Go back</Text>
       </Pressable>
     </View>
   );
@@ -247,14 +247,14 @@ function EmbeddedReader({
     cfiRange?: string;
   } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
-  // 스크롤 모드 챕터 당김 인디케이터 (네이티브 chapterPull 이벤트로 구동)
+  // Scroll-mode chapter pull indicator (driven by the native chapterPull event)
   const [chapterPull, setChapterPull] = useState<ChapterPullState | null>(null);
   const pullArmedRef = useRef(false);
 
-  // 초기 위치/설정은 한 번만 캡처 — 뷰가 이미 열린 뒤 prop 이 바뀌어도
-  // 네이티브 쪽에서 재오픈하지 않으므로 여기서도 고정한다.
-  // 설정은 이 훅 인스턴스의 AsyncStorage 로드가 끝난 뒤에 캡처해야 하므로
-  // (각 useReaderSettings 인스턴스가 독립적으로 로드함) loaded 이후 렌더에서 잠근다.
+  // Capture the initial location/settings only once — even if the prop changes after the view
+  // is already open, the native side doesn't reopen, so we lock it here too.
+  // Settings must be captured after this hook instance finishes loading from AsyncStorage
+  // (each useReaderSettings instance loads independently), so we lock it in a render after `loaded`.
   const initialLocatorRef = useRef<string | null>(entry.lastReadingLocation ?? null);
   const initialSettingsJsonRef = useRef<string | null>(null);
   if (settingsLoaded && initialSettingsJsonRef.current === null) {
@@ -266,7 +266,7 @@ function EmbeddedReader({
     quotesRef.current = quotes;
   }, [quotes]);
 
-  // quoteId -> locator JSON string (이 판본에서 찾은 위치)
+  // quoteId -> locator JSON string (the position found in this edition)
   const locatorByQuoteIdRef = useRef<Map<number, string>>(new Map());
   const requestedQuoteIdsRef = useRef<Set<number>>(new Set());
   const [locatedVersion, setLocatedVersion] = useState(0);
@@ -282,11 +282,11 @@ function EmbeddedReader({
   const ensureMatched = useCallback(() => {
     if (!canonicalBookIdRef.current) {
       Alert.alert(
-        "먼저 책을 매칭하세요",
-        "커뮤니티 하이라이트와 코멘트를 사용하려면 이 책을 매칭해야 해요.",
+        "Match this book first",
+        "You need to match this book to use community highlights and comments.",
         [
-          { text: "취소", style: "cancel" },
-          { text: "매칭하기", onPress: () => router.push(`/match/${libraryId}`) },
+          { text: "Cancel", style: "cancel" },
+          { text: "Match", onPress: () => router.push(`/match/${libraryId}`) },
         ],
       );
       return false;
@@ -346,8 +346,8 @@ function EmbeddedReader({
       } catch {
         continue;
       }
-      // 내가 하이라이트한 인용은 설정에서 고른 색상/스타일로,
-      // 커뮤니티 하이라이트는 인기 강도에 따른 앰버색으로 표시한다.
+      // Show my own highlights in the color/style chosen in settings,
+      // and community highlights in amber scaled by their popularity intensity.
       const mine = quote?.highlightedByMe === true;
       decorations.push({
         id: `${QUOTE_DECORATION_PREFIX}${quoteId}`,
@@ -366,7 +366,7 @@ function EmbeddedReader({
     nativeReadium
       .applyDecorations(libraryId, DECORATION_GROUP, JSON.stringify(decorations))
       .catch((error) => {
-        console.warn("[NativeReadium] 데코레이션 적용 실패:", error);
+        console.warn("[NativeReadium] Failed to apply decorations:", error);
       });
   }, [libraryId, nativeReadium, myHighlightStyle]);
 
@@ -374,9 +374,9 @@ function EmbeddedReader({
     if (opened) applyAllDecorations();
   }, [opened, locatedVersion, quotes, applyAllDecorations]);
 
-  // 아직 위치를 찾지 않은 인용을 이 판본에서 검색.
-  // 1차: 인용 전체 텍스트로 검색해 문장 전체가 하이라이트되게 하고,
-  // 2차: (판본 차이로) 못 찾은 인용만 선행 substring 으로 폴백 검색한다.
+  // Search this edition for quotes whose position hasn't been found yet.
+  // Pass 1: search by the quote's full text so the whole passage gets highlighted.
+  // Pass 2: for quotes still not found (due to edition differences), fall back to searching a leading substring.
   useEffect(() => {
     if (!opened || !searchable || !canonicalBookId) return;
     const requests = quotes
@@ -410,7 +410,7 @@ function EmbeddedReader({
           const results = JSON.parse(resultJson) as { quoteId: number }[];
           for (const r of results) foundIds.add(r.quoteId);
         } catch (error) {
-          console.warn("[NativeReadium] 인용 전체 텍스트 검색 실패:", error);
+          console.warn("[NativeReadium] Failed to search quote full text:", error);
         }
       }
       const fallback = requests
@@ -421,39 +421,39 @@ function EmbeddedReader({
       }
     })()
       .catch((error) => {
-        console.warn("[NativeReadium] 인용 위치 검색 실패:", error);
+        console.warn("[NativeReadium] Failed to search quote positions:", error);
       })
       .finally(() => setAnchoring(false));
   }, [opened, searchable, canonicalBookId, quotes, libraryId, nativeReadium]);
 
   // -------------------------------------------------------------------
-  // 딥링크: 목표 문장(저장한 댓글/알림에서 진입)으로 이동 후 댓글 시트 열기
+  // Deep link: navigate to the target passage (entered from a saved comment/notification), then open the comment sheet
   // -------------------------------------------------------------------
 
   const targetHandledRef = useRef(false);
   const targetSearchStartedRef = useRef(false);
   const targetNotifiedRef = useRef(false);
 
-  // 못 찾은 경우: 리더는 그대로 두고 한국어 안내 후 댓글 시트만 연다.
+  // If not found: leave the reader as is, show a notice, and just open the comment sheet.
   const notifyTargetNotFound = useCallback(
     (message: string) => {
       if (!targetQuote || targetNotifiedRef.current || targetHandledRef.current) return;
       targetNotifiedRef.current = true;
-      Alert.alert("문장을 찾지 못했어요", message);
+      Alert.alert("Couldn't find this passage", message);
       setSelectedQuote({ id: targetQuote.id, text: targetQuote.text });
       setSheetVisible(true);
     },
     [targetQuote],
   );
 
-  // 위치가 확보되면(커뮤니티 앵커링 or 아래의 전용 검색) 그 문장으로 이동.
+  // Once a position is available (from community anchoring or the dedicated search below), navigate to that passage.
   useEffect(() => {
     if (!targetQuote || targetHandledRef.current || !opened) return;
     const locatorJson = locatorByQuoteIdRef.current.get(targetQuote.id);
     if (!locatorJson) return;
     targetHandledRef.current = true;
     nativeReadium.goToLocator(libraryId, locatorJson).catch((error) => {
-      console.warn("[NativeReadium] 목표 문장 이동 실패:", error);
+      console.warn("[NativeReadium] Failed to navigate to target passage:", error);
     });
     const quote = quotesRef.current.find((q) => q.id === targetQuote.id);
     setSelectedQuote({
@@ -464,14 +464,14 @@ function EmbeddedReader({
     setSheetVisible(true);
   }, [targetQuote, opened, locatedVersion, libraryId, nativeReadium]);
 
-  // 목표 문장 전용 검색: 커뮤니티 목록에 없거나 아직 못 찾았을 때 직접 검색한다.
-  // (전체 텍스트 → 선행 substring 폴백, 커뮤니티 앵커링과 같은 방식)
+  // Dedicated search for the target passage: search directly when it's not in the community list or hasn't been found yet.
+  // (full text -> leading substring fallback, same approach as community anchoring)
   useEffect(() => {
     if (!targetQuote || !opened || targetSearchStartedRef.current) return;
     if (targetHandledRef.current || locatorByQuoteIdRef.current.has(targetQuote.id)) return;
     if (!searchable) {
       notifyTargetNotFound(
-        "이 책에서는 본문 검색이 지원되지 않아 문장 위치로 이동할 수 없어요. 댓글은 계속 볼 수 있어요.",
+        "This book doesn't support text search, so we can't jump to the passage. You can still view the comments.",
       );
       return;
     }
@@ -490,7 +490,7 @@ function EmbeddedReader({
           const results = JSON.parse(resultJson) as { quoteId: number }[];
           found = results.some((r) => r.quoteId === targetQuote.id);
         } catch (error) {
-          console.warn("[NativeReadium] 목표 문장 전체 텍스트 검색 실패:", error);
+          console.warn("[NativeReadium] Failed to search target passage full text:", error);
         }
       }
       if (!found && leading.length > 0 && leading !== fullText) {
@@ -502,16 +502,16 @@ function EmbeddedReader({
           const results = JSON.parse(resultJson) as { quoteId: number }[];
           found = results.some((r) => r.quoteId === targetQuote.id);
         } catch (error) {
-          console.warn("[NativeReadium] 목표 문장 폴백 검색 실패:", error);
+          console.warn("[NativeReadium] Failed to run target passage fallback search:", error);
         }
       }
       if (!found) {
-        // locator 이벤트(커뮤니티 앵커링 or 위 검색 결과)가 약간 늦게 도착할 수
-        // 있으므로 잠시 기다렸다가 최종 판정한다 (오탐 알림 방지).
+        // The locator event (from community anchoring or the search above) may arrive
+        // slightly late, so wait a moment before making the final call (to avoid false-positive alerts).
         setTimeout(() => {
           if (locatorByQuoteIdRef.current.has(targetQuote.id)) return;
           notifyTargetNotFound(
-            "판본 차이로 이 책에서는 해당 문장의 위치를 찾지 못했어요. 댓글은 계속 볼 수 있어요.",
+            "Because of edition differences, we couldn't find this passage's position in this book. You can still view the comments.",
           );
         }, 1500);
       }
@@ -519,14 +519,14 @@ function EmbeddedReader({
   }, [targetQuote, opened, searchable, libraryId, nativeReadium, notifyTargetNotFound]);
 
   // -------------------------------------------------------------------
-  // Selection actions (하이라이트 / 댓글)
+  // Selection actions (highlight / comment)
   // -------------------------------------------------------------------
 
   const handleTextSelected = useCallback(
     (event: TextSelectedEvent) => {
       const trimmed = event.text.trim();
       if (trimmed.length < 8) {
-        Alert.alert("너무 짧아요", "최소 8자 이상 선택해 주세요.");
+        Alert.alert("Too short", "Please select at least 8 characters.");
         return;
       }
       if (!ensureMatched()) return;
@@ -561,8 +561,8 @@ function EmbeddedReader({
           },
           onError: () =>
             Alert.alert(
-              event.action === "highlight" ? "하이라이트 실패" : "실패",
-              "다시 시도해 주세요.",
+              event.action === "highlight" ? "Highlight failed" : "Something went wrong",
+              "Please try again.",
             ),
         },
       );
@@ -683,7 +683,7 @@ function EmbeddedReader({
         "NativeReadiumHost.error",
         (event: { libraryId: number; message?: string }) => {
           if (event.libraryId !== libraryId) return;
-          onFatalError(event.message ?? "리더를 여는 중 오류가 발생했어요.");
+          onFatalError(event.message ?? "Something went wrong while opening the reader.");
         },
       ),
       DeviceEventEmitter.addListener(
@@ -722,7 +722,7 @@ function EmbeddedReader({
       updateSettings(patch);
       const next = { ...settingsRef.current, ...patch };
       nativeReadium.submitPreferences(libraryId, JSON.stringify(next)).catch((error) => {
-        console.warn("[NativeReadium] 설정 적용 실패:", error);
+        console.warn("[NativeReadium] Failed to apply settings:", error);
       });
     },
     [libraryId, nativeReadium, settingsRef, updateSettings],
@@ -732,7 +732,7 @@ function EmbeddedReader({
     resetSettings();
     setSettingsPanelVisible(false);
     nativeReadium.submitPreferences(libraryId, "{}").catch((error) => {
-      console.warn("[NativeReadium] 설정 초기화 실패:", error);
+      console.warn("[NativeReadium] Failed to reset settings:", error);
     });
   }, [libraryId, nativeReadium, resetSettings]);
 
@@ -745,9 +745,9 @@ function EmbeddedReader({
 
   const subtitle = canonicalBookId
     ? anchoring
-      ? "커뮤니티 하이라이트 표시 중…"
-      : `커뮤니티 하이라이트 ${anchoredCount}개`
-    : "매칭되지 않음 · 텍스트를 길게 눌러 선택하세요";
+      ? "Showing community highlights…"
+      : `${anchoredCount} community highlights`
+    : "Not matched · long-press text to select";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -765,7 +765,7 @@ function EmbeddedReader({
         <View style={[StyleSheet.absoluteFill, styles.center, { backgroundColor: colors.background }]}>
           <ActivityIndicator color={colors.primary} />
           <Text style={{ color: colors.mutedForeground, marginTop: 10, fontSize: 13 }}>
-            책 여는 중…
+            Opening book…
           </Text>
         </View>
       ) : null}
@@ -794,7 +794,7 @@ function EmbeddedReader({
           </Pressable>
           <View style={styles.titleWrap}>
             <Text style={[styles.headerTitle, { color: colors.foreground }]} numberOfLines={1}>
-              {entry.book?.title ?? entry.originalTitle ?? "내 책"}
+              {entry.book?.title ?? entry.originalTitle ?? "My book"}
             </Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]} numberOfLines={1}>
               {subtitle}
@@ -805,7 +805,7 @@ function EmbeddedReader({
               onPress={() => router.push(`/match/${libraryId}`)}
               style={[styles.matchBtn, { borderColor: colors.primary }]}
             >
-              <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}>매칭</Text>
+              <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}>Match</Text>
             </Pressable>
           ) : null}
           <Pressable style={styles.settingsBtn} onPress={() => setNotesVisible(true)}>
@@ -855,7 +855,7 @@ function EmbeddedReader({
         onSelect={(href) => {
           setTocVisible(false);
           nativeReadium.goToHref(libraryId, href).catch((error) => {
-            console.warn("[NativeReadium] 목차 이동 실패:", error);
+            console.warn("[NativeReadium] Failed to navigate from table of contents:", error);
           });
         }}
         onClose={() => setTocVisible(false)}
@@ -869,7 +869,7 @@ function EmbeddedReader({
         onNavigate={(locatorJson) => {
           setNotesVisible(false);
           nativeReadium.goToLocator(libraryId, locatorJson).catch((error) => {
-            console.warn("[NativeReadium] 노트 이동 실패:", error);
+            console.warn("[NativeReadium] Failed to navigate from note:", error);
           });
         }}
         onClose={() => setNotesVisible(false)}
@@ -934,7 +934,7 @@ export default function ReadiumRoute() {
 
   const [localSrc, setLocalSrc] = useState<string | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
-  const [status, setStatus] = useState("EPUB 준비 중…");
+  const [status, setStatus] = useState("Preparing EPUB…");
   const [retryNonce, setRetryNonce] = useState(0);
 
   const { data: entry, isFetching } = useGetLibraryEntry(libraryId, {
@@ -974,7 +974,7 @@ export default function ReadiumRoute() {
     };
 
     (async () => {
-      setStatus("로컬 EPUB 캐시 확인 중…");
+      setStatus("Checking local EPUB cache…");
       const info = await getFileInfo(dest);
       if (cancelled) return;
 
@@ -983,12 +983,12 @@ export default function ReadiumRoute() {
         return;
       }
 
-      setStatus("EPUB 다운로드 중…");
+      setStatus("Downloading EPUB…");
       const result = await downloadFile(remote, tmp);
 
       if (!result.uri) {
         await deleteAsync(tmp);
-        if (!cancelled) setFatalError("EPUB 다운로드에 실패했어요.");
+        if (!cancelled) setFatalError("Failed to download the EPUB.");
         return;
       }
 
@@ -997,7 +997,7 @@ export default function ReadiumRoute() {
         await deleteAsync(tmp);
         if (!cancelled) {
           setFatalError(
-            "내려받은 파일이 올바른 EPUB이 아니에요 (서버가 오류 페이지를 반환했을 수 있어요). 다시 시도해 주세요.",
+            "The downloaded file isn't a valid EPUB (the server may have returned an error page). Please try again.",
           );
         }
         return;
@@ -1019,7 +1019,7 @@ export default function ReadiumRoute() {
         // best-effort cleanup
       }
       if (!cancelled) {
-        setFatalError(error instanceof Error ? error.message : "EPUB 다운로드에 실패했어요.");
+        setFatalError(error instanceof Error ? error.message : "Failed to download the EPUB.");
       }
     });
 
@@ -1048,7 +1048,7 @@ export default function ReadiumRoute() {
   if (!Number.isFinite(libraryId)) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, padding: 24 }]}>
-        <Text style={{ color: colors.foreground }}>잘못된 서재 항목이에요.</Text>
+        <Text style={{ color: colors.foreground }}>This library entry is invalid.</Text>
       </View>
     );
   }
@@ -1056,9 +1056,9 @@ export default function ReadiumRoute() {
   if (fatalError) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background, padding: 24 }]}>
-        <Feather name="alert-circle" size={34} color="#FF6B6B" />
+        <Feather name="alert-circle" size={34} color={colors.destructive} />
         <Text style={[styles.title, { color: colors.foreground, marginTop: 16 }]}>
-          리더를 열 수 없어요
+          Can't open the reader
         </Text>
         <Text style={[styles.body, { color: colors.mutedForeground }]}>{fatalError}</Text>
         <Pressable
@@ -1070,7 +1070,7 @@ export default function ReadiumRoute() {
           }}
         >
           <Feather name="refresh-cw" size={16} color={colors.foreground} />
-          <Text style={[styles.buttonText, { color: colors.foreground }]}>다시 시도</Text>
+          <Text style={[styles.buttonText, { color: colors.foreground }]}>Try again</Text>
         </Pressable>
       </View>
     );
@@ -1081,10 +1081,10 @@ export default function ReadiumRoute() {
       <View style={[styles.center, { backgroundColor: colors.background, padding: 28 }]}>
         <ActivityIndicator color={colors.primary} />
         <Text style={[styles.title, { color: colors.foreground, marginTop: 18 }]}>
-          {entry?.book?.title ?? entry?.originalTitle ?? "책 여는 중"}
+          {entry?.book?.title ?? entry?.originalTitle ?? "Opening book"}
         </Text>
         <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          {isFetching && !entryReady ? "서재 항목 불러오는 중…" : status}
+          {isFetching && !entryReady ? "Loading library entry…" : status}
         </Text>
       </View>
     );

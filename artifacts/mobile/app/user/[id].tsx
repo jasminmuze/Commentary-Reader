@@ -93,7 +93,7 @@ export default function UserProfileScreen() {
       <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
         <Feather name="arrow-left" size={22} color={colors.foreground} />
       </Pressable>
-      <Text style={[styles.navTitle, { color: colors.foreground }]}>프로필</Text>
+      <Text style={[styles.navTitle, { color: colors.foreground }]}>Profile</Text>
       <View style={styles.backBtn} />
     </View>
   );
@@ -105,7 +105,7 @@ export default function UserProfileScreen() {
         <View style={styles.center}>
           <Feather name="user-x" size={40} color={colors.mutedForeground} />
           <Text style={[styles.notFound, { color: colors.mutedForeground }]}>
-            사용자를 찾을 수 없어요.
+            We couldn't find this user.
           </Text>
         </View>
       </View>
@@ -123,26 +123,26 @@ export default function UserProfileScreen() {
     );
   }
 
-  const memberSince = new Date(profile.createdAt).toLocaleDateString("ko-KR", {
+  const memberSince = new Date(profile.createdAt).toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
   });
 
   const followLabel = profile.isFollowedByMe
-    ? "팔로잉"
+    ? "Following"
     : profile.followsMe
-      ? "맞팔로우"
-      : "팔로우";
+      ? "Follow back"
+      : "Follow";
 
   const friendStatus = profile.friendStatus;
   const friendLabel =
     friendStatus === "friends"
-      ? "친구"
+      ? "Friends"
       : friendStatus === "requested"
-        ? "요청됨"
+        ? "Requested"
         : friendStatus === "incoming"
-          ? "요청 수락"
-          : "친구 추가";
+          ? "Accept request"
+          : "Add friend";
   const friendIcon: React.ComponentProps<typeof Feather>["name"] =
     friendStatus === "friends"
       ? "check"
@@ -157,10 +157,10 @@ export default function UserProfileScreen() {
   const friendActive = friendStatus === "none" || friendStatus === "incoming";
 
   const stats: { label: string; value: number }[] = [
-    { label: "팔로워", value: profile.followerCount },
-    { label: "팔로잉", value: profile.followingCount },
-    { label: "하이라이트", value: profile.highlightCount },
-    { label: "댓글", value: profile.commentCount },
+    { label: "Followers", value: profile.followerCount },
+    { label: "Following", value: profile.followingCount },
+    { label: "Highlights", value: profile.highlightCount },
+    { label: "Comments", value: profile.commentCount },
   ];
 
   return (
@@ -174,11 +174,11 @@ export default function UserProfileScreen() {
           <UserAvatar username={profile.username} avatarColor={profile.avatarColor} size={88} />
           <Text style={[styles.name, { color: colors.foreground }]}>{profile.username}</Text>
           <Text style={[styles.since, { color: colors.mutedForeground }]}>
-            {memberSince}부터 함께 읽는 중
+            Reading along since {memberSince}
           </Text>
           {profile.followsMe && !profile.isMe ? (
             <View style={[styles.followsBadge, { backgroundColor: colors.muted, borderRadius: colors.radius }]}>
-              <Text style={[styles.followsBadgeText, { color: colors.mutedForeground }]}>나를 팔로우함</Text>
+              <Text style={[styles.followsBadgeText, { color: colors.mutedForeground }]}>Follows you</Text>
             </View>
           ) : null}
         </View>

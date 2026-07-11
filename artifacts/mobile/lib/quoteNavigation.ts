@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 import { router } from "expo-router";
 import { getQuoteReaderContext } from "@workspace/api-client-react";
 
-/** 네이티브 Readium 리더를 쓸 수 있는 환경인지 (Android 개발/EAS 빌드에서만). */
+/** Whether the environment can use the native Readium reader (Android dev/EAS builds only). */
 export function canUseNativeReader(): boolean {
   if (Platform.OS !== "android" || Constants.appOwnership === "expo") return false;
   const host = NativeModules.NativeReadiumHost as
@@ -13,9 +13,9 @@ export function canUseNativeReader(): boolean {
 }
 
 /**
- * 저장한 댓글/알림에서 인용(quote)을 탭했을 때의 이동 분기.
- * - 책이 내 서재에 있고 네이티브 리더 사용 가능 → 리더를 해당 문장 딥링크로 열기
- * - 그 외 → onFallback 이 있으면 호출, 없으면 책 상세 화면으로 이동
+ * Navigation branch for when a quote is tapped from a saved comment/notification.
+ * - Book is in the library and the native reader is available -> open the reader deep-linked to the passage
+ * - Otherwise -> call onFallback if provided, or navigate to the book detail screen
  */
 export async function navigateToQuote(
   quoteId: number,

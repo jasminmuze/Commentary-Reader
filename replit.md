@@ -53,7 +53,8 @@ Bookmarks is a social ebook reader: users upload their own EPUB files, read them
 
 ## User preferences
 
-- The user writes in Korean — respond in Korean. App UI copy is Korean.
+- The user writes in Korean — respond in Korean. App UI copy is English (changed from Korean on 2026-07-11 at the user's request).
+- Visual theme: light, warm, reading-friendly palette (cream background `#F9F6F0`, terracotta primary `#B85C38`) defined in `artifacts/mobile/constants/colors.ts` — the user explicitly rejected the previous dark navy/amber theme.
 
 ## Gotchas
 
