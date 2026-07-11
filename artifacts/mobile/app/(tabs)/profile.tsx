@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
@@ -96,6 +97,40 @@ export default function ProfileScreen() {
         <Text style={[styles.profileSince, { color: colors.mutedForeground }]}>
           Member since {memberSince}
         </Text>
+      </View>
+
+      {/* My records */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>내 활동</Text>
+        <Pressable
+          onPress={() => router.push("/records")}
+          style={({ pressed }) => [
+            styles.card,
+            styles.recordsButton,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+              opacity: pressed ? 0.6 : 1,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.visIcon,
+              { backgroundColor: colors.primary, borderRadius: 8 },
+            ]}
+          >
+            <Feather name="book-open" size={16} color={colors.primaryForeground} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.visLabel, { color: colors.foreground }]}>내 기록</Text>
+            <Text style={[styles.visDesc, { color: colors.mutedForeground }]}>
+              책별 하이라이트·댓글·저장 모아보기
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+        </Pressable>
       </View>
 
       {/* Default visibility */}
@@ -299,6 +334,11 @@ const styles = StyleSheet.create({
   highlightSub: {
     fontSize: 12,
     marginTop: 1,
+  },
+  recordsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   logoutButton: {
     flexDirection: "row",

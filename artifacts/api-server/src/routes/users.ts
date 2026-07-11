@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, like, inArray, count } from "drizzle-orm";
+import { eq, and, like, inArray, count, desc, max } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -9,6 +9,7 @@ import {
   commentSavesTable,
   quotesTable,
   userHighlightsTable,
+  booksTable,
 } from "@workspace/db";
 import {
   CreateUserBody,
@@ -22,7 +23,11 @@ import {
   GetUserProfileParams,
   UpdateUserSettingsParams,
   UpdateUserSettingsBody,
+  GetUserRecordsParams,
+  GetUserBookRecordsParams,
+  GetUserHighlightsParams,
 } from "@workspace/api-zod";
+import type { UserRecordsBook, UserHighlightItem } from "@workspace/api-zod";
 import bcrypt from "bcryptjs";
 import { LoginUserBody } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
@@ -417,6 +422,260 @@ router.get("/users/:userId/saved-comments", authenticate, async (req, res): Prom
       formatComment(c, userId, quoteTextById.get(c.quoteId)),
     ),
   );
+
+  res.json(result);
+});
+
+// My records grouped by book: my highlight/comment/saved counts per canonical
+// book, ordered by most recent activity. Self-only.
+router.get("/users/:userId/records", authenticate, async (req, res): Promise<void> => {
+  const params = GetUserRecordsParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const userId = params.data.userId;
+
+  const highlightRows = await db
+    .select({
+      bookId: quotesTable.canonicalBookId,
+      c: count(),
+      latest: max(userHighlightsTable.createdAt),
+    })
+    .from(userHighlightsTable)
+    .innerJoin(quotesTable, eq(userHighlightsTable.quoteId, quotesTable.id))
+    .where(eq(userHighlightsTable.userId, userId))
+    .groupBy(quotesTable.canonicalBookId);
+
+  const commentRows = await db
+    .select({
+      bookId: quotesTable.canonicalBookId,
+      c: count(),
+      latest: max(commentsTable.createdAt),
+    })
+    .from(commentsTable)
+    .innerJoin(quotesTable, eq(commentsTable.quoteId, quotesTable.id))
+    .where(eq(commentsTable.userId, userId))
+    .groupBy(quotesTable.canonicalBookId);
+
+  // Saved comments are other people's comments, so re-apply visibility on
+  // read (mirrors /users/:userId/saved-comments): never count text the
+  // viewer can no longer see.
+  const viewer = await getViewer(userId);
+  const savedRows = await db
+    .select({
+      bookId: quotesTable.canonicalBookId,
+      c: count(),
+      latest: max(commentSavesTable.createdAt),
+    })
+    .from(commentSavesTable)
+    .innerJoin(commentsTable, eq(commentSavesTable.commentId, commentsTable.id))
+    .innerJoin(quotesTable, eq(commentsTable.quoteId, quotesTable.id))
+    .where(
+      and(
+        eq(commentSavesTable.userId, userId),
+        visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+        ),
+      ),
+    )
+    .groupBy(quotesTable.canonicalBookId);
+
+  const agg = new Map<
+    number,
+    { highlightCount: number; commentCount: number; savedCount: number; latest: number }
+  >();
+  const bump = (
+    bookId: number,
+    key: "highlightCount" | "commentCount" | "savedCount",
+    c: number,
+    latest: Date | null,
+  ) => {
+    const cur =
+      agg.get(bookId) ??
+      { highlightCount: 0, commentCount: 0, savedCount: 0, latest: 0 };
+    cur[key] += c;
+    if (latest) cur.latest = Math.max(cur.latest, latest.getTime());
+    agg.set(bookId, cur);
+  };
+  for (const r of highlightRows) bump(r.bookId, "highlightCount", Number(r.c), r.latest);
+  for (const r of commentRows) bump(r.bookId, "commentCount", Number(r.c), r.latest);
+  for (const r of savedRows) bump(r.bookId, "savedCount", Number(r.c), r.latest);
+
+  const bookIds = [...agg.keys()];
+  const books = bookIds.length
+    ? await db.select().from(booksTable).where(inArray(booksTable.id, bookIds))
+    : [];
+  const bookById = new Map(books.map((b) => [b.id, b]));
+
+  const result: UserRecordsBook[] = bookIds
+    .filter((id) => bookById.has(id))
+    .sort((a, b) => (agg.get(b)!.latest - agg.get(a)!.latest))
+    .map((id) => {
+      const book = bookById.get(id)!;
+      const a = agg.get(id)!;
+      return {
+        bookId: id,
+        title: book.title,
+        author: book.author,
+        coverColor: book.coverColor,
+        highlightCount: a.highlightCount,
+        commentCount: a.commentCount,
+        savedCount: a.savedCount,
+      };
+    });
+
+  res.json(result);
+});
+
+// My highlights / comments / saved comments for one book. Self-only.
+router.get("/users/:userId/records/:bookId", authenticate, async (req, res): Promise<void> => {
+  const params = GetUserBookRecordsParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const { userId, bookId } = params.data;
+
+  const [book] = await db.select().from(booksTable).where(eq(booksTable.id, bookId));
+  if (!book) {
+    res.status(404).json({ error: "Book not found" });
+    return;
+  }
+
+  const highlightRows = await db
+    .select({
+      id: userHighlightsTable.id,
+      quoteId: userHighlightsTable.quoteId,
+      quoteText: quotesTable.text,
+      createdAt: userHighlightsTable.createdAt,
+    })
+    .from(userHighlightsTable)
+    .innerJoin(quotesTable, eq(userHighlightsTable.quoteId, quotesTable.id))
+    .where(
+      and(
+        eq(userHighlightsTable.userId, userId),
+        eq(quotesTable.canonicalBookId, bookId),
+      ),
+    )
+    .orderBy(desc(userHighlightsTable.createdAt));
+
+  const highlights: UserHighlightItem[] = highlightRows.map((h) => ({
+    id: h.id,
+    quoteId: h.quoteId,
+    bookId,
+    bookTitle: book.title,
+    bookAuthor: book.author,
+    coverColor: book.coverColor,
+    quoteText: h.quoteText,
+    createdAt: h.createdAt,
+  }));
+
+  const myCommentRows = await db
+    .select({ comment: commentsTable, quoteText: quotesTable.text })
+    .from(commentsTable)
+    .innerJoin(quotesTable, eq(commentsTable.quoteId, quotesTable.id))
+    .where(
+      and(
+        eq(commentsTable.userId, userId),
+        eq(quotesTable.canonicalBookId, bookId),
+      ),
+    )
+    .orderBy(desc(commentsTable.createdAt));
+  const comments = await Promise.all(
+    myCommentRows.map((r) => formatComment(r.comment, userId, r.quoteText)),
+  );
+
+  // Saved comments: re-apply visibility on read (see saved-comments route).
+  const viewer = await getViewer(userId);
+  const savedCommentRows = await db
+    .select({ comment: commentsTable, quoteText: quotesTable.text })
+    .from(commentSavesTable)
+    .innerJoin(commentsTable, eq(commentSavesTable.commentId, commentsTable.id))
+    .innerJoin(quotesTable, eq(commentsTable.quoteId, quotesTable.id))
+    .where(
+      and(
+        eq(commentSavesTable.userId, userId),
+        eq(quotesTable.canonicalBookId, bookId),
+        visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+        ),
+      ),
+    )
+    .orderBy(desc(commentSavesTable.createdAt));
+  const savedComments = await Promise.all(
+    savedCommentRows.map((r) => formatComment(r.comment, userId, r.quoteText)),
+  );
+
+  res.json({
+    book: {
+      bookId,
+      title: book.title,
+      author: book.author,
+      coverColor: book.coverColor,
+      highlightCount: highlights.length,
+      commentCount: comments.length,
+      savedCount: savedComments.length,
+    },
+    highlights,
+    comments,
+    savedComments,
+  });
+});
+
+// All my highlights across books, newest first. Self-only.
+router.get("/users/:userId/highlights", authenticate, async (req, res): Promise<void> => {
+  const params = GetUserHighlightsParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      id: userHighlightsTable.id,
+      quoteId: userHighlightsTable.quoteId,
+      bookId: quotesTable.canonicalBookId,
+      bookTitle: booksTable.title,
+      bookAuthor: booksTable.author,
+      coverColor: booksTable.coverColor,
+      quoteText: quotesTable.text,
+      createdAt: userHighlightsTable.createdAt,
+    })
+    .from(userHighlightsTable)
+    .innerJoin(quotesTable, eq(userHighlightsTable.quoteId, quotesTable.id))
+    .innerJoin(booksTable, eq(quotesTable.canonicalBookId, booksTable.id))
+    .where(eq(userHighlightsTable.userId, params.data.userId))
+    .orderBy(desc(userHighlightsTable.createdAt));
+
+  const result: UserHighlightItem[] = rows.map((r) => ({
+    id: r.id,
+    quoteId: r.quoteId,
+    bookId: r.bookId,
+    bookTitle: r.bookTitle,
+    bookAuthor: r.bookAuthor,
+    coverColor: r.coverColor,
+    quoteText: r.quoteText,
+    createdAt: r.createdAt,
+  }));
 
   res.json(result);
 });

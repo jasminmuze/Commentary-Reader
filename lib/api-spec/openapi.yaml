@@ -682,6 +682,74 @@ paths:
                 items:
                   $ref: "#/components/schemas/Comment"
 
+  /users/{userId}/records:
+    get:
+      operationId: getUserRecords
+      tags: [users]
+      summary: My records grouped by book (my highlight/comment/saved counts; self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Per-book record summaries, most recent activity first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserRecordsBook"
+
+  /users/{userId}/records/{bookId}:
+    get:
+      operationId: getUserBookRecords
+      tags: [users]
+      summary: My highlights, comments, and saved comments for one book (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: My records for this book
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserBookRecords"
+        "404":
+          description: Book not found
+
+  /users/{userId}/highlights:
+    get:
+      operationId: getUserHighlights
+      tags: [users]
+      summary: All my highlights across books, newest first (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: My highlights, chronological (newest first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserHighlightItem"
+
   /users/{userId}/profile:
     get:
       operationId: getUserProfile
@@ -1338,3 +1406,66 @@ components:
       properties:
         ok:
           type: boolean
+
+    UserRecordsBook:
+      type: object
+      required: [bookId, title, author, coverColor, highlightCount, commentCount, savedCount]
+      properties:
+        bookId:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        coverColor:
+          type: string
+        highlightCount:
+          type: integer
+          description: Number of my highlights in this book
+        commentCount:
+          type: integer
+          description: Number of my comments in this book
+        savedCount:
+          type: integer
+          description: Number of comments I saved in this book
+
+    UserHighlightItem:
+      type: object
+      required: [id, quoteId, bookId, bookTitle, bookAuthor, coverColor, quoteText, createdAt]
+      properties:
+        id:
+          type: integer
+        quoteId:
+          type: integer
+        bookId:
+          type: integer
+        bookTitle:
+          type: string
+        bookAuthor:
+          type: string
+        coverColor:
+          type: string
+        quoteText:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    UserBookRecords:
+      type: object
+      required: [book, highlights, comments, savedComments]
+      properties:
+        book:
+          $ref: "#/components/schemas/UserRecordsBook"
+        highlights:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserHighlightItem"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"
+        savedComments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"

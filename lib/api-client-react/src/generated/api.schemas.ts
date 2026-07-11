@@ -339,6 +339,37 @@ export interface OkResult {
   ok: boolean;
 }
 
+export interface UserRecordsBook {
+  bookId: number;
+  title: string;
+  author: string;
+  coverColor: string;
+  /** Number of my highlights in this book */
+  highlightCount: number;
+  /** Number of my comments in this book */
+  commentCount: number;
+  /** Number of comments I saved in this book */
+  savedCount: number;
+}
+
+export interface UserHighlightItem {
+  id: number;
+  quoteId: number;
+  bookId: number;
+  bookTitle: string;
+  bookAuthor: string;
+  coverColor: string;
+  quoteText: string;
+  createdAt: string;
+}
+
+export interface UserBookRecords {
+  book: UserRecordsBook;
+  highlights: UserHighlightItem[];
+  comments: Comment[];
+  savedComments: Comment[];
+}
+
 export type ListBooksParams = {
 q?: string;
 };

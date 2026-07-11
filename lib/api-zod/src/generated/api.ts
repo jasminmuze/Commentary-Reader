@@ -679,6 +679,108 @@ export const GetSavedCommentsResponse = zod.array(GetSavedCommentsResponseItem)
 
 
 /**
+ * @summary My records grouped by book (my highlight/comment/saved counts; self only)
+ */
+export const GetUserRecordsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetUserRecordsResponseItem = zod.object({
+  "bookId": zod.number(),
+  "title": zod.string(),
+  "author": zod.string(),
+  "coverColor": zod.string(),
+  "highlightCount": zod.number().describe('Number of my highlights in this book'),
+  "commentCount": zod.number().describe('Number of my comments in this book'),
+  "savedCount": zod.number().describe('Number of comments I saved in this book')
+})
+export const GetUserRecordsResponse = zod.array(GetUserRecordsResponseItem)
+
+
+/**
+ * @summary My highlights, comments, and saved comments for one book (self only)
+ */
+export const GetUserBookRecordsParams = zod.object({
+  "userId": zod.coerce.number(),
+  "bookId": zod.coerce.number()
+})
+
+export const GetUserBookRecordsResponse = zod.object({
+  "book": zod.object({
+  "bookId": zod.number(),
+  "title": zod.string(),
+  "author": zod.string(),
+  "coverColor": zod.string(),
+  "highlightCount": zod.number().describe('Number of my highlights in this book'),
+  "commentCount": zod.number().describe('Number of my comments in this book'),
+  "savedCount": zod.number().describe('Number of comments I saved in this book')
+}),
+  "highlights": zod.array(zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "bookId": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "quoteText": zod.string(),
+  "createdAt": zod.coerce.date()
+})),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "avatarColor": zod.string(),
+  "text": zod.string(),
+  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "quoteText": zod.string().optional(),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "createdAt": zod.coerce.date()
+})),
+  "savedComments": zod.array(zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "avatarColor": zod.string(),
+  "text": zod.string(),
+  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "quoteText": zod.string().optional(),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary All my highlights across books, newest first (self only)
+ */
+export const GetUserHighlightsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetUserHighlightsResponseItem = zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "bookId": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "quoteText": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const GetUserHighlightsResponse = zod.array(GetUserHighlightsResponseItem)
+
+
+/**
  * @summary Get a user's public profile with follower/following and activity counts
  */
 export const GetUserProfileParams = zod.object({

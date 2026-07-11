@@ -50,8 +50,11 @@ import type {
   UpdateReadingLocationInput,
   UpdateUserSettings,
   User,
+  UserBookRecords,
+  UserHighlightItem,
   UserInput,
   UserProfile,
+  UserRecordsBook,
   UserWithFriendStatus
 } from './api.schemas';
 
@@ -2370,6 +2373,242 @@ export function useGetSavedComments<TData = Awaited<ReturnType<typeof getSavedCo
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetSavedCommentsQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetUserRecordsUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/records`
+}
+
+/**
+ * @summary My records grouped by book (my highlight/comment/saved counts; self only)
+ */
+export const getUserRecords = async (userId: number, options?: RequestInit): Promise<UserRecordsBook[]> => {
+
+  return customFetch<UserRecordsBook[]>(getGetUserRecordsUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUserRecordsQueryKey = (userId: number,) => {
+    return [
+    `/api/users/${userId}/records`
+    ] as const;
+    }
+
+
+export const getGetUserRecordsQueryOptions = <TData = Awaited<ReturnType<typeof getUserRecords>>, TError = ErrorType<unknown>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserRecords>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUserRecordsQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserRecords>>> = ({ signal }) => getUserRecords(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUserRecords>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUserRecordsQueryResult = NonNullable<Awaited<ReturnType<typeof getUserRecords>>>
+export type GetUserRecordsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary My records grouped by book (my highlight/comment/saved counts; self only)
+ */
+
+export function useGetUserRecords<TData = Awaited<ReturnType<typeof getUserRecords>>, TError = ErrorType<unknown>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserRecords>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUserRecordsQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetUserBookRecordsUrl = (userId: number,
+    bookId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/records/${bookId}`
+}
+
+/**
+ * @summary My highlights, comments, and saved comments for one book (self only)
+ */
+export const getUserBookRecords = async (userId: number,
+    bookId: number, options?: RequestInit): Promise<UserBookRecords> => {
+
+  return customFetch<UserBookRecords>(getGetUserBookRecordsUrl(userId,bookId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUserBookRecordsQueryKey = (userId: number,
+    bookId: number,) => {
+    return [
+    `/api/users/${userId}/records/${bookId}`
+    ] as const;
+    }
+
+
+export const getGetUserBookRecordsQueryOptions = <TData = Awaited<ReturnType<typeof getUserBookRecords>>, TError = ErrorType<void>>(userId: number,
+    bookId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserBookRecords>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUserBookRecordsQueryKey(userId,bookId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserBookRecords>>> = ({ signal }) => getUserBookRecords(userId,bookId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId && bookId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUserBookRecords>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUserBookRecordsQueryResult = NonNullable<Awaited<ReturnType<typeof getUserBookRecords>>>
+export type GetUserBookRecordsQueryError = ErrorType<void>
+
+
+/**
+ * @summary My highlights, comments, and saved comments for one book (self only)
+ */
+
+export function useGetUserBookRecords<TData = Awaited<ReturnType<typeof getUserBookRecords>>, TError = ErrorType<void>>(
+ userId: number,
+    bookId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserBookRecords>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUserBookRecordsQueryOptions(userId,bookId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetUserHighlightsUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/highlights`
+}
+
+/**
+ * @summary All my highlights across books, newest first (self only)
+ */
+export const getUserHighlights = async (userId: number, options?: RequestInit): Promise<UserHighlightItem[]> => {
+
+  return customFetch<UserHighlightItem[]>(getGetUserHighlightsUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUserHighlightsQueryKey = (userId: number,) => {
+    return [
+    `/api/users/${userId}/highlights`
+    ] as const;
+    }
+
+
+export const getGetUserHighlightsQueryOptions = <TData = Awaited<ReturnType<typeof getUserHighlights>>, TError = ErrorType<unknown>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserHighlights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUserHighlightsQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserHighlights>>> = ({ signal }) => getUserHighlights(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUserHighlights>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUserHighlightsQueryResult = NonNullable<Awaited<ReturnType<typeof getUserHighlights>>>
+export type GetUserHighlightsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary All my highlights across books, newest first (self only)
+ */
+
+export function useGetUserHighlights<TData = Awaited<ReturnType<typeof getUserHighlights>>, TError = ErrorType<unknown>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserHighlights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUserHighlightsQueryOptions(userId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
