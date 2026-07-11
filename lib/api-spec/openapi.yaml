@@ -410,7 +410,7 @@ paths:
     post:
       operationId: createUser
       tags: [users]
-      summary: Create or get a user
+      summary: Sign up a new user
       requestBody:
         required: true
         content:
@@ -419,11 +419,34 @@ paths:
               $ref: "#/components/schemas/UserInput"
       responses:
         "200":
-          description: User created or retrieved
+          description: User created
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+        "409":
+          description: Username already taken
+
+  /users/login:
+    post:
+      operationId: loginUser
+      tags: [users]
+      summary: Log in with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Authenticated user with bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Invalid username or password
 
   /users/{userId}:
     get:
@@ -450,18 +473,13 @@ paths:
     get:
       operationId: searchUsers
       tags: [users]
-      summary: Search users by username
+      summary: Search users by username (viewer taken from bearer token)
       parameters:
         - name: q
           in: query
           required: true
           schema:
             type: string
-        - name: userId
-          in: query
-          required: false
-          schema:
-            type: integer
       responses:
         "200":
           description: Search results
@@ -944,7 +962,7 @@ components:
           format: date-time
         token:
           type: string
-          description: HMAC-signed bearer token — only present in POST /users response
+          description: HMAC-signed bearer token — only present in POST /users and POST /users/login responses
 
     UserProfile:
       type: object
@@ -1015,11 +1033,24 @@ components:
 
     UserInput:
       type: object
-      required: [username]
+      required: [username, password]
       properties:
         username:
           type: string
           minLength: 2
+        password:
+          type: string
+          minLength: 8
+          maxLength: 100
+
+    LoginInput:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
 
     FriendInput:
       type: object

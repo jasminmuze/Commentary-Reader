@@ -40,11 +40,11 @@ export default function FriendsScreen() {
   });
 
   const { data: searchResults, isLoading: loadingSearch } = useSearchUsers(
-    { q: query, userId: user?.id },
+    { q: query },
     {
       query: {
         enabled: query.length >= 2,
-        queryKey: getSearchUsersQueryKey({ q: query, userId: user?.id }),
+        queryKey: getSearchUsersQueryKey({ q: query }),
       },
     }
   );

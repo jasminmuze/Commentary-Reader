@@ -22,6 +22,8 @@ import {
   UpdateUserSettingsParams,
   UpdateUserSettingsBody,
 } from "@workspace/api-zod";
+import bcrypt from "bcryptjs";
+import { LoginUserBody } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
 import {
   getViewer,
@@ -40,6 +42,10 @@ function randomAvatarColor(): string {
   return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!;
 }
 
+// Pre-computed hash of a random value; used to equalize login timing on
+// unknown usernames (see /users/login).
+const DUMMY_BCRYPT_HASH = bcrypt.hashSync("timing-equalizer-dummy", 10);
+
 const router: IRouter = Router();
 
 router.post("/users", async (req, res): Promise<void> => {
@@ -51,27 +57,54 @@ router.post("/users", async (req, res): Promise<void> => {
 
   const existing = await db.select().from(usersTable).where(eq(usersTable.username, body.data.username));
   if (existing.length > 0) {
-    const user = existing[0]!;
-    res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility, createdAt: user.createdAt.toISOString(), token: createToken(user.id) });
+    res.status(409).json({ error: "Username already taken" });
     return;
   }
 
+  const passwordHash = await bcrypt.hash(body.data.password, 10);
   const [user] = await db.insert(usersTable).values({
     username: body.data.username,
+    passwordHash,
     avatarColor: randomAvatarColor(),
   }).returning();
 
   res.json({ id: user!.id, username: user!.username, avatarColor: user!.avatarColor, defaultVisibility: user!.defaultVisibility, createdAt: user!.createdAt.toISOString(), token: createToken(user!.id) });
 });
 
-router.get("/users/search", async (req, res): Promise<void> => {
+router.post("/users/login", async (req, res): Promise<void> => {
+  const body = LoginUserBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.username, body.data.username));
+  // Accounts without a password hash (legacy/seeded demo users) cannot log in.
+  // Always run a bcrypt compare (against a dummy hash on miss) so response
+  // timing doesn't reveal whether the username exists.
+  const hashToCheck = user?.passwordHash ?? DUMMY_BCRYPT_HASH;
+  const compared = await bcrypt.compare(body.data.password, hashToCheck);
+  const valid = user?.passwordHash != null && compared;
+  if (!user || !valid) {
+    res.status(401).json({ error: "Invalid username or password" });
+    return;
+  }
+
+  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility, createdAt: user.createdAt.toISOString(), token: createToken(user.id) });
+});
+
+router.get("/users/search", authenticate, async (req, res): Promise<void> => {
   const params = SearchUsersQueryParams.safeParse(req.query);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
 
-  const { q, userId } = params.data;
+  const { q } = params.data;
+  const userId = req.userId;
 
   const users = await db
     .select()

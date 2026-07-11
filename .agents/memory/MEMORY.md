@@ -1,2 +1,3 @@
 - [Native Readium reader (Android)](native-readium-reader.md) — why the reader must be an embedded RN ViewManager (not a full-screen Activity) for community highlight/comment parity, plus the untestable-native build loop.
 - [EAS builds from Replit](eas-builds-from-replit.md) — how dev-client builds/connect work for the `mobile` artifact, and the projectId-ownership gotcha.
+- [Auth model decision](auth-model.md) — self-issued HMAC bearer tokens + bcrypt passwords were kept over Clerk; extend the existing scheme, don't swap providers.

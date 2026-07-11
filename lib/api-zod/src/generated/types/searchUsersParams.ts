@@ -8,5 +8,4 @@
 
 export type SearchUsersParams = {
 q: string;
-userId?: number;
 };

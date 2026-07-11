@@ -9,4 +9,9 @@
 export interface UserInput {
   /** @minLength 2 */
   username: string;
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  password: string;
 }

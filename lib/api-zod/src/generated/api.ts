@@ -451,14 +451,18 @@ export const GetUserLibraryResponse = zod.array(GetUserLibraryResponseItem)
 
 
 /**
- * @summary Create or get a user
+ * @summary Sign up a new user
  */
 export const createUserBodyUsernameMin = 2;
+
+export const createUserBodyPasswordMin = 8;
+export const createUserBodyPasswordMax = 100;
 
 
 
 export const CreateUserBody = zod.object({
-  "username": zod.string().min(createUserBodyUsernameMin)
+  "username": zod.string().min(createUserBodyUsernameMin),
+  "password": zod.string().min(createUserBodyPasswordMin).max(createUserBodyPasswordMax)
 })
 
 export const CreateUserResponse = zod.object({
@@ -467,7 +471,25 @@ export const CreateUserResponse = zod.object({
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
+})
+
+
+/**
+ * @summary Log in with username and password
+ */
+export const LoginUserBody = zod.object({
+  "username": zod.string(),
+  "password": zod.string()
+})
+
+export const LoginUserResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "avatarColor": zod.string(),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
 
 
@@ -484,16 +506,15 @@ export const GetUserResponse = zod.object({
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
 
 
 /**
- * @summary Search users by username
+ * @summary Search users by username (viewer taken from bearer token)
  */
 export const SearchUsersQueryParams = zod.object({
-  "q": zod.coerce.string(),
-  "userId": zod.coerce.number().optional()
+  "q": zod.coerce.string()
 })
 
 export const SearchUsersResponseItem = zod.object({
@@ -519,7 +540,7 @@ export const GetFriendsResponseItem = zod.object({
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
 export const GetFriendsResponse = zod.array(GetFriendsResponseItem)
 
@@ -541,7 +562,7 @@ export const AddFriendResponse = zod.object({
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
 
 
@@ -619,7 +640,7 @@ export const UpdateUserSettingsResponse = zod.object({
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
 
 

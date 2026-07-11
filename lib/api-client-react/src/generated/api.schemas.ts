@@ -197,7 +197,7 @@ export interface User {
   avatarColor: string;
   defaultVisibility: Visibility;
   createdAt: string;
-  /** HMAC-signed bearer token — only present in POST /users response */
+  /** HMAC-signed bearer token — only present in POST /users and POST /users/login responses */
   token?: string;
 }
 
@@ -233,6 +233,16 @@ export interface UserWithFriendStatus {
 export interface UserInput {
   /** @minLength 2 */
   username: string;
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  password: string;
+}
+
+export interface LoginInput {
+  username: string;
+  password: string;
 }
 
 export interface FriendInput {
@@ -301,6 +311,5 @@ export const GetQuoteCommentsFilter = {
 
 export type SearchUsersParams = {
 q: string;
-userId?: number;
 };
 

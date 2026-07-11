@@ -16,6 +16,7 @@ export * from "./generated/types/highlightResult";
 export * from "./generated/types/libraryEntry";
 export * from "./generated/types/libraryUploadResult";
 export * from "./generated/types/likeResult";
+export * from "./generated/types/loginInput";
 export * from "./generated/types/listBooksParams";
 export * from "./generated/types/manualMatchInput";
 export * from "./generated/types/matchResult";

@@ -23,6 +23,7 @@ export * from './libraryEntry';
 export * from './libraryUploadResult';
 export * from './likeResult';
 export * from './listBooksParams';
+export * from './loginInput';
 export * from './manualMatchInput';
 export * from './matchResult';
 export * from './matchResultStatus';

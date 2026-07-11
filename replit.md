@@ -38,7 +38,7 @@ Bookmarks is a social ebook reader: users upload their own EPUB files, read them
 - No `highlightCount` denormalization — counts are computed via GROUP BY on read.
 - The reader matches a quote across editions by searching a distinctive LEADING SUBSTRING (~first 8 words), not the full quote, to survive punctuation/hyphenation drift between editions.
 - The native Readium reader runs only in an Android dev/EAS build (NOT Expo Go or web preview). It is platform-guarded with a fallback screen elsewhere.
-- Uploaded EPUBs use a `private` object ACL with `owner = userId`. `GET /api/objects/*` enforces the ACL via `canAccessObjectEntity`; `LibraryEntry.epubUrl` carries `?userId=` so the owner's EPUB download passes. The app has no real auth (userId is client-supplied) — this is best-effort within that model; true authz is a follow-up.
+- Real auth: password-based signup/login (`bcryptjs` hashes in `users.password_hash`) issuing HMAC-signed bearer tokens (`SESSION_SECRET`, 30-day expiry, `src/lib/auth.ts`). All non-public routes use the `authenticate` middleware and derive identity from `req.userId` — client-supplied userIds are never trusted. `POST /users` returns 409 on username collision (no token giveaway); seeded/legacy accounts with null `password_hash` cannot log in. `GET /api/objects/*` enforces the object ACL against the authenticated user; the mobile app sends `Authorization: Bearer` on all API calls and EPUB downloads.
 - Reading location is persisted per library entry: `userLibrary.lastReadingLocation` (Readium locator JSON). The reader passes it as the initial locator to resume, and debounce-saves location changes via `PUT /api/library/{libraryId}/location`.
 
 ## Product

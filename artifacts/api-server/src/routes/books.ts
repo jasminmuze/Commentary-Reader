@@ -53,7 +53,7 @@ router.get("/books", async (req, res): Promise<void> => {
   res.json(result);
 });
 
-router.post("/books", async (req, res): Promise<void> => {
+router.post("/books", authenticate, async (req, res): Promise<void> => {
   const body = CreateBookBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });

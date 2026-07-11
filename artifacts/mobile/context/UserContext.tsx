@@ -17,7 +17,12 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useCreateUser, setAuthTokenGetter } from "@workspace/api-client-react";
+import {
+  useCreateUser,
+  useLoginUser,
+  setAuthTokenGetter,
+  ApiError,
+} from "@workspace/api-client-react";
 import type { Visibility } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { apiUrl } from "@/lib/api";
@@ -52,45 +57,89 @@ export function useUser() {
   return useContext(UserContext);
 }
 
-function OnboardingScreen({ onComplete }: { onComplete: (user: CurrentUser) => void }) {
+type AuthMode = "signup" | "login";
+
+function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const [mode, setMode] = useState<AuthMode>("signup");
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const createUser = useCreateUser();
+  const loginUser = useLoginUser();
+
+  const isPending = createUser.isPending || loginUser.isPending;
+
+  const persistAndComplete = useCallback(
+    async (user: {
+      id: number;
+      username: string;
+      avatarColor: string;
+      defaultVisibility?: Visibility;
+      token?: string;
+    }) => {
+      await AsyncStorage.setItem(USER_ID_KEY, String(user.id));
+      if (user.token) {
+        await AsyncStorage.setItem(TOKEN_KEY, user.token);
+      }
+      onComplete({
+        id: user.id,
+        username: user.username,
+        avatarColor: user.avatarColor,
+        defaultVisibility: user.defaultVisibility ?? "public",
+      });
+    },
+    [onComplete],
+  );
 
   const handleSubmit = useCallback(async () => {
     const trimmed = username.trim();
     if (trimmed.length < 2) {
-      setError("Username must be at least 2 characters");
+      setError("사용자 이름은 2자 이상이어야 해요");
       return;
     }
     if (trimmed.length > 30) {
-      setError("Username must be 30 characters or less");
+      setError("사용자 이름은 30자 이하여야 해요");
       return;
     }
     if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-      setError("Only letters, numbers, and underscores allowed");
+      setError("영문, 숫자, 밑줄(_)만 사용할 수 있어요");
+      return;
+    }
+    if (mode === "signup" && password.length < 8) {
+      setError("비밀번호는 8자 이상이어야 해요");
+      return;
+    }
+    if (mode === "login" && password.length === 0) {
+      setError("비밀번호를 입력해 주세요");
       return;
     }
     setError("");
 
-    createUser.mutate(
-      { data: { username: trimmed } },
+    const mutation = mode === "signup" ? createUser : loginUser;
+    mutation.mutate(
+      { data: { username: trimmed, password } },
       {
-        onSuccess: async (user) => {
-          await AsyncStorage.setItem(USER_ID_KEY, String(user.id));
-          if (user.token) {
-            await AsyncStorage.setItem(TOKEN_KEY, user.token);
+        onSuccess: (user) => {
+          void persistAndComplete(user);
+        },
+        onError: (err: unknown) => {
+          if (err instanceof ApiError) {
+            if (err.status === 409) {
+              setError("이미 사용 중인 이름이에요. 로그인하시겠어요?");
+              return;
+            }
+            if (err.status === 401) {
+              setError("이름 또는 비밀번호가 올바르지 않아요");
+              return;
+            }
           }
-          onComplete({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility ?? "public" });
+          setError("문제가 발생했어요. 잠시 후 다시 시도해 주세요.");
         },
-        onError: () => {
-          setError("Something went wrong. Try a different username.");
-        },
-      }
+      },
     );
-  }, [username, createUser, onComplete]);
+  }, [username, password, mode, createUser, loginUser, persistAndComplete]);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
 
@@ -107,12 +156,12 @@ function OnboardingScreen({ onComplete }: { onComplete: (user: CurrentUser) => v
           Bookmarks
         </Text>
         <Text style={[styles.onboardingSubtitle, { color: colors.mutedForeground }]}>
-          Read together. Discover what others think about the passages that moved them.
+          함께 읽어요. 마음을 움직인 문장에 남긴 다른 독자들의 생각을 만나 보세요.
         </Text>
 
         <View style={styles.onboardingForm}>
           <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
-            Choose your username
+            사용자 이름
           </Text>
           <TextInput
             style={[
@@ -124,10 +173,33 @@ function OnboardingScreen({ onComplete }: { onComplete: (user: CurrentUser) => v
                 borderRadius: colors.radius,
               },
             ]}
-            placeholder="e.g. bookworm42"
+            placeholder="예: bookworm42"
             placeholderTextColor={colors.mutedForeground}
             value={username}
             onChangeText={(t) => { setUsername(t); setError(""); }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="next"
+          />
+
+          <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
+            비밀번호
+          </Text>
+          <TextInput
+            style={[
+              styles.onboardingInput,
+              {
+                backgroundColor: colors.card,
+                color: colors.foreground,
+                borderColor: error ? colors.destructive : colors.border,
+                borderRadius: colors.radius,
+              },
+            ]}
+            placeholder={mode === "signup" ? "8자 이상" : "비밀번호"}
+            placeholderTextColor={colors.mutedForeground}
+            value={password}
+            onChangeText={(t) => { setPassword(t); setError(""); }}
+            secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="done"
@@ -143,19 +215,33 @@ function OnboardingScreen({ onComplete }: { onComplete: (user: CurrentUser) => v
               {
                 backgroundColor: colors.primary,
                 borderRadius: colors.radius,
-                opacity: pressed || createUser.isPending ? 0.8 : 1,
+                opacity: pressed || isPending ? 0.8 : 1,
               },
             ]}
             onPress={handleSubmit}
-            disabled={createUser.isPending}
+            disabled={isPending}
           >
-            {createUser.isPending ? (
+            {isPending ? (
               <ActivityIndicator color={colors.primaryForeground} />
             ) : (
               <Text style={[styles.onboardingButtonText, { color: colors.primaryForeground }]}>
-                Start Reading
+                {mode === "signup" ? "가입하고 읽기 시작" : "로그인"}
               </Text>
             )}
+          </Pressable>
+
+          <Pressable
+            style={styles.modeToggle}
+            onPress={() => {
+              setMode(mode === "signup" ? "login" : "signup");
+              setError("");
+            }}
+          >
+            <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
+              {mode === "signup"
+                ? "이미 계정이 있나요? 로그인"
+                : "계정이 없나요? 회원가입"}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -178,6 +264,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           if (res.ok) {
             const data = await res.json();
             setUserState({ id: data.id, username: data.username, avatarColor: data.avatarColor, defaultVisibility: data.defaultVisibility ?? "public" });
+          } else if (res.status === 401) {
+            // Expired/invalid token — clear stored credentials and show login.
+            await AsyncStorage.multiRemove([USER_ID_KEY, TOKEN_KEY]);
           }
         } catch {
           // ignore fetch errors, show onboarding
@@ -196,7 +285,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    return <OnboardingScreen onComplete={setUser} />;
+    return <AuthScreen onComplete={setUser} />;
   }
 
   return (
@@ -269,5 +358,13 @@ const styles = StyleSheet.create({
   onboardingButtonText: {
     fontSize: 16,
     fontWeight: "700",
+  },
+  modeToggle: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  modeToggleText: {
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

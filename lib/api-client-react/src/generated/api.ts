@@ -36,6 +36,7 @@ import type {
   LibraryUploadResult,
   LikeResult,
   ListBooksParams,
+  LoginInput,
   ManualMatchInput,
   NotificationList,
   Quote,
@@ -1420,7 +1421,7 @@ export const getCreateUserUrl = () => {
 }
 
 /**
- * @summary Create or get a user
+ * @summary Sign up a new user
  */
 export const createUser = async (userInput: UserInput, options?: RequestInit): Promise<User> => {
 
@@ -1437,7 +1438,7 @@ export const createUser = async (userInput: UserInput, options?: RequestInit): P
 
 
 
-export const getCreateUserMutationOptions = <TError = ErrorType<unknown>,
+export const getCreateUserMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createUser>>, TError,{data: BodyType<UserInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createUser>>, TError,{data: BodyType<UserInput>}, TContext> => {
 
@@ -1466,12 +1467,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateUserMutationResult = NonNullable<Awaited<ReturnType<typeof createUser>>>
     export type CreateUserMutationBody = BodyType<UserInput>
-    export type CreateUserMutationError = ErrorType<unknown>
+    export type CreateUserMutationError = ErrorType<void>
 
     /**
- * @summary Create or get a user
+ * @summary Sign up a new user
  */
-export const useCreateUser = <TError = ErrorType<unknown>,
+export const useCreateUser = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createUser>>, TError,{data: BodyType<UserInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createUser>>,
@@ -1480,6 +1481,77 @@ export const useCreateUser = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateUserMutationOptions(options));
+    }
+
+export const getLoginUserUrl = () => {
+
+
+
+
+  return `/api/users/login`
+}
+
+/**
+ * @summary Log in with username and password
+ */
+export const loginUser = async (loginInput: LoginInput, options?: RequestInit): Promise<User> => {
+
+  return customFetch<User>(getLoginUserUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      loginInput,)
+  }
+);}
+
+
+
+
+export const getLoginUserMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginUser>>, TError,{data: BodyType<LoginInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof loginUser>>, TError,{data: BodyType<LoginInput>}, TContext> => {
+
+const mutationKey = ['loginUser'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginUser>>, {data: BodyType<LoginInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  loginUser(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginUserMutationResult = NonNullable<Awaited<ReturnType<typeof loginUser>>>
+    export type LoginUserMutationBody = BodyType<LoginInput>
+    export type LoginUserMutationError = ErrorType<void>
+
+    /**
+ * @summary Log in with username and password
+ */
+export const useLoginUser = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginUser>>, TError,{data: BodyType<LoginInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof loginUser>>,
+        TError,
+        {data: BodyType<LoginInput>},
+        TContext
+      > => {
+      return useMutation(getLoginUserMutationOptions(options));
     }
 
 export const getGetUserUrl = (userId: number,) => {
@@ -1575,7 +1647,7 @@ export const getSearchUsersUrl = (params: SearchUsersParams,) => {
 }
 
 /**
- * @summary Search users by username
+ * @summary Search users by username (viewer taken from bearer token)
  */
 export const searchUsers = async (params: SearchUsersParams, options?: RequestInit): Promise<UserWithFriendStatus[]> => {
 
@@ -1622,7 +1694,7 @@ export type SearchUsersQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Search users by username
+ * @summary Search users by username (viewer taken from bearer token)
  */
 
 export function useSearchUsers<TData = Awaited<ReturnType<typeof searchUsers>>, TError = ErrorType<unknown>>(

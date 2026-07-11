@@ -13,6 +13,6 @@ export interface User {
   avatarColor: string;
   defaultVisibility: Visibility;
   createdAt: Date;
-  /** HMAC-signed bearer token — only present in POST /users response */
+  /** HMAC-signed bearer token — only present in POST /users and POST /users/login responses */
   token?: string;
 }
