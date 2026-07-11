@@ -27,8 +27,10 @@ import type {
   CreateBookInput,
   CreateLibraryInput,
   CreateQuoteInput,
+  FeedPage,
   FriendInput,
   FriendRequestInput,
+  GetFeedParams,
   GetQuoteCommentsParams,
   HealthStatus,
   HighlightInput,
@@ -3130,4 +3132,88 @@ export const useUnregisterPushToken = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getUnregisterPushTokenMutationOptions(options));
     }
+
+export const getGetFeedUrl = (params?: GetFeedParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/feed?${stringifiedParams}` : `/api/feed`
+}
+
+/**
+ * @summary Activity feed of users I follow (highlights + comments, newest first, viewer taken from bearer token)
+ */
+export const getFeed = async (params?: GetFeedParams, options?: RequestInit): Promise<FeedPage> => {
+
+  return customFetch<FeedPage>(getGetFeedUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFeedQueryKey = (params?: GetFeedParams,) => {
+    return [
+    `/api/feed`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetFeedQueryOptions = <TData = Awaited<ReturnType<typeof getFeed>>, TError = ErrorType<unknown>>(params?: GetFeedParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFeed>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFeedQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFeed>>> = ({ signal }) => getFeed(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFeed>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFeedQueryResult = NonNullable<Awaited<ReturnType<typeof getFeed>>>
+export type GetFeedQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Activity feed of users I follow (highlights + comments, newest first, viewer taken from bearer token)
+ */
+
+export function useGetFeed<TData = Awaited<ReturnType<typeof getFeed>>, TError = ErrorType<unknown>>(
+ params?: GetFeedParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFeed>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFeedQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 

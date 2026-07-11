@@ -914,3 +914,37 @@ export const UnregisterPushTokenResponse = zod.object({
 })
 
 
+/**
+ * @summary Activity feed of users I follow (highlights + comments, newest first, viewer taken from bearer token)
+ */
+export const getFeedQueryLimitDefault = 20;
+export const getFeedQueryLimitMax = 50;
+
+
+
+export const GetFeedQueryParams = zod.object({
+  "cursor": zod.coerce.string().optional().describe('Opaque cursor from a previous page\'s nextCursor. Omit for the first page.'),
+  "limit": zod.coerce.number().min(1).max(getFeedQueryLimitMax).default(getFeedQueryLimitDefault)
+})
+
+export const GetFeedResponse = zod.object({
+  "items": zod.array(zod.object({
+  "type": zod.enum(['highlight', 'comment']),
+  "id": zod.number().describe('Highlight id or comment id depending on type'),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "avatarColor": zod.string(),
+  "bookId": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "quoteId": zod.number(),
+  "quoteText": zod.string().describe('Quote text — truncated to a preview length unless the viewer owns the book'),
+  "quoteTextTruncated": zod.boolean().describe('Whether quoteText was truncated for copyright protection'),
+  "commentText": zod.string().optional().describe('Present only when type is comment'),
+  "createdAt": zod.coerce.date()
+})),
+  "nextCursor": zod.string().nullable().describe('Pass as cursor to fetch the next page; null when there are no more items')
+})
+
+

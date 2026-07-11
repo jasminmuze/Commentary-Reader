@@ -370,6 +370,44 @@ export interface UserBookRecords {
   savedComments: Comment[];
 }
 
+export type FeedItemType = typeof FeedItemType[keyof typeof FeedItemType];
+
+
+export const FeedItemType = {
+  highlight: 'highlight',
+  comment: 'comment',
+} as const;
+
+export interface FeedItem {
+  type: FeedItemType;
+  /** Highlight id or comment id depending on type */
+  id: number;
+  userId: number;
+  username: string;
+  avatarColor: string;
+  bookId: number;
+  bookTitle: string;
+  bookAuthor: string;
+  coverColor: string;
+  quoteId: number;
+  /** Quote text — truncated to a preview length unless the viewer owns the book */
+  quoteText: string;
+  /** Whether quoteText was truncated for copyright protection */
+  quoteTextTruncated: boolean;
+  /** Present only when type is comment */
+  commentText?: string;
+  createdAt: string;
+}
+
+export interface FeedPage {
+  items: FeedItem[];
+  /**
+     * Pass as cursor to fetch the next page; null when there are no more items
+     * @nullable
+     */
+  nextCursor: string | null;
+}
+
 export type ListBooksParams = {
 q?: string;
 };
@@ -389,5 +427,17 @@ export const GetQuoteCommentsFilter = {
 
 export type SearchUsersParams = {
 q: string;
+};
+
+export type GetFeedParams = {
+/**
+ * Opaque cursor from a previous page's nextCursor. Omit for the first page.
+ */
+cursor?: string;
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
 };
 

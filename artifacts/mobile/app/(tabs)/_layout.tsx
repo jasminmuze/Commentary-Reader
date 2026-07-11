@@ -35,6 +35,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "books.vertical", selected: "books.vertical.fill" }} />
         <Label>Library</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="feed">
+        <Icon sf={{ default: "sparkles", selected: "sparkles" }} />
+        <Label>Feed</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="discover">
         <Icon sf={{ default: "magnifyingglass", selected: "magnifyingglass" }} />
         <Label>Discover</Label>
@@ -125,6 +129,18 @@ function ClassicTabLayout() {
               <SymbolView name="books.vertical" tintColor={color} size={22} />
             ) : (
               <Feather name="book-open" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="feed"
+        options={{
+          title: "Feed",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="sparkles" tintColor={color} size={22} />
+            ) : (
+              <Feather name="zap" size={22} color={color} />
             ),
         }}
       />

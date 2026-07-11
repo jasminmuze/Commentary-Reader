@@ -9,6 +9,7 @@ import objectsRouter from "./objects";
 import notificationsRouter from "./notifications";
 import pushTokensRouter from "./pushTokens";
 import friendRequestsRouter from "./friendRequests";
+import feedRouter from "./feed";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(objectsRouter);
 router.use(notificationsRouter);
 router.use(pushTokensRouter);
 router.use(friendRequestsRouter);
+router.use(feedRouter);
 
 export default router;

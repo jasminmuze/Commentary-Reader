@@ -18,6 +18,11 @@ import {
 } from "../lib/queries";
 import { normalizeTitle, normalizeAuthor } from "../lib/text";
 import { getViewer, visibilityPredicate } from "../lib/social";
+import {
+  BOOK_TOP_QUOTES_LIMIT,
+  getOwnedBookIds,
+  truncateQuoteText,
+} from "../lib/contentLimits";
 import { authenticate } from "../middlewares/authenticate.js";
 
 const COVER_COLORS = [
@@ -107,6 +112,10 @@ router.get("/books/:bookId", authenticate, async (req, res): Promise<void> => {
     ? await getHighlightedQuoteIds(userId, quoteIds)
     : new Set<number>();
 
+  // Copyright guardrail: viewers who don't own this book only see quote-text
+  // previews (owners — book in their library — see full text).
+  const ownsBook = (await getOwnedBookIds(userId, [book.id])).has(book.id);
+
   const topQuotes: Quote[] = quotes
     .map((q) => toQuote(q, qCounts.get(q.id)!, highlighted.has(q.id)))
     // Only surface quotes with viewer-visible activity — never leak the text of
@@ -117,7 +126,10 @@ router.get("/books/:bookId", authenticate, async (req, res): Promise<void> => {
         b.highlightCount - a.highlightCount ||
         b.commentCount - a.commentCount,
     )
-    .slice(0, 10);
+    .slice(0, BOOK_TOP_QUOTES_LIMIT)
+    .map((q) =>
+      ownsBook ? q : { ...q, text: truncateQuoteText(q.text).text },
+    );
 
   let bestComments: Comment[] = [];
   if (quoteIds.length > 0) {
@@ -136,7 +148,12 @@ router.get("/books/:bookId", authenticate, async (req, res): Promise<void> => {
       )
       .orderBy(desc(commentsTable.likeCount))
       .limit(10);
-    const quoteTextById = new Map(quotes.map((q) => [q.id, q.text]));
+    const quoteTextById = new Map(
+      quotes.map((q) => [
+        q.id,
+        ownsBook ? q.text : truncateQuoteText(q.text).text,
+      ]),
+    );
     bestComments = await Promise.all(
       rows.map((c) => formatComment(c, userId, quoteTextById.get(c.quoteId))),
     );

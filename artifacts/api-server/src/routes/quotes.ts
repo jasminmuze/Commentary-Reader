@@ -25,6 +25,7 @@ import {
 } from "../lib/queries";
 import { leadingSubstring } from "../lib/text";
 import { getViewer } from "../lib/social";
+import { getOwnedBookIds, truncateQuoteText } from "../lib/contentLimits";
 import { authenticate } from "../middlewares/authenticate.js";
 
 const router: IRouter = Router();
@@ -48,11 +49,20 @@ router.get("/books/:bookId/quotes", authenticate, async (req, res): Promise<void
   const counts = await getQuoteCountsMap(quoteIds, viewer);
   const highlighted = await getHighlightedQuoteIds(userId, quoteIds);
 
+  // Copyright guardrail: full quote text only for owners of this book
+  // (the overlay is only useful inside the owner's reader anyway).
+  const ownsBook = (
+    await getOwnedBookIds(userId, [params.data.bookId])
+  ).has(params.data.bookId);
+
   // Only return quotes with viewer-visible activity so the reader never paints
   // (and thus never leaks the text of) private/friends-only passages.
   const result: Quote[] = quotes
     .map((q) => toQuote(q, counts.get(q.id)!, highlighted.has(q.id)))
-    .filter((q) => q.highlightCount > 0 || q.commentCount > 0);
+    .filter((q) => q.highlightCount > 0 || q.commentCount > 0)
+    .map((q) =>
+      ownsBook ? q : { ...q, text: truncateQuoteText(q.text).text },
+    );
   res.json(result);
 });
 
@@ -125,10 +135,14 @@ router.get("/quotes/:quoteId/reader-context", authenticate, async (req, res): Pr
     )
     .limit(1);
 
+  // Copyright guardrail: non-owners (no library entry) only get a preview —
+  // the full text is only needed for the in-reader deeplink, which requires
+  // owning the book anyway.
+  const ownsBook = entry != null;
   const result: QuoteReaderContext = {
     quoteId: quote.id,
     canonicalBookId: quote.canonicalBookId,
-    quoteText: quote.text,
+    quoteText: ownsBook ? quote.text : truncateQuoteText(quote.text).text,
     searchText: leadingSubstring(quote.text),
     libraryId: entry?.id ?? null,
   };
