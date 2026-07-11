@@ -20,7 +20,8 @@ The original native host launches a separate full-screen `NativeReadiumActivity`
 - All are `@ExperimentalReadiumApi` in 3.1.0 (the 2.x `@ExperimentalDecorator` is gone).
 
 ## Anchoring invariant (preserve)
-Community highlights/comments anchor by NORMALIZED QUOTE TEXT, not CFI/Locator positions. To place a decoration, search a distinctive LEADING SUBSTRING (~first 8 words) of the quote to survive edition drift, resolve to a Locator, then decorate. A substring match decorates only the matched span, not the full quote — accepted.
+Community highlights/comments anchor by NORMALIZED QUOTE TEXT, not CFI/Locator positions. Anchoring is two-pass: first search the FULL quote text (whitespace-collapsed) so the whole sentence gets decorated; only quotes the full-text search misses fall back to the distinctive LEADING SUBSTRING (~first 8 words) to survive edition drift. A substring match decorates only the matched span — accepted for the fallback path.
+Decoration JSON supports an optional `style: "highlight"|"underline"` field; old native builds ignore it (default highlight), underline rendering needs a fresh EAS build.
 
 ## Follow the official test-app verbatim — hand-rolled "fixes" made things worse
 User mandate after a broken device build: implement exactly what readium's official kotlin-toolkit test-app does, no creative additions.

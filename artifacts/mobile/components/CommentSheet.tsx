@@ -37,6 +37,36 @@ import type { Comment, Visibility } from "@workspace/api-client-react";
 
 type FilterType = "best" | "friends";
 
+// ── @mention autocomplete helpers ────────────────────────────────────────────
+
+/**
+ * Returns the partial username being typed after a trailing "@" (e.g. "j" for
+ * "nice @j"), "" right after typing "@", or null when no mention is active.
+ */
+function activeMentionQuery(text: string): string | null {
+  const m = /(^|\s)@(\S*)$/.exec(text);
+  return m ? (m[2] ?? "") : null;
+}
+
+/** Replaces the trailing partial "@..." token with the completed mention. */
+function completeMentionText(text: string, username: string): string {
+  return text.replace(/(^|\s)@\S*$/, `$1@${username} `);
+}
+
+/** Candidates whose username starts with the partial query (case-insensitive). */
+function mentionSuggestions(
+  candidates: (string | null | undefined)[],
+  text: string,
+  selfUsername?: string,
+): string[] {
+  const query = activeMentionQuery(text);
+  if (query === null) return [];
+  const lower = query.toLowerCase();
+  return Array.from(
+    new Set(candidates.filter((u): u is string => !!u && u !== selfUsername)),
+  ).filter((u) => u.toLowerCase().startsWith(lower) && u.toLowerCase() !== lower);
+}
+
 const VISIBILITY_OPTIONS: {
   value: Visibility;
   label: string;
@@ -85,13 +115,12 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
 
   const createReply = useCreateReply();
 
-  // Extract unique @mention candidates from thread participants (excluding self).
-  const participants = Array.from(
-    new Set(
-      [parentComment.username, ...(replies ?? []).map((r) => r.username)].filter(
-        (u) => u !== user?.username,
-      ),
-    ),
+  // @mention autocomplete: suggest thread participants matching the partial
+  // "@..." the user is typing (shown only while a mention is being typed).
+  const suggestions = mentionSuggestions(
+    [parentComment.username, ...(replies ?? []).map((r) => r.username)],
+    replyText,
+    user?.username,
   );
 
   const handleSubmit = useCallback(() => {
@@ -117,12 +146,7 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
   }, [user, replyText, visibility, createReply, parentComment, queryClient]);
 
   const handleMentionChip = (username: string) => {
-    const mention = `@${username} `;
-    if (replyText.includes(mention)) return;
-    setReplyText((prev) => {
-      const trimmed = prev.trimEnd();
-      return trimmed ? `${trimmed} ${mention}` : mention;
-    });
+    setReplyText((prev) => completeMentionText(prev, username));
     inputRef.current?.focus();
   };
 
@@ -196,8 +220,8 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         />
       )}
 
-      {/* Mention chips */}
-      {participants.length > 0 ? (
+      {/* Mention suggestions (shown while typing "@...") */}
+      {suggestions.length > 0 ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -205,7 +229,7 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
           contentContainerStyle={styles.chipsContent}
           keyboardShouldPersistTaps="handled"
         >
-          {participants.map((username) => (
+          {suggestions.map((username) => (
             <Pressable
               key={username}
               onPress={() => handleMentionChip(username)}
@@ -400,6 +424,18 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
     [saveComment, queryClient, quoteId, filter],
   );
 
+  // @mention autocomplete: suggest quote commenters matching the partial
+  // "@..." the user is typing (shown only while a mention is being typed).
+  const suggestions = mentionSuggestions(
+    (comments ?? []).map((c) => c.username),
+    commentText,
+    user?.username,
+  );
+
+  const handleMentionChip = useCallback((username: string) => {
+    setCommentText((prev) => completeMentionText(prev, username));
+  }, []);
+
   const handleSubmit = useCallback(() => {
     if (!user || !quoteId || !commentText.trim()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -542,6 +578,36 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
                 contentContainerStyle={{ paddingBottom: 8, flexGrow: 1 }}
                 keyboardShouldPersistTaps="handled"
               />
+
+              {suggestions.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={[styles.chipsScroll, { borderColor: colors.border }]}
+                  contentContainerStyle={styles.chipsContent}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {suggestions.map((username) => (
+                    <Pressable
+                      key={username}
+                      onPress={() => handleMentionChip(username)}
+                      style={({ pressed }) => [
+                        styles.mentionChip,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
+                          borderRadius: colors.radius,
+                          opacity: pressed ? 0.7 : 1,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.mentionChipText, { color: colors.primary }]}>
+                        @{username}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              ) : null}
 
               <View
                 style={[

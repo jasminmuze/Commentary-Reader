@@ -30,7 +30,7 @@ import type { LibraryEntry, Quote } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { useFileSystem } from "@/hooks/useFileSystem";
-import { useReaderSettings } from "@/hooks/useReaderSettings";
+import { useReaderSettings, HIGHLIGHT_STYLE_CONFIGS } from "@/hooks/useReaderSettings";
 import type { ReaderSettings } from "@/hooks/useReaderSettings";
 import { CommentSheet } from "@/components/CommentSheet";
 import { ReaderSettingsPanel } from "@/components/ReaderSettingsPanel";
@@ -115,11 +115,14 @@ function intensityToOpacity(intensity: number): number {
   return Math.max(0.15, Math.min(0.5, intensity));
 }
 
-/** Signed 32-bit ARGB int for the community amber (#F9E04B) at the given opacity. */
-function amberTint(opacity: number): number {
+/** Signed 32-bit ARGB int for a "#RRGGBB" hex color at the given opacity. */
+function hexTint(hex: string, opacity: number): number {
+  const rgb = parseInt(hex.replace("#", ""), 16) & 0xffffff;
   const alpha = Math.max(0, Math.min(255, Math.round(opacity * 255)));
-  return ((alpha << 24) | 0xf9e04b) | 0;
+  return ((alpha << 24) | rgb) | 0;
 }
+
+const COMMUNITY_AMBER = "#F9E04B";
 
 const DECORATION_GROUP = "community";
 const QUOTE_DECORATION_PREFIX = "quote-";
@@ -309,10 +312,14 @@ function EmbeddedReader({
   // Community highlight decorations
   // -------------------------------------------------------------------
 
+  const myHighlightStyle = settings.highlightStyle;
+
   const applyAllDecorations = useCallback(() => {
+    const myStyle = HIGHLIGHT_STYLE_CONFIGS[myHighlightStyle];
     const decorations: {
       id: string;
       tint: number;
+      style: "highlight" | "underline";
       isActive: boolean;
       locator: unknown;
     }[] = [];
@@ -324,9 +331,17 @@ function EmbeddedReader({
       } catch {
         continue;
       }
+      // 내가 하이라이트한 인용은 설정에서 고른 색상/스타일로,
+      // 커뮤니티 하이라이트는 인기 강도에 따른 앰버색으로 표시한다.
+      const mine = quote?.highlightedByMe === true;
       decorations.push({
         id: `${QUOTE_DECORATION_PREFIX}${quoteId}`,
-        tint: amberTint(intensityToOpacity(quote?.highlightIntensity ?? 0.35)),
+        tint: mine
+          ? myStyle.annotationType === "underline"
+            ? hexTint(myStyle.color, 1)
+            : hexTint(myStyle.color, 0.45)
+          : hexTint(COMMUNITY_AMBER, intensityToOpacity(quote?.highlightIntensity ?? 0.35)),
+        style: mine ? myStyle.annotationType : "highlight",
         isActive: false,
         locator,
       });
@@ -338,13 +353,15 @@ function EmbeddedReader({
       .catch((error) => {
         console.warn("[NativeReadium] 데코레이션 적용 실패:", error);
       });
-  }, [libraryId, nativeReadium]);
+  }, [libraryId, nativeReadium, myHighlightStyle]);
 
   useEffect(() => {
     if (opened) applyAllDecorations();
   }, [opened, locatedVersion, quotes, applyAllDecorations]);
 
-  // 아직 위치를 찾지 않은 인용을 이 판본에서 검색 (선행 substring 검색은 네이티브가 수행)
+  // 아직 위치를 찾지 않은 인용을 이 판본에서 검색.
+  // 1차: 인용 전체 텍스트로 검색해 문장 전체가 하이라이트되게 하고,
+  // 2차: (판본 차이로) 못 찾은 인용만 선행 substring 으로 폴백 검색한다.
   useEffect(() => {
     if (!opened || !searchable || !canonicalBookId) return;
     const requests = quotes
@@ -356,12 +373,38 @@ function EmbeddedReader({
       )
       .map((q) => {
         requestedQuoteIdsRef.current.add(q.id);
-        return { quoteId: q.id, searchText: q.searchText };
+        return {
+          quoteId: q.id,
+          fullText: q.text.replace(/\s+/g, " ").trim(),
+          searchText: q.searchText,
+        };
       });
     if (requests.length === 0) return;
     setAnchoring(true);
-    nativeReadium
-      .findQuoteLocators(libraryId, JSON.stringify(requests))
+    (async () => {
+      const fullRequests = requests
+        .filter((r) => r.fullText.length > 0)
+        .map((r) => ({ quoteId: r.quoteId, searchText: r.fullText }));
+      const foundIds = new Set<number>();
+      if (fullRequests.length > 0) {
+        try {
+          const resultJson = await nativeReadium.findQuoteLocators(
+            libraryId,
+            JSON.stringify(fullRequests),
+          );
+          const results = JSON.parse(resultJson) as { quoteId: number }[];
+          for (const r of results) foundIds.add(r.quoteId);
+        } catch (error) {
+          console.warn("[NativeReadium] 인용 전체 텍스트 검색 실패:", error);
+        }
+      }
+      const fallback = requests
+        .filter((r) => !foundIds.has(r.quoteId) && r.searchText !== r.fullText)
+        .map((r) => ({ quoteId: r.quoteId, searchText: r.searchText }));
+      if (fallback.length > 0) {
+        await nativeReadium.findQuoteLocators(libraryId, JSON.stringify(fallback));
+      }
+    })()
       .catch((error) => {
         console.warn("[NativeReadium] 인용 위치 검색 실패:", error);
       })

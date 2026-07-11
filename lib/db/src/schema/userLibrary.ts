@@ -16,6 +16,8 @@ export const userLibraryTable = pgTable("user_library", {
   lastReadingLocation: text("last_reading_location"),
   // Reading progress as a percentage 0–100, saved alongside lastReadingLocation.
   readingProgress: integer("reading_progress"),
+  // Last time the owner opened this book in the reader (drives library ordering).
+  lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

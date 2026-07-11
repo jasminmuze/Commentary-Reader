@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db, booksTable, userLibraryTable } from "@workspace/db";
 import {
   CreateLibraryEntryBody,
@@ -238,6 +238,7 @@ router.put("/library/:libraryId/location", authenticate, async (req, res): Promi
     .update(userLibraryTable)
     .set({
       lastReadingLocation: body.data.location,
+      lastOpenedAt: new Date(),
       ...(progressValue !== null && {
         readingProgress: Math.min(100, Math.max(0, progressValue)),
       }),
@@ -261,11 +262,15 @@ router.get("/users/:userId/library", authenticate, async (req, res): Promise<voi
     res.status(403).json({ error: "Forbidden" });
     return;
   }
+  // Most recently opened first; never-opened entries fall back to newest upload.
   const entries = await db
     .select()
     .from(userLibraryTable)
     .where(eq(userLibraryTable.userId, params.data.userId))
-    .orderBy(desc(userLibraryTable.id));
+    .orderBy(
+      sql`${userLibraryTable.lastOpenedAt} DESC NULLS LAST`,
+      desc(userLibraryTable.id),
+    );
   const result = await Promise.all(entries.map((e) => formatLibraryEntry(e)));
   res.json(result);
 });

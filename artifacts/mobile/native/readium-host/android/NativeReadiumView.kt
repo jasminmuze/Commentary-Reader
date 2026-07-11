@@ -298,7 +298,8 @@ class NativeReadiumView(
 
     /**
      * Applies highlight decorations from JSON:
-     * `[{ "id": string, "tint": int(ARGB), "isActive"?: bool, "locator": {...} }]`
+     * `[{ "id": string, "tint": int(ARGB), "style"?: "highlight"|"underline",
+     *     "isActive"?: bool, "locator": {...} }]`
      *
      * A `DecorableNavigator.Listener` is registered per group (once) so taps on
      * decorations are forwarded to React Native with the decoration id.
@@ -315,14 +316,17 @@ class NativeReadiumView(
                 for (i in 0 until array.length()) {
                     val item = array.getJSONObject(i)
                     val locator = Locator.fromJSON(item.optJSONObject("locator")) ?: continue
+                    val tint = item.getInt("tint")
+                    val isActive = item.optBoolean("isActive", false)
+                    val style = when (item.optString("style", "highlight")) {
+                        "underline" -> Decoration.Style.Underline(tint = tint, isActive = isActive)
+                        else -> Decoration.Style.Highlight(tint = tint, isActive = isActive)
+                    }
                     decorations.add(
                         Decoration(
                             id = item.getString("id"),
                             locator = locator,
-                            style = Decoration.Style.Highlight(
-                                tint = item.getInt("tint"),
-                                isActive = item.optBoolean("isActive", false),
-                            ),
+                            style = style,
                         ),
                     )
                 }
