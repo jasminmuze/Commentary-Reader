@@ -67,6 +67,48 @@ function mentionSuggestions(
   ).filter((u) => u.toLowerCase().startsWith(lower) && u.toLowerCase() !== lower);
 }
 
+// "Contains spoilers" toggle chip shown next to the visibility options in
+// both compose bars (main comment + reply).
+function SpoilerToggleChip({
+  active,
+  onToggle,
+}: {
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const colors = useColors();
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={[
+        styles.visChip,
+        {
+          backgroundColor: active ? colors.accent : colors.card,
+          borderColor: active ? colors.accent : colors.border,
+          borderRadius: colors.radius,
+        },
+      ]}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: active }}
+      accessibilityLabel="Contains spoilers"
+    >
+      <Feather
+        name="alert-triangle"
+        size={12}
+        color={active ? colors.accentForeground : colors.mutedForeground}
+      />
+      <Text
+        style={[
+          styles.visChipText,
+          { color: active ? colors.accentForeground : colors.mutedForeground },
+        ]}
+      >
+        Spoiler
+      </Text>
+    </Pressable>
+  );
+}
+
 const VISIBILITY_OPTIONS: {
   value: Visibility;
   label: string;
@@ -99,10 +141,17 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
   const colors = useColors();
   const { user } = useUser();
   const queryClient = useQueryClient();
+  // Spoiler parent comment: blurred for everyone but the author until tapped.
+  const [parentSpoilerRevealed, setParentSpoilerRevealed] = useState(false);
+  const parentSpoilerHidden =
+    parentComment.containsSpoilers === true &&
+    user?.id !== parentComment.userId &&
+    !parentSpoilerRevealed;
   const [replyText, setReplyText] = useState(`@${parentComment.username} `);
   const [visibility, setVisibility] = useState<Visibility>(
     user?.defaultVisibility ?? "public",
   );
+  const [containsSpoilers, setContainsSpoilers] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   const { data: replies, isLoading } = useGetCommentReplies(
@@ -131,11 +180,12 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
     createReply.mutate(
       {
         commentId: parentComment.id,
-        data: { text: replyText.trim(), visibility },
+        data: { text: replyText.trim(), visibility, containsSpoilers },
       },
       {
         onSuccess: () => {
           setReplyText(`@${parentComment.username} `);
+          setContainsSpoilers(false);
           Keyboard.dismiss();
           queryClient.invalidateQueries({
             queryKey: getGetCommentRepliesQueryKey(parentComment.id),
@@ -145,7 +195,7 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         },
       },
     );
-  }, [user, replyText, visibility, createReply, parentComment, queryClient]);
+  }, [user, replyText, visibility, containsSpoilers, createReply, parentComment, queryClient]);
 
   const handleMentionChip = (username: string) => {
     setReplyText((prev) => completeMentionText(prev, username));
@@ -178,12 +228,48 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         ]}
       >
         <View style={styles.parentMeta}>
-          <Text style={[styles.parentUser, { color: colors.primary }]}>
-            @{parentComment.username}
-          </Text>
-          <Text style={[styles.parentText, { color: colors.foreground }]}>
-            {parentComment.text}
-          </Text>
+          <View style={styles.parentUserRow}>
+            <Text style={[styles.parentUser, { color: colors.primary }]}>
+              @{parentComment.username}
+            </Text>
+            {parentComment.containsSpoilers ? (
+              <View
+                style={[
+                  styles.spoilerBadge,
+                  { backgroundColor: colors.muted, borderRadius: colors.radius },
+                ]}
+              >
+                <Feather name="alert-triangle" size={10} color={colors.mutedForeground} />
+                <Text style={[styles.spoilerBadgeText, { color: colors.mutedForeground }]}>
+                  Spoiler
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          {parentSpoilerHidden ? (
+            <Pressable
+              onPress={() => setParentSpoilerRevealed(true)}
+              style={[
+                styles.spoilerCover,
+                {
+                  backgroundColor: colors.muted,
+                  borderColor: colors.border,
+                  borderRadius: colors.radius,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Spoiler — tap to reveal"
+            >
+              <Feather name="eye-off" size={14} color={colors.mutedForeground} />
+              <Text style={[styles.spoilerCoverText, { color: colors.mutedForeground }]}>
+                Spoiler — tap to reveal
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={[styles.parentText, { color: colors.foreground }]}>
+              {parentComment.text}
+            </Text>
+          )}
         </View>
       </View>
 
@@ -295,6 +381,10 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
               </Pressable>
             );
           })}
+          <SpoilerToggleChip
+            active={containsSpoilers}
+            onToggle={() => setContainsSpoilers((prev) => !prev)}
+          />
         </View>
         <View style={styles.inputRow}>
           <TextInput
@@ -357,6 +447,7 @@ export function CommentSheet({
   const [filter, setFilter] = useState<FilterType>("best");
   const [commentText, setCommentText] = useState("");
   const [visibility, setVisibility] = useState<Visibility>(user?.defaultVisibility ?? "public");
+  const [containsSpoilers, setContainsSpoilers] = useState(false);
   const [replyThread, setReplyThread] = useState<Comment | null>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -371,7 +462,10 @@ export function CommentSheet({
   }, [visible, initialReplyThread]);
 
   useEffect(() => {
-    if (visible) setVisibility(user?.defaultVisibility ?? "public");
+    if (visible) {
+      setVisibility(user?.defaultVisibility ?? "public");
+      setContainsSpoilers(false);
+    }
   }, [visible, user?.defaultVisibility]);
 
   useEffect(() => {
@@ -454,10 +548,11 @@ export function CommentSheet({
     if (!user || !quoteId || !commentText.trim()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     createComment.mutate(
-      { quoteId, data: { text: commentText.trim(), visibility } },
+      { quoteId, data: { text: commentText.trim(), visibility, containsSpoilers } },
       {
         onSuccess: () => {
           setCommentText("");
+          setContainsSpoilers(false);
           Keyboard.dismiss();
           queryClient.invalidateQueries({
             queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "best" }),
@@ -469,7 +564,7 @@ export function CommentSheet({
         },
       },
     );
-  }, [user, quoteId, commentText, visibility, createComment, queryClient, onCommentSaved]);
+  }, [user, quoteId, commentText, visibility, containsSpoilers, createComment, queryClient, onCommentSaved]);
 
   const translateY = slideAnim.interpolate({
     inputRange: [0, 1],
@@ -502,6 +597,9 @@ export function CommentSheet({
           {/* ── Reply thread view ── */}
           {replyThread ? (
             <ReplyThread
+              // Remount when switching threads so per-thread state (draft text,
+              // spoiler reveal) never leaks between different parent comments.
+              key={replyThread.id}
               parentComment={replyThread}
               onBack={() => setReplyThread(null)}
               bottomPad={bottomPad}
@@ -670,6 +768,10 @@ export function CommentSheet({
                       </Pressable>
                     );
                   })}
+                  <SpoilerToggleChip
+                    active={containsSpoilers}
+                    onToggle={() => setContainsSpoilers((prev) => !prev)}
+                  />
                 </View>
                 <View style={styles.inputRow}>
                   <TextInput
@@ -875,6 +977,37 @@ const styles = StyleSheet.create({
   },
   mentionChipText: {
     fontSize: 12,
+    fontWeight: "600",
+  },
+  parentUserRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  spoilerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  spoilerBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  spoilerCover: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  spoilerCoverText: {
+    fontSize: 13,
     fontWeight: "600",
   },
 });

@@ -142,6 +142,7 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
       text: body.data.text,
       visibility,
       likeCount: 0,
+      containsSpoilers: body.data.containsSpoilers ?? false,
     })
     .returning();
   if (!comment) {
@@ -294,6 +295,7 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
       visibility,
       likeCount: 0,
       parentId: commentId,
+      containsSpoilers: body.data.containsSpoilers ?? false,
     })
     .returning();
   if (!reply) {

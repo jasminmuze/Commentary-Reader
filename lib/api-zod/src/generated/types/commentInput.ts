@@ -11,4 +11,6 @@ export interface CommentInput {
   /** @minLength 1 */
   text: string;
   visibility?: Visibility;
+  /** Mark this comment as containing spoilers (default false) */
+  containsSpoilers?: boolean;
 }

@@ -308,6 +308,7 @@ export async function formatComment(
     savedByMe,
     replyCount,
     parentId: comment.parentId ?? null,
+    containsSpoilers: comment.containsSpoilers,
     createdAt: comment.createdAt,
   };
 }

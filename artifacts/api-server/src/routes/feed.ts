@@ -166,6 +166,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       quoteId: quotesTable.id,
       quoteText: quotesTable.text,
       commentText: commentsTable.text,
+      containsSpoilers: commentsTable.containsSpoilers,
       bookId: booksTable.id,
       bookTitle: booksTable.title,
       bookAuthor: booksTable.author,
@@ -277,6 +278,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
         r.type === "highlight"
           ? likedHighlightIds.has(r.id)
           : likedCommentIds.has(r.id),
+      containsSpoilers: r.type === "comment" ? r.containsSpoilers : false,
       createdAt: r.createdAt,
     };
   });

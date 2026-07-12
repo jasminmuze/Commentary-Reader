@@ -91,6 +91,7 @@ export const GetBookResponse = zod.object({
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
   "createdAt": zod.coerce.date()
 }))
 })
@@ -171,6 +172,7 @@ export const GetQuoteCommentsResponseItem = zod.object({
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
   "createdAt": zod.coerce.date()
 })
 export const GetQuoteCommentsResponse = zod.array(GetQuoteCommentsResponseItem)
@@ -188,7 +190,8 @@ export const CreateCommentParams = zod.object({
 
 export const CreateCommentBody = zod.object({
   "text": zod.string().min(1),
-  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)')
+  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "containsSpoilers": zod.boolean().optional().describe('Mark this comment as containing spoilers (default false)')
 })
 
 
@@ -273,6 +276,7 @@ export const GetCommentResponse = zod.object({
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
   "createdAt": zod.coerce.date()
 })
 
@@ -298,6 +302,7 @@ export const GetCommentRepliesResponseItem = zod.object({
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
   "createdAt": zod.coerce.date()
 })
 export const GetCommentRepliesResponse = zod.array(GetCommentRepliesResponseItem)
@@ -315,7 +320,8 @@ export const CreateReplyParams = zod.object({
 
 export const CreateReplyBody = zod.object({
   "text": zod.string().min(1),
-  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)')
+  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "containsSpoilers": zod.boolean().optional().describe('Mark this comment as containing spoilers (default false)')
 })
 
 
@@ -673,6 +679,7 @@ export const GetSavedCommentsResponseItem = zod.object({
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
   "createdAt": zod.coerce.date()
 })
 export const GetSavedCommentsResponse = zod.array(GetSavedCommentsResponseItem)
@@ -739,6 +746,7 @@ export const GetUserBookRecordsResponse = zod.object({
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
   "createdAt": zod.coerce.date()
 })),
   "savedComments": zod.array(zod.object({
@@ -755,6 +763,7 @@ export const GetUserBookRecordsResponse = zod.object({
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
   "createdAt": zod.coerce.date()
 }))
 })
@@ -994,6 +1003,7 @@ export const GetFeedResponse = zod.object({
   "commentText": zod.string().optional().describe('Present only when type is comment'),
   "likeCount": zod.number().describe('Number of likes on this highlight or comment'),
   "likedByMe": zod.boolean().describe('Whether the viewer has liked this item'),
+  "containsSpoilers": zod.boolean().describe('True when a comment item is author-flagged as a spoiler (always false for highlights)'),
   "createdAt": zod.coerce.date()
 })),
   "nextCursor": zod.string().nullable().describe('Pass as cursor to fetch the next page; null when there are no more items')

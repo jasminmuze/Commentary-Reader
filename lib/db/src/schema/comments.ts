@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import type { Visibility } from "./users";
 
 export const commentsTable = pgTable("comments", {
@@ -13,6 +13,8 @@ export const commentsTable = pgTable("comments", {
     .default("public")
     .$type<Visibility>(),
   likeCount: integer("like_count").notNull().default(0),
+  // Author-flagged spoiler: other users see the text blurred until they tap to reveal.
+  containsSpoilers: boolean("contains_spoilers").notNull().default(false),
   // NULL = top-level comment. Non-null = reply to a top-level comment (max 1 level deep).
   parentId: integer("parent_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

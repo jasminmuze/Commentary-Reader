@@ -26,5 +26,7 @@ export interface Comment {
      * @nullable
      */
   parentId?: number | null;
+  /** Author-flagged spoiler; clients blur the text for other users until tapped */
+  containsSpoilers: boolean;
   createdAt: Date;
 }

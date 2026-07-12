@@ -29,5 +29,7 @@ export interface FeedItem {
   likeCount: number;
   /** Whether the viewer has liked this item */
   likedByMe: boolean;
+  /** True when a comment item is author-flagged as a spoiler (always false for highlights) */
+  containsSpoilers: boolean;
   createdAt: Date;
 }

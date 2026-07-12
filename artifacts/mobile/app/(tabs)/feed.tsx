@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -54,7 +54,15 @@ function FeedCard({
   onToggleLike: (item: FeedItem) => void;
 }) {
   const colors = useColors();
+  const { user } = useUser();
   const isComment = item.type === "comment";
+  const [spoilerRevealed, setSpoilerRevealed] = useState(false);
+  // Authors see their own spoiler comments unblurred; others tap to reveal.
+  const spoilerHidden =
+    isComment &&
+    item.containsSpoilers &&
+    user?.id !== item.userId &&
+    !spoilerRevealed;
 
   return (
     <Pressable
@@ -105,9 +113,48 @@ function FeedCard({
       </View>
 
       {isComment && item.commentText ? (
-        <Text style={[styles.commentText, { color: colors.foreground }]} numberOfLines={3}>
-          {item.commentText}
-        </Text>
+        spoilerHidden ? (
+          <Pressable
+            onPress={() => setSpoilerRevealed(true)}
+            style={[
+              styles.spoilerCover,
+              {
+                backgroundColor: colors.muted,
+                borderColor: colors.border,
+                borderRadius: colors.radius,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Spoiler — tap to reveal"
+          >
+            <Feather name="eye-off" size={14} color={colors.mutedForeground} />
+            <Text style={[styles.spoilerCoverText, { color: colors.mutedForeground }]}>
+              Spoiler — tap to reveal
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={styles.commentRow}>
+            {item.containsSpoilers ? (
+              <View
+                style={[
+                  styles.spoilerBadge,
+                  { backgroundColor: colors.muted, borderRadius: colors.radius },
+                ]}
+              >
+                <Feather name="alert-triangle" size={10} color={colors.mutedForeground} />
+                <Text style={[styles.spoilerBadgeText, { color: colors.mutedForeground }]}>
+                  Spoiler
+                </Text>
+              </View>
+            ) : null}
+            <Text
+              style={[styles.commentText, { color: colors.foreground, flex: 1 }]}
+              numberOfLines={3}
+            >
+              {item.commentText}
+            </Text>
+          </View>
+        )
       ) : null}
 
       <View style={styles.cardFooter}>
@@ -378,6 +425,38 @@ const styles = StyleSheet.create({
   commentText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  commentRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  spoilerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    marginTop: 2,
+  },
+  spoilerBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  spoilerCover: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  spoilerCoverText: {
+    fontSize: 13,
+    fontWeight: "600",
   },
   bookMeta: {
     fontSize: 12,

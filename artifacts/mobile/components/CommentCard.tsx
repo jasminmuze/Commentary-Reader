@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { useColors } from "@/hooks/useColors";
+import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "./UserAvatar";
 import type { Comment } from "@workspace/api-client-react";
 
@@ -33,6 +34,18 @@ function timeAgo(dateStr: string): string {
 
 export function CommentCard({ comment, onLike, onSave, onReply, onPress, compact = false, isReply = false }: Props) {
   const colors = useColors();
+  const { user } = useUser();
+  const [spoilerRevealed, setSpoilerRevealed] = useState(false);
+
+  const isAuthor = user?.id === comment.userId;
+  const isSpoiler = comment.containsSpoilers === true;
+  // Authors always see their own spoiler text (badge only); others must tap.
+  const spoilerHidden = isSpoiler && !isAuthor && !spoilerRevealed;
+
+  const handleReveal = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSpoilerRevealed(true);
+  };
 
   const handleLike = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -78,6 +91,19 @@ export function CommentCard({ comment, onLike, onSave, onReply, onPress, compact
             {timeAgo(comment.createdAt)}
           </Text>
         </View>
+        {isSpoiler ? (
+          <View
+            style={[
+              styles.spoilerBadge,
+              { backgroundColor: colors.muted, borderRadius: colors.radius },
+            ]}
+          >
+            <Feather name="alert-triangle" size={10} color={colors.mutedForeground} />
+            <Text style={[styles.spoilerBadgeText, { color: colors.mutedForeground }]}>
+              Spoiler
+            </Text>
+          </View>
+        ) : null}
         {comment.visibility !== "public" ? (
           <Feather
             name={comment.visibility === "private" ? "lock" : "users"}
@@ -87,9 +113,30 @@ export function CommentCard({ comment, onLike, onSave, onReply, onPress, compact
         ) : null}
       </Pressable>
 
-      <Text style={[styles.text, { color: colors.foreground }]}>
-        {comment.text}
-      </Text>
+      {spoilerHidden ? (
+        <Pressable
+          onPress={handleReveal}
+          style={[
+            styles.spoilerCover,
+            {
+              backgroundColor: colors.muted,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Spoiler — tap to reveal"
+        >
+          <Feather name="eye-off" size={14} color={colors.mutedForeground} />
+          <Text style={[styles.spoilerCoverText, { color: colors.mutedForeground }]}>
+            Spoiler — tap to reveal
+          </Text>
+        </Pressable>
+      ) : (
+        <Text style={[styles.text, { color: colors.foreground }]}>
+          {comment.text}
+        </Text>
+      )}
 
       <View style={styles.actions}>
         <Pressable style={styles.action} onPress={handleLike}>
@@ -171,6 +218,33 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   actionCount: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  spoilerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    marginRight: 6,
+  },
+  spoilerBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  spoilerCover: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  spoilerCoverText: {
     fontSize: 13,
     fontWeight: "600",
   },

@@ -1096,7 +1096,7 @@ components:
 
     Comment:
       type: object
-      required: [id, quoteId, userId, username, avatarColor, text, visibility, likeCount, likedByMe, savedByMe, replyCount, createdAt]
+      required: [id, quoteId, userId, username, avatarColor, text, visibility, likeCount, likedByMe, savedByMe, replyCount, containsSpoilers, createdAt]
       properties:
         id:
           type: integer
@@ -1126,6 +1126,9 @@ components:
         parentId:
           type: [integer, "null"]
           description: ID of the parent comment for replies; null for top-level comments
+        containsSpoilers:
+          type: boolean
+          description: Author-flagged spoiler; clients blur the text for other users until tapped
         createdAt:
           type: string
           format: date-time
@@ -1139,6 +1142,9 @@ components:
           minLength: 1
         visibility:
           $ref: "#/components/schemas/Visibility"
+        containsSpoilers:
+          type: boolean
+          description: Mark this comment as containing spoilers (default false)
 
     CreateQuoteInput:
       type: object
@@ -1580,7 +1586,7 @@ components:
 
     FeedItem:
       type: object
-      required: [type, id, userId, username, avatarColor, bookId, bookTitle, bookAuthor, coverColor, quoteId, quoteText, quoteTextTruncated, likeCount, likedByMe, createdAt]
+      required: [type, id, userId, username, avatarColor, bookId, bookTitle, bookAuthor, coverColor, quoteId, quoteText, quoteTextTruncated, likeCount, likedByMe, containsSpoilers, createdAt]
       properties:
         type:
           type: string
@@ -1619,6 +1625,9 @@ components:
         likedByMe:
           type: boolean
           description: Whether the viewer has liked this item
+        containsSpoilers:
+          type: boolean
+          description: True when a comment item is author-flagged as a spoiler (always false for highlights)
         createdAt:
           type: string
           format: date-time

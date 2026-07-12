@@ -77,6 +77,8 @@ export interface Comment {
      * @nullable
      */
   parentId?: number | null;
+  /** Author-flagged spoiler; clients blur the text for other users until tapped */
+  containsSpoilers: boolean;
   createdAt: string;
 }
 
@@ -97,6 +99,8 @@ export interface CommentInput {
   /** @minLength 1 */
   text: string;
   visibility?: Visibility;
+  /** Mark this comment as containing spoilers (default false) */
+  containsSpoilers?: boolean;
 }
 
 export interface CreateQuoteInput {
@@ -413,6 +417,8 @@ export interface FeedItem {
   likeCount: number;
   /** Whether the viewer has liked this item */
   likedByMe: boolean;
+  /** True when a comment item is author-flagged as a spoiler (always false for highlights) */
+  containsSpoilers: boolean;
   createdAt: string;
 }
 
