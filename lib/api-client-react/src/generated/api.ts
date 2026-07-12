@@ -42,6 +42,7 @@ import type {
   LoginInput,
   ManualMatchInput,
   NotificationList,
+  NotificationSettings,
   OkResult,
   PushTokenInput,
   Quote,
@@ -3131,6 +3132,225 @@ export const useUnregisterPushToken = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUnregisterPushTokenMutationOptions(options));
+    }
+
+export const getLikeHighlightUrl = (highlightId: number,) => {
+
+
+
+
+  return `/api/highlights/${highlightId}/like`
+}
+
+/**
+ * @summary Toggle a like on a highlight (liker taken from bearer token)
+ */
+export const likeHighlight = async (highlightId: number, options?: RequestInit): Promise<LikeResult> => {
+
+  return customFetch<LikeResult>(getLikeHighlightUrl(highlightId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getLikeHighlightMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof likeHighlight>>, TError,{highlightId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof likeHighlight>>, TError,{highlightId: number}, TContext> => {
+
+const mutationKey = ['likeHighlight'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof likeHighlight>>, {highlightId: number}> = (props) => {
+          const {highlightId} = props ?? {};
+
+          return  likeHighlight(highlightId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LikeHighlightMutationResult = NonNullable<Awaited<ReturnType<typeof likeHighlight>>>
+
+    export type LikeHighlightMutationError = ErrorType<void>
+
+    /**
+ * @summary Toggle a like on a highlight (liker taken from bearer token)
+ */
+export const useLikeHighlight = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof likeHighlight>>, TError,{highlightId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof likeHighlight>>,
+        TError,
+        {highlightId: number},
+        TContext
+      > => {
+      return useMutation(getLikeHighlightMutationOptions(options));
+    }
+
+export const getGetNotificationSettingsUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/notification-settings`
+}
+
+/**
+ * @summary Get the current user's per-type notification settings (self only)
+ */
+export const getNotificationSettings = async (userId: number, options?: RequestInit): Promise<NotificationSettings> => {
+
+  return customFetch<NotificationSettings>(getGetNotificationSettingsUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNotificationSettingsQueryKey = (userId: number,) => {
+    return [
+    `/api/users/${userId}/notification-settings`
+    ] as const;
+    }
+
+
+export const getGetNotificationSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getNotificationSettings>>, TError = ErrorType<unknown>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotificationSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNotificationSettingsQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNotificationSettings>>> = ({ signal }) => getNotificationSettings(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNotificationSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNotificationSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getNotificationSettings>>>
+export type GetNotificationSettingsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the current user's per-type notification settings (self only)
+ */
+
+export function useGetNotificationSettings<TData = Awaited<ReturnType<typeof getNotificationSettings>>, TError = ErrorType<unknown>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotificationSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNotificationSettingsQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateNotificationSettingsUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/notification-settings`
+}
+
+/**
+ * @summary Update the current user's per-type notification settings (self only)
+ */
+export const updateNotificationSettings = async (userId: number,
+    notificationSettings: NotificationSettings, options?: RequestInit): Promise<NotificationSettings> => {
+
+  return customFetch<NotificationSettings>(getUpdateNotificationSettingsUrl(userId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      notificationSettings,)
+  }
+);}
+
+
+
+
+export const getUpdateNotificationSettingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateNotificationSettings>>, TError,{userId: number;data: BodyType<NotificationSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateNotificationSettings>>, TError,{userId: number;data: BodyType<NotificationSettings>}, TContext> => {
+
+const mutationKey = ['updateNotificationSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateNotificationSettings>>, {userId: number;data: BodyType<NotificationSettings>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  updateNotificationSettings(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateNotificationSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateNotificationSettings>>>
+    export type UpdateNotificationSettingsMutationBody = BodyType<NotificationSettings>
+    export type UpdateNotificationSettingsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update the current user's per-type notification settings (self only)
+ */
+export const useUpdateNotificationSettings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateNotificationSettings>>, TError,{userId: number;data: BodyType<NotificationSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateNotificationSettings>>,
+        TError,
+        {userId: number;data: BodyType<NotificationSettings>},
+        TContext
+      > => {
+      return useMutation(getUpdateNotificationSettingsMutationOptions(options));
     }
 
 export const getGetFeedUrl = (params?: GetFeedParams,) => {

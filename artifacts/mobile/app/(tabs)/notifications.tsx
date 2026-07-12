@@ -75,7 +75,11 @@ function NotificationCard({
       ? " sent you a friend request"
       : isFriendAccept
         ? " accepted your friend request"
-        : " mentioned you";
+        : item.type === "highlight_like"
+          ? " liked your highlight"
+          : item.type === "comment_like"
+            ? " liked your comment"
+            : " mentioned you";
 
   return (
     <Pressable

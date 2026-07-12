@@ -14,6 +14,7 @@ import {
 } from "@workspace/api-zod";
 import { authenticate } from "../middlewares/authenticate.js";
 import { sendPushToUsers } from "../lib/push";
+import { getNotificationPrefs } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -92,24 +93,29 @@ router.post("/friend-requests", authenticate, async (req, res): Promise<void> =>
     .onConflictDoNothing()
     .returning();
 
+  // Skipped entirely (in-app AND push) when the recipient disabled friend
+  // notifications. They can still see and act on pending requests elsewhere.
   if (inserted.length > 0) {
-    await db.insert(notificationsTable).values({
-      userId: recipientId,
-      type: "friend_request",
-      actorId: requesterId,
-    });
-
-    void (async () => {
-      const [requester] = await db
-        .select({ username: usersTable.username })
-        .from(usersTable)
-        .where(eq(usersTable.id, requesterId));
-      await sendPushToUsers([recipientId], {
-        title: `@${requester?.username ?? "누군가"}님이 친구 요청을 보냈어요`,
-        body: "알림에서 바로 수락하거나 거절할 수 있어요.",
-        data: { type: "friend_request", requesterId },
+    const prefs = await getNotificationPrefs(recipientId);
+    if (prefs.notifyFriends) {
+      await db.insert(notificationsTable).values({
+        userId: recipientId,
+        type: "friend_request",
+        actorId: requesterId,
       });
-    })();
+
+      void (async () => {
+        const [requester] = await db
+          .select({ username: usersTable.username })
+          .from(usersTable)
+          .where(eq(usersTable.id, requesterId));
+        await sendPushToUsers([recipientId], {
+          title: `@${requester?.username ?? "누군가"}님이 친구 요청을 보냈어요`,
+          body: "알림에서 바로 수락하거나 거절할 수 있어요.",
+          data: { type: "friend_request", requesterId },
+        });
+      })();
+    }
   }
 
   res.json({ ok: true });
@@ -128,6 +134,7 @@ async function acceptRequest(
 ): Promise<boolean> {
   // All-or-nothing: request deletion, mutual follows, and notifications must
   // not end up in a partial state if any step fails.
+  const requesterPrefs = await getNotificationPrefs(requesterId);
   const accepted = await db.transaction(async (tx) => {
     const deleted = await tx
       .delete(friendRequestsTable)
@@ -162,27 +169,33 @@ async function acceptRequest(
         ),
       );
 
-    await tx.insert(notificationsTable).values({
-      userId: requesterId,
-      type: "friend_accept",
-      actorId: recipientId,
-    });
+    // Skipped entirely (in-app AND push) when the requester disabled friend
+    // notifications; the friendship itself is still created above.
+    if (requesterPrefs.notifyFriends) {
+      await tx.insert(notificationsTable).values({
+        userId: requesterId,
+        type: "friend_accept",
+        actorId: recipientId,
+      });
+    }
 
     return true;
   });
   if (!accepted) return false;
 
-  void (async () => {
-    const [recipient] = await db
-      .select({ username: usersTable.username })
-      .from(usersTable)
-      .where(eq(usersTable.id, recipientId));
-    await sendPushToUsers([requesterId], {
-      title: `@${recipient?.username ?? "누군가"}님이 친구 요청을 수락했어요`,
-      body: "이제 친구 공개 글을 서로 볼 수 있어요.",
-      data: { type: "friend_accept", userId: recipientId },
-    });
-  })();
+  if (requesterPrefs.notifyFriends) {
+    void (async () => {
+      const [recipient] = await db
+        .select({ username: usersTable.username })
+        .from(usersTable)
+        .where(eq(usersTable.id, recipientId));
+      await sendPushToUsers([requesterId], {
+        title: `@${recipient?.username ?? "누군가"}님이 친구 요청을 수락했어요`,
+        body: "이제 친구 공개 글을 서로 볼 수 있어요.",
+        data: { type: "friend_accept", userId: recipientId },
+      });
+    })();
+  }
 
   return true;
 }

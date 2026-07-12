@@ -250,6 +250,17 @@ export interface UpdateUserSettings {
   defaultVisibility: Visibility;
 }
 
+export interface NotificationSettings {
+  /** Notify when someone likes my highlight or comment */
+  likes: boolean;
+  /** Notify when someone replies to my comment */
+  replies: boolean;
+  /** Notify when someone @mentions me */
+  mentions: boolean;
+  /** Notify on friend requests and accepts */
+  friends: boolean;
+}
+
 export interface UserWithFriendStatus {
   id: number;
   username: string;
@@ -282,7 +293,7 @@ export interface FriendRequestInput {
 }
 
 /**
- * reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted
+ * reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment
  */
 export type NotificationItemType = typeof NotificationItemType[keyof typeof NotificationItemType];
 
@@ -292,11 +303,13 @@ export const NotificationItemType = {
   mention: 'mention',
   friend_request: 'friend_request',
   friend_accept: 'friend_accept',
+  highlight_like: 'highlight_like',
+  comment_like: 'comment_like',
 } as const;
 
 export interface NotificationItem {
   id: number;
-  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted */
+  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment */
   type: NotificationItemType;
   actorId: number;
   actorUsername: string;
@@ -396,6 +409,10 @@ export interface FeedItem {
   quoteTextTruncated: boolean;
   /** Present only when type is comment */
   commentText?: string;
+  /** Number of likes on this highlight or comment */
+  likeCount: number;
+  /** Whether the viewer has liked this item */
+  likedByMe: boolean;
   createdAt: string;
 }
 

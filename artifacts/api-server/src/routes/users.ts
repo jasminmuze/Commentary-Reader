@@ -23,6 +23,9 @@ import {
   GetUserProfileParams,
   UpdateUserSettingsParams,
   UpdateUserSettingsBody,
+  GetNotificationSettingsParams,
+  UpdateNotificationSettingsParams,
+  UpdateNotificationSettingsBody,
   GetUserRecordsParams,
   GetUserBookRecordsParams,
   GetUserHighlightsParams,
@@ -287,6 +290,81 @@ router.patch("/users/:userId/settings", authenticate, async (req, res): Promise<
   }
 
   res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility, createdAt: user.createdAt.toISOString() });
+});
+
+// Get the current user's per-type notification settings (self only).
+router.get("/users/:userId/notification-settings", authenticate, async (req, res): Promise<void> => {
+  const params = GetNotificationSettingsParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const [user] = await db
+    .select({
+      notifyLikes: usersTable.notifyLikes,
+      notifyReplies: usersTable.notifyReplies,
+      notifyMentions: usersTable.notifyMentions,
+      notifyFriends: usersTable.notifyFriends,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, params.data.userId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  res.json({
+    likes: user.notifyLikes,
+    replies: user.notifyReplies,
+    mentions: user.notifyMentions,
+    friends: user.notifyFriends,
+  });
+});
+
+// Update the current user's per-type notification settings (self only).
+// A disabled type skips BOTH in-app notification creation and push delivery.
+router.put("/users/:userId/notification-settings", authenticate, async (req, res): Promise<void> => {
+  const params = UpdateNotificationSettingsParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const body = UpdateNotificationSettingsBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const [user] = await db
+    .update(usersTable)
+    .set({
+      notifyLikes: body.data.likes,
+      notifyReplies: body.data.replies,
+      notifyMentions: body.data.mentions,
+      notifyFriends: body.data.friends,
+    })
+    .where(eq(usersTable.id, params.data.userId))
+    .returning();
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  res.json({
+    likes: user.notifyLikes,
+    replies: user.notifyReplies,
+    mentions: user.notifyMentions,
+    friends: user.notifyFriends,
+  });
 });
 
 router.get("/users/:userId/friends", authenticate, async (req, res): Promise<void> => {

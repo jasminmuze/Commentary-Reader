@@ -834,7 +834,7 @@ export const GetNotificationsParams = zod.object({
 export const GetNotificationsResponse = zod.object({
   "notifications": zod.array(zod.object({
   "id": zod.number(),
-  "type": zod.enum(['reply', 'mention', 'friend_request', 'friend_accept']).describe('reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted'),
+  "type": zod.enum(['reply', 'mention', 'friend_request', 'friend_accept', 'highlight_like', 'comment_like']).describe('reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment'),
   "actorId": zod.number(),
   "actorUsername": zod.string(),
   "actorAvatarColor": zod.string(),
@@ -915,6 +915,56 @@ export const UnregisterPushTokenResponse = zod.object({
 
 
 /**
+ * @summary Toggle a like on a highlight (liker taken from bearer token)
+ */
+export const LikeHighlightParams = zod.object({
+  "highlightId": zod.coerce.number()
+})
+
+export const LikeHighlightResponse = zod.object({
+  "liked": zod.boolean(),
+  "likeCount": zod.number()
+})
+
+
+/**
+ * @summary Get the current user's per-type notification settings (self only)
+ */
+export const GetNotificationSettingsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetNotificationSettingsResponse = zod.object({
+  "likes": zod.boolean().describe('Notify when someone likes my highlight or comment'),
+  "replies": zod.boolean().describe('Notify when someone replies to my comment'),
+  "mentions": zod.boolean().describe('Notify when someone @mentions me'),
+  "friends": zod.boolean().describe('Notify on friend requests and accepts')
+})
+
+
+/**
+ * @summary Update the current user's per-type notification settings (self only)
+ */
+export const UpdateNotificationSettingsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const UpdateNotificationSettingsBody = zod.object({
+  "likes": zod.boolean().describe('Notify when someone likes my highlight or comment'),
+  "replies": zod.boolean().describe('Notify when someone replies to my comment'),
+  "mentions": zod.boolean().describe('Notify when someone @mentions me'),
+  "friends": zod.boolean().describe('Notify on friend requests and accepts')
+})
+
+export const UpdateNotificationSettingsResponse = zod.object({
+  "likes": zod.boolean().describe('Notify when someone likes my highlight or comment'),
+  "replies": zod.boolean().describe('Notify when someone replies to my comment'),
+  "mentions": zod.boolean().describe('Notify when someone @mentions me'),
+  "friends": zod.boolean().describe('Notify on friend requests and accepts')
+})
+
+
+/**
  * @summary Activity feed of users I follow (highlights + comments, newest first, viewer taken from bearer token)
  */
 export const getFeedQueryLimitDefault = 20;
@@ -942,6 +992,8 @@ export const GetFeedResponse = zod.object({
   "quoteText": zod.string().describe('Quote text — truncated to a preview length unless the viewer owns the book'),
   "quoteTextTruncated": zod.boolean().describe('Whether quoteText was truncated for copyright protection'),
   "commentText": zod.string().optional().describe('Present only when type is comment'),
+  "likeCount": zod.number().describe('Number of likes on this highlight or comment'),
+  "likedByMe": zod.boolean().describe('Whether the viewer has liked this item'),
   "createdAt": zod.coerce.date()
 })),
   "nextCursor": zod.string().nullable().describe('Pass as cursor to fetch the next page; null when there are no more items')

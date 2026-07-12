@@ -9,7 +9,7 @@ import type { NotificationItemType } from './notificationItemType';
 
 export interface NotificationItem {
   id: number;
-  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted */
+  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment */
   type: NotificationItemType;
   actorId: number;
   actorUsername: string;

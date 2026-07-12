@@ -6,6 +6,7 @@ import {
   usersTable,
   commentsTable,
   quotesTable,
+  userHighlightsTable,
 } from "@workspace/db";
 import {
   GetNotificationsParams,
@@ -43,7 +44,7 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
   }
 
   const actorIds = [...new Set(notifs.map((n) => n.actorId))];
-  // friend_* notifications have no comment.
+  // friend_* notifications have no comment; highlight_like has a highlight instead.
   const commentIds = [
     ...new Set(
       notifs
@@ -51,18 +52,37 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
         .filter((id): id is number => id != null),
     ),
   ];
+  const highlightIds = [
+    ...new Set(
+      notifs
+        .map((n) => n.highlightId)
+        .filter((id): id is number => id != null),
+    ),
+  ];
 
-  const [actors, comments] = await Promise.all([
+  const [actors, comments, highlights] = await Promise.all([
     db.select().from(usersTable).where(inArray(usersTable.id, actorIds)),
     commentIds.length
       ? db.select().from(commentsTable).where(inArray(commentsTable.id, commentIds))
+      : Promise.resolve([]),
+    highlightIds.length
+      ? db
+          .select()
+          .from(userHighlightsTable)
+          .where(inArray(userHighlightsTable.id, highlightIds))
       : Promise.resolve([]),
   ]);
 
   const actorMap = new Map(actors.map((a) => [a.id, a]));
   const commentMap = new Map(comments.map((c) => [c.id, c]));
+  const highlightMap = new Map(highlights.map((h) => [h.id, h]));
 
-  const quoteIds = [...new Set(comments.map((c) => c.quoteId))];
+  const quoteIds = [
+    ...new Set([
+      ...comments.map((c) => c.quoteId),
+      ...highlights.map((h) => h.quoteId),
+    ]),
+  ];
   const quotes = quoteIds.length
     ? await db.select().from(quotesTable).where(inArray(quotesTable.id, quoteIds))
     : [];
@@ -71,7 +91,11 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
   const items: NotificationItem[] = notifs.map((n) => {
     const actor = actorMap.get(n.actorId);
     const comment = n.commentId != null ? commentMap.get(n.commentId) : undefined;
-    const quote = comment ? quoteMap.get(comment.quoteId) : undefined;
+    const highlight =
+      n.highlightId != null ? highlightMap.get(n.highlightId) : undefined;
+    // highlight_like anchors to the highlight's quote; everything else to the comment's.
+    const quoteId = comment?.quoteId ?? highlight?.quoteId;
+    const quote = quoteId != null ? quoteMap.get(quoteId) : undefined;
     return {
       id: n.id,
       type: n.type,
@@ -81,7 +105,7 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
       commentId: n.commentId ?? 0,
       commentText: comment?.text ?? "",
       parentCommentId: comment?.parentId ?? null,
-      quoteId: comment?.quoteId ?? 0,
+      quoteId: quoteId ?? 0,
       quoteText: quote?.text ?? "",
       read: n.read,
       createdAt: n.createdAt,

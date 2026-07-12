@@ -25,5 +25,9 @@ export interface FeedItem {
   quoteTextTruncated: boolean;
   /** Present only when type is comment */
   commentText?: string;
+  /** Number of likes on this highlight or comment */
+  likeCount: number;
+  /** Whether the viewer has liked this item */
+  likedByMe: boolean;
   createdAt: Date;
 }

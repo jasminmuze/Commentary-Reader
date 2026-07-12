@@ -3,6 +3,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   booksTable,
+  highlightLikesTable,
   quotesTable,
   userHighlightsTable,
   userLibraryTable,
@@ -13,6 +14,7 @@ import {
   CreateQuoteParams,
   CreateQuoteBody,
   GetQuoteReaderContextParams,
+  LikeHighlightParams,
   ToggleHighlightParams,
   ToggleHighlightBody,
 } from "@workspace/api-zod";
@@ -24,7 +26,8 @@ import {
   toQuote,
 } from "../lib/queries";
 import { leadingSubstring } from "../lib/text";
-import { getViewer } from "../lib/social";
+import { getViewer, visibilityPredicate } from "../lib/social";
+import { createLikeNotification } from "../lib/notifications";
 import { getOwnedBookIds, truncateQuoteText } from "../lib/contentLimits";
 import { authenticate } from "../middlewares/authenticate.js";
 
@@ -225,6 +228,92 @@ router.post("/quotes/:quoteId/highlight", authenticate, async (req, res): Promis
     highlightCount: counts.highlightCount,
   };
   res.json(result);
+});
+
+// POST /highlights/:highlightId/like — toggle a like on another user's highlight.
+// Like counts are computed by GROUP BY (no denormalized counter), matching the
+// no-denorm convention for highlights.
+router.post("/highlights/:highlightId/like", authenticate, async (req, res): Promise<void> => {
+  const params = LikeHighlightParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const { highlightId } = params.data;
+  const userId = req.userId;
+
+  // Authz: you may only like a highlight you are allowed to see.
+  const viewer = await getViewer(userId);
+  const [highlight] = await db
+    .select({
+      id: userHighlightsTable.id,
+      userId: userHighlightsTable.userId,
+      quoteId: userHighlightsTable.quoteId,
+    })
+    .from(userHighlightsTable)
+    .where(
+      and(
+        eq(userHighlightsTable.id, highlightId),
+        visibilityPredicate(
+          userHighlightsTable.visibility,
+          userHighlightsTable.userId,
+          viewer,
+        ),
+      ),
+    )
+    .limit(1);
+  if (!highlight) {
+    res.status(404).json({ error: "Highlight not found" });
+    return;
+  }
+
+  const deleted = await db
+    .delete(highlightLikesTable)
+    .where(
+      and(
+        eq(highlightLikesTable.highlightId, highlightId),
+        eq(highlightLikesTable.userId, userId),
+      ),
+    )
+    .returning();
+
+  let liked = false;
+  if (deleted.length === 0) {
+    // Race-free like: the unique index makes concurrent double-taps a no-op.
+    const inserted = await db
+      .insert(highlightLikesTable)
+      .values({ highlightId, userId })
+      .onConflictDoNothing()
+      .returning();
+    liked = true;
+
+    // Notify the highlight owner (best-effort; only on a newly created like).
+    if (inserted.length > 0) {
+      try {
+        const [quote] = await db
+          .select({ text: quotesTable.text })
+          .from(quotesTable)
+          .where(eq(quotesTable.id, highlight.quoteId));
+        await createLikeNotification({
+          recipientId: highlight.userId,
+          actorId: userId,
+          type: "highlight_like",
+          highlightId,
+          previewText: quote?.text ?? "",
+        });
+      } catch (err) {
+        req.log.warn({ err }, "Failed to create highlight like notification");
+      }
+    }
+  }
+
+  const [countRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(highlightLikesTable)
+    .where(eq(highlightLikesTable.highlightId, highlightId));
+
+  res.json({ liked, likeCount: countRow?.count ?? 0 });
 });
 
 export default router;

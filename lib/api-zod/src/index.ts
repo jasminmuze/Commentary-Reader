@@ -26,6 +26,7 @@ export * from "./generated/types/manualMatchInput";
 export * from "./generated/types/matchResult";
 export * from "./generated/types/matchResultStatus";
 export * from "./generated/types/notificationItem";
+export * from "./generated/types/notificationSettings";
 export * from "./generated/types/okResult";
 export * from "./generated/types/pushTokenInput";
 export * from "./generated/types/notificationItemType";

@@ -16,6 +16,85 @@ async function getActorUsername(actorId: number): Promise<string> {
   return actor?.username ?? "누군가";
 }
 
+export interface NotificationPrefs {
+  notifyLikes: boolean;
+  notifyReplies: boolean;
+  notifyMentions: boolean;
+  notifyFriends: boolean;
+}
+
+/**
+ * Loads a user's per-type notification preferences. Unknown users default to
+ * all-on (the caller will fail elsewhere if the user truly doesn't exist).
+ */
+export async function getNotificationPrefs(
+  userId: number,
+): Promise<NotificationPrefs> {
+  const [user] = await db
+    .select({
+      notifyLikes: usersTable.notifyLikes,
+      notifyReplies: usersTable.notifyReplies,
+      notifyMentions: usersTable.notifyMentions,
+      notifyFriends: usersTable.notifyFriends,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
+  return (
+    user ?? {
+      notifyLikes: true,
+      notifyReplies: true,
+      notifyMentions: true,
+      notifyFriends: true,
+    }
+  );
+}
+
+/**
+ * Creates a highlight_like / comment_like notification for the liked content's
+ * owner and fires a best-effort push. Skips entirely (in-app AND push) when
+ * the owner is the actor or has likes notifications disabled.
+ * Best-effort: callers should treat failures as non-fatal.
+ */
+export async function createLikeNotification(options: {
+  recipientId: number;
+  actorId: number;
+  type: "highlight_like" | "comment_like";
+  highlightId?: number;
+  commentId?: number;
+  previewText: string;
+}): Promise<void> {
+  const { recipientId, actorId, type, highlightId, commentId, previewText } =
+    options;
+  if (recipientId === actorId) return;
+
+  const prefs = await getNotificationPrefs(recipientId);
+  if (!prefs.notifyLikes) return;
+
+  await db.insert(notificationsTable).values({
+    userId: recipientId,
+    type,
+    actorId,
+    highlightId: highlightId ?? null,
+    commentId: commentId ?? null,
+  });
+
+  // Push delivery is fire-and-forget: never delays or fails the request.
+  void (async () => {
+    const actorUsername = await getActorUsername(actorId);
+    await sendPushToUsers([recipientId], {
+      title:
+        type === "highlight_like"
+          ? `@${actorUsername}님이 회원님의 하이라이트를 좋아해요`
+          : `@${actorUsername}님이 회원님의 댓글을 좋아해요`,
+      body: previewText,
+      data:
+        type === "highlight_like"
+          ? { type, highlightId }
+          : { type, commentId },
+    });
+  })();
+}
+
 /**
  * Creates "mention" notifications for every @mentioned user in `text` that
  * actually exists, excluding the actor and any already-notified users.
@@ -36,10 +115,13 @@ export async function createMentionNotifications(options: {
   if (mentionedNames.length === 0) return;
 
   const mentionedUsers = await db
-    .select({ id: usersTable.id })
+    .select({ id: usersTable.id, notifyMentions: usersTable.notifyMentions })
     .from(usersTable)
     .where(inArray(usersTable.username, mentionedNames));
-  const toNotify = mentionedUsers.filter((u) => !excluded.has(u.id));
+  // Respect each recipient's mention-notification setting (skips in-app AND push).
+  const toNotify = mentionedUsers.filter(
+    (u) => !excluded.has(u.id) && u.notifyMentions,
+  );
   if (toNotify.length === 0) return;
 
   await db.insert(notificationsTable).values(

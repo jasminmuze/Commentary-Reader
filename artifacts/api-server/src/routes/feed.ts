@@ -4,7 +4,9 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   db,
   booksTable,
+  commentLikesTable,
   commentsTable,
+  highlightLikesTable,
   quotesTable,
   userHighlightsTable,
   usersTable,
@@ -168,6 +170,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       bookTitle: booksTable.title,
       bookAuthor: booksTable.author,
       coverColor: booksTable.coverColor,
+      likeCount: commentsTable.likeCount,
       createdAt: commentsTable.createdAt,
     })
     .from(commentsTable)
@@ -200,6 +203,53 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
     ...new Set(page.map((r) => r.bookId)),
   ]);
 
+  // Like state for the page. Highlight like counts are computed via GROUP BY
+  // (no denormalized counter); comment counts come from commentsTable.likeCount.
+  const highlightIds = page
+    .filter((r) => r.type === "highlight")
+    .map((r) => r.id);
+  const commentIds = page.filter((r) => r.type === "comment").map((r) => r.id);
+
+  const highlightLikeCounts = new Map<number, number>();
+  const likedHighlightIds = new Set<number>();
+  if (highlightIds.length > 0) {
+    const countRows = await db
+      .select({
+        highlightId: highlightLikesTable.highlightId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(highlightLikesTable)
+      .where(inArray(highlightLikesTable.highlightId, highlightIds))
+      .groupBy(highlightLikesTable.highlightId);
+    for (const row of countRows) {
+      highlightLikeCounts.set(row.highlightId, row.count);
+    }
+    const myLikes = await db
+      .select({ highlightId: highlightLikesTable.highlightId })
+      .from(highlightLikesTable)
+      .where(
+        and(
+          inArray(highlightLikesTable.highlightId, highlightIds),
+          eq(highlightLikesTable.userId, userId),
+        ),
+      );
+    for (const row of myLikes) likedHighlightIds.add(row.highlightId);
+  }
+
+  const likedCommentIds = new Set<number>();
+  if (commentIds.length > 0) {
+    const myLikes = await db
+      .select({ commentId: commentLikesTable.commentId })
+      .from(commentLikesTable)
+      .where(
+        and(
+          inArray(commentLikesTable.commentId, commentIds),
+          eq(commentLikesTable.userId, userId),
+        ),
+      );
+    for (const row of myLikes) likedCommentIds.add(row.commentId);
+  }
+
   const items: FeedItem[] = page.map((r) => {
     const owned = ownedBookIds.has(r.bookId);
     const preview = owned
@@ -219,6 +269,14 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       quoteText: preview.text,
       quoteTextTruncated: preview.truncated,
       ...(r.type === "comment" ? { commentText: r.commentText } : {}),
+      likeCount:
+        r.type === "highlight"
+          ? (highlightLikeCounts.get(r.id) ?? 0)
+          : r.likeCount,
+      likedByMe:
+        r.type === "highlight"
+          ? likedHighlightIds.has(r.id)
+          : likedCommentIds.has(r.id),
       createdAt: r.createdAt,
     };
   });

@@ -133,6 +133,40 @@ export default function ProfileScreen() {
         </Pressable>
       </View>
 
+      {/* Notification settings */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Notifications</Text>
+        <Pressable
+          onPress={() => router.push("/notification-settings")}
+          style={({ pressed }) => [
+            styles.card,
+            styles.recordsButton,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+              opacity: pressed ? 0.6 : 1,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.visIcon,
+              { backgroundColor: colors.primary, borderRadius: 8 },
+            ]}
+          >
+            <Feather name="bell" size={16} color={colors.primaryForeground} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.visLabel, { color: colors.foreground }]}>Notification settings</Text>
+            <Text style={[styles.visDesc, { color: colors.mutedForeground }]}>
+              Choose which notifications you receive
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+        </Pressable>
+      </View>
+
       {/* Default visibility */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>DEFAULT VISIBILITY</Text>

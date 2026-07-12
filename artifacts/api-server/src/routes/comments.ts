@@ -9,7 +9,12 @@ import {
   usersTable,
   notificationsTable,
 } from "@workspace/db";
-import { createMentionNotifications, sendReplyPush } from "../lib/notifications";
+import {
+  createLikeNotification,
+  createMentionNotifications,
+  getNotificationPrefs,
+  sendReplyPush,
+} from "../lib/notifications";
 import {
   GetQuoteCommentsParams,
   GetQuoteCommentsQueryParams,
@@ -300,21 +305,27 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
   try {
     const notifiedUserIds = new Set<number>();
 
-    // 'reply' notification for the parent comment author.
+    // 'reply' notification for the parent comment author — skipped entirely
+    // (in-app AND push) when they disabled reply notifications.
     if (parentComment.userId !== userId) {
-      await db.insert(notificationsTable).values({
-        userId: parentComment.userId,
-        type: "reply",
-        actorId: userId,
-        commentId: reply.id,
-      });
+      const prefs = await getNotificationPrefs(parentComment.userId);
+      if (prefs.notifyReplies) {
+        await db.insert(notificationsTable).values({
+          userId: parentComment.userId,
+          type: "reply",
+          actorId: userId,
+          commentId: reply.id,
+        });
+        sendReplyPush({
+          recipientId: parentComment.userId,
+          actorId: userId,
+          commentId: reply.id,
+          text: body.data.text,
+        });
+      }
+      // Even when reply notifications are off, don't double-notify the parent
+      // author via a mention in the same reply.
       notifiedUserIds.add(parentComment.userId);
-      sendReplyPush({
-        recipientId: parentComment.userId,
-        actorId: userId,
-        commentId: reply.id,
-        text: body.data.text,
-      });
     }
 
     // 'mention' notifications for @mentioned users.
@@ -346,7 +357,11 @@ router.post("/comments/:commentId/like", authenticate, async (req, res): Promise
   // Authz: you may only like a comment you are allowed to see.
   const viewer = await getViewer(userId);
   const [visibleComment] = await db
-    .select({ id: commentsTable.id })
+    .select({
+      id: commentsTable.id,
+      userId: commentsTable.userId,
+      text: commentsTable.text,
+    })
     .from(commentsTable)
     .where(
       and(
@@ -396,6 +411,21 @@ router.post("/comments/:commentId/like", authenticate, async (req, res): Promise
       .set({ likeCount: sql`${commentsTable.likeCount} + 1` })
       .where(eq(commentsTable.id, commentId))
       .returning();
+
+    // Notify the comment author (best-effort, non-fatal; skips self-likes and
+    // disabled settings inside the helper).
+    try {
+      await createLikeNotification({
+        recipientId: visibleComment.userId,
+        actorId: userId,
+        type: "comment_like",
+        commentId,
+        previewText: visibleComment.text,
+      });
+    } catch (err) {
+      req.log.warn({ err }, "Failed to create comment like notification");
+    }
+
     res.json({ liked: true, likeCount: updated?.likeCount ?? 0 });
   }
 });

@@ -35,6 +35,7 @@ export * from './matchResultStatus';
 export * from './notificationItem';
 export * from './notificationItemType';
 export * from './notificationList';
+export * from './notificationSettings';
 export * from './okResult';
 export * from './pushTokenInput';
 export * from './quote';

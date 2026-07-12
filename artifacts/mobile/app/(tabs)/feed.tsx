@@ -13,9 +13,15 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { getFeed, getGetFeedQueryKey } from "@workspace/api-client-react";
-import type { FeedItem } from "@workspace/api-client-react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import type { InfiniteData } from "@tanstack/react-query";
+import {
+  getFeed,
+  getGetFeedQueryKey,
+  useLikeComment,
+  useLikeHighlight,
+} from "@workspace/api-client-react";
+import type { FeedItem, FeedPage } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -41,9 +47,11 @@ function timeAgo(dateStr: string): string {
 function FeedCard({
   item,
   onPress,
+  onToggleLike,
 }: {
   item: FeedItem;
   onPress: (item: FeedItem) => void;
+  onToggleLike: (item: FeedItem) => void;
 }) {
   const colors = useColors();
   const isComment = item.type === "comment";
@@ -102,9 +110,40 @@ function FeedCard({
         </Text>
       ) : null}
 
-      <Text style={[styles.bookMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
-        {item.bookTitle} · {item.bookAuthor}
-      </Text>
+      <View style={styles.cardFooter}>
+        <Text
+          style={[styles.bookMeta, { color: colors.mutedForeground, flex: 1 }]}
+          numberOfLines={1}
+        >
+          {item.bookTitle} · {item.bookAuthor}
+        </Text>
+        <Pressable
+          onPress={() => onToggleLike(item)}
+          hitSlop={10}
+          style={({ pressed }) => [styles.likeButton, { opacity: pressed ? 0.6 : 1 }]}
+          accessibilityRole="button"
+          accessibilityLabel={item.likedByMe ? "Unlike" : "Like"}
+        >
+          <Feather
+            name="heart"
+            size={16}
+            color={item.likedByMe ? colors.primary : colors.mutedForeground}
+          />
+          {item.likeCount > 0 ? (
+            <Text
+              style={[
+                styles.likeCount,
+                {
+                  color: item.likedByMe ? colors.primary : colors.mutedForeground,
+                  fontWeight: item.likedByMe ? "700" : "500",
+                },
+              ]}
+            >
+              {item.likeCount}
+            </Text>
+          ) : null}
+        </Pressable>
+      </View>
     </Pressable>
   );
 }
@@ -113,6 +152,14 @@ export default function FeedScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useUser();
+  const queryClient = useQueryClient();
+
+  // Must match the infinite query key below (scoped by user id).
+  const feedQueryKey = [
+    ...getGetFeedQueryKey({ limit: PAGE_SIZE }),
+    "infinite",
+    user?.id ?? 0,
+  ];
 
   const {
     data,
@@ -142,6 +189,72 @@ export default function FeedScreen() {
   });
 
   const items: FeedItem[] = data?.pages.flatMap((p) => p.items) ?? [];
+
+  // Patches one feed item across all cached pages.
+  const patchFeedItem = useCallback(
+    (
+      type: FeedItem["type"],
+      id: number,
+      patch: (item: FeedItem) => FeedItem,
+    ) => {
+      queryClient.setQueryData<InfiniteData<FeedPage>>(
+        feedQueryKey,
+        (old) =>
+          old && {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              items: page.items.map((it) =>
+                it.type === type && it.id === id ? patch(it) : it,
+              ),
+            })),
+          },
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queryClient, user?.id],
+  );
+
+  const likeHighlight = useLikeHighlight();
+  const likeComment = useLikeComment();
+
+  const handleToggleLike = useCallback(
+    (item: FeedItem) => {
+      // Optimistic toggle; reconciled with the server result (or reverted) below.
+      const wasLiked = item.likedByMe;
+      patchFeedItem(item.type, item.id, (it) => ({
+        ...it,
+        likedByMe: !wasLiked,
+        likeCount: Math.max(0, it.likeCount + (wasLiked ? -1 : 1)),
+      }));
+
+      const revert = () =>
+        patchFeedItem(item.type, item.id, (it) => ({
+          ...it,
+          likedByMe: wasLiked,
+          likeCount: Math.max(0, it.likeCount + (wasLiked ? 1 : -1)),
+        }));
+      const reconcile = (result: { liked: boolean; likeCount: number }) =>
+        patchFeedItem(item.type, item.id, (it) => ({
+          ...it,
+          likedByMe: result.liked,
+          likeCount: result.likeCount,
+        }));
+
+      if (item.type === "highlight") {
+        likeHighlight.mutate(
+          { highlightId: item.id },
+          { onSuccess: reconcile, onError: revert },
+        );
+      } else {
+        likeComment.mutate(
+          { commentId: item.id },
+          { onSuccess: reconcile, onError: revert },
+        );
+      }
+    },
+    [patchFeedItem, likeHighlight, likeComment],
+  );
 
   const handleOpen = useCallback((item: FeedItem) => {
     navigateToQuote(item.quoteId, {
@@ -175,7 +288,9 @@ export default function FeedScreen() {
       <FlatList<FeedItem>
         data={items}
         keyExtractor={(item) => `${item.type}-${item.id}`}
-        renderItem={({ item }) => <FeedCard item={item} onPress={handleOpen} />}
+        renderItem={({ item }) => (
+          <FeedCard item={item} onPress={handleOpen} onToggleLike={handleToggleLike} />
+        )}
         ListEmptyComponent={
           isLoading ? (
             <View style={{ gap: 12, paddingTop: 20 }}>
@@ -265,6 +380,20 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   bookMeta: {
+    fontSize: 12,
+  },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  likeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 2,
+  },
+  likeCount: {
     fontSize: 12,
   },
 });

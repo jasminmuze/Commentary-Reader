@@ -3,6 +3,7 @@ export * from "./books";
 export * from "./quotes";
 export * from "./comments";
 export * from "./commentLikes";
+export * from "./highlightLikes";
 export * from "./commentSaves";
 export * from "./friendships";
 export * from "./friendRequests";

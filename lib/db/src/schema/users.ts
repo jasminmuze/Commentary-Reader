@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
 
 export type Visibility = "public" | "friends" | "private";
 
@@ -13,6 +13,12 @@ export const usersTable = pgTable("users", {
     .notNull()
     .default("public")
     .$type<Visibility>(),
+  // Per-type notification preferences. A disabled type skips BOTH in-app
+  // notification creation and push delivery.
+  notifyLikes: boolean("notify_likes").notNull().default(true),
+  notifyReplies: boolean("notify_replies").notNull().default(true),
+  notifyMentions: boolean("notify_mentions").notNull().default(true),
+  notifyFriends: boolean("notify_friends").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
