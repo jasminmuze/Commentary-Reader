@@ -176,10 +176,10 @@ export default function ProfileScreen() {
 
       {/* About */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>ABOUT BOOKMARKS</Text>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>ABOUT SHELFMATES</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
           <Text style={[styles.aboutText, { color: colors.foreground }]}>
-            Bookmarks is a social reading app that lets you discover what others think about the passages that moved them most. Text glows brighter where more readers have commented — explore those highlights to find the best thoughts.
+            Shelfmates is a social reading app that lets you discover what others think about the passages that moved them most. Text glows brighter where more readers have commented — explore those highlights to find the best thoughts.
           </Text>
         </View>
       </View>

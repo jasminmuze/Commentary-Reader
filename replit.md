@@ -1,6 +1,6 @@
-# Bookmarks
+# Shelfmates
 
-Bookmarks is a social ebook reader: users upload their own EPUB files, read them with the publisher's original formatting, and see community highlights and comments cross-linked across everyone's separate copies of the same book.
+Shelfmates (formerly Bookmarks) is a social ebook reader: users upload their own EPUB files, read them with the publisher's original formatting, and see community highlights and comments cross-linked across everyone's separate copies of the same book.
 
 ## Run & Operate
 

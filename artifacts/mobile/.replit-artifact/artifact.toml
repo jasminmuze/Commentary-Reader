@@ -1,6 +1,6 @@
 kind = "mobile"
 previewPath = "/"
-title = "Bookmarks - Social Ebook Reader"
+title = "Shelfmates - Social Ebook Reader"
 version = "1.0.0"
 id = "artifacts/mobile"
 router = "expo-domain"

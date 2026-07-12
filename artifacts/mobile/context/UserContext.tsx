@@ -153,10 +153,10 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
     >
       <View style={[styles.onboardingContent, { paddingTop: topInset + 40 }]}>
         <View style={[styles.onboardingIcon, { backgroundColor: colors.primary }]}>
-          <Text style={styles.onboardingIconText}>B</Text>
+          <Text style={styles.onboardingIconText}>S</Text>
         </View>
         <Text style={[styles.onboardingTitle, { color: colors.foreground }]}>
-          Bookmarks
+          Shelfmates
         </Text>
         <Text style={[styles.onboardingSubtitle, { color: colors.mutedForeground }]}>
           Read together. Discover what other readers thought about the passages that moved them.
