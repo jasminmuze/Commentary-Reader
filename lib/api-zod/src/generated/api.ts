@@ -849,6 +849,7 @@ export const GetNotificationsResponse = zod.object({
   "actorAvatarColor": zod.string(),
   "commentId": zod.number().describe('The reply comment that triggered the notification (0 for friend_\* notifications)'),
   "commentText": zod.string().describe('Preview of the reply text'),
+  "commentContainsSpoilers": zod.boolean().describe('True when the referenced comment is marked as containing spoilers AND the viewer is not its author — clients should mask commentText behind a spoiler placeholder. Always false for the comment author and for notifications without a comment.'),
   "parentCommentId": zod.number().nullable().describe('The original top-level comment (null for mention-only notifications)'),
   "quoteId": zod.number(),
   "quoteText": zod.string().optional().describe('The quote text for navigation context'),

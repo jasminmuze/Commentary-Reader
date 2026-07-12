@@ -104,6 +104,12 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
       actorAvatarColor: actor?.avatarColor ?? "#7A8BAA",
       commentId: n.commentId ?? 0,
       commentText: comment?.text ?? "",
+      // Mask signal: true only when the comment has spoilers AND the viewer
+      // isn't its author (authors always see their own text).
+      commentContainsSpoilers:
+        comment != null &&
+        comment.containsSpoilers &&
+        comment.userId !== req.userId,
       parentCommentId: comment?.parentId ?? null,
       quoteId: quoteId ?? 0,
       quoteText: quote?.text ?? "",

@@ -113,14 +113,28 @@ function NotificationCard({
           </Text>
 
           {item.commentText ? (
-            <View style={[styles.preview, { borderLeftColor: colors.primary }]}>
-              <Text
-                style={[styles.previewText, { color: colors.mutedForeground }]}
-                numberOfLines={2}
-              >
-                {item.commentText}
-              </Text>
-            </View>
+            item.commentContainsSpoilers ? (
+              // Server sets this only when the viewer isn't the comment author.
+              // Tapping the notification opens the comment sheet, where the
+              // spoiler can be revealed explicitly.
+              <View style={[styles.preview, { borderLeftColor: colors.primary }]}>
+                <View style={styles.spoilerRow}>
+                  <Feather name="eye-off" size={12} color={colors.mutedForeground} />
+                  <Text style={[styles.spoilerText, { color: colors.mutedForeground }]}>
+                    Spoiler
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <View style={[styles.preview, { borderLeftColor: colors.primary }]}>
+                <Text
+                  style={[styles.previewText, { color: colors.mutedForeground }]}
+                  numberOfLines={2}
+                >
+                  {item.commentText}
+                </Text>
+              </View>
+            )
           ) : null}
 
           {item.quoteText ? (
@@ -542,6 +556,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontStyle: "italic",
+  },
+  spoilerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  spoilerText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   quoteLabel: {
     fontSize: 11,

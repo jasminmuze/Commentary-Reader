@@ -2,6 +2,9 @@ import { eq, inArray } from "drizzle-orm";
 import { db, notificationsTable, usersTable } from "@workspace/db";
 import { sendPushToUsers } from "./push";
 
+/** Push body shown instead of comment text when the comment is marked as a spoiler. */
+const SPOILER_PUSH_BODY = "스포일러가 포함된 댓글이에요. 앱에서 확인하세요.";
+
 /** Extracts @username tokens from comment text (e.g. "nice @jane!" → ["jane"]). */
 export function parseMentionedUsernames(text: string): string[] {
   return [...text.matchAll(/\B@(\w+)/g)].map((m) => m[1]!);
@@ -106,8 +109,10 @@ export async function createMentionNotifications(options: {
   actorId: number;
   commentId: number;
   excludeUserIds?: Iterable<number>;
+  /** When true, the push body is masked so spoilers never appear on the lock screen. */
+  containsSpoilers?: boolean;
 }): Promise<void> {
-  const { text, actorId, commentId } = options;
+  const { text, actorId, commentId, containsSpoilers } = options;
   const excluded = new Set<number>(options.excludeUserIds ?? []);
   excluded.add(actorId);
 
@@ -140,7 +145,7 @@ export async function createMentionNotifications(options: {
       toNotify.map((u) => u.id),
       {
         title: `@${actorUsername}님이 회원님을 언급했어요`,
-        body: text,
+        body: containsSpoilers ? SPOILER_PUSH_BODY : text,
         data: { type: "mention", commentId },
       },
     );
@@ -156,13 +161,15 @@ export function sendReplyPush(options: {
   actorId: number;
   commentId: number;
   text: string;
+  /** When true, the push body is masked so spoilers never appear on the lock screen. */
+  containsSpoilers?: boolean;
 }): void {
-  const { recipientId, actorId, commentId, text } = options;
+  const { recipientId, actorId, commentId, text, containsSpoilers } = options;
   void (async () => {
     const actorUsername = await getActorUsername(actorId);
     await sendPushToUsers([recipientId], {
       title: `@${actorUsername}님이 회원님의 댓글에 답글을 남겼어요`,
-      body: text,
+      body: containsSpoilers ? SPOILER_PUSH_BODY : text,
       data: { type: "reply", commentId },
     });
   })();

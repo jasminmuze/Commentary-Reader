@@ -322,6 +322,8 @@ export interface NotificationItem {
   commentId: number;
   /** Preview of the reply text */
   commentText: string;
+  /** True when the referenced comment is marked as containing spoilers AND the viewer is not its author — clients should mask commentText behind a spoiler placeholder. Always false for the comment author and for notifications without a comment. */
+  commentContainsSpoilers: boolean;
   /**
      * The original top-level comment (null for mention-only notifications)
      * @nullable

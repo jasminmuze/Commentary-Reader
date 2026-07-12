@@ -1452,7 +1452,7 @@ components:
 
     NotificationItem:
       type: object
-      required: [id, type, actorId, actorUsername, actorAvatarColor, commentId, commentText, parentCommentId, quoteId, read, createdAt]
+      required: [id, type, actorId, actorUsername, actorAvatarColor, commentId, commentText, commentContainsSpoilers, parentCommentId, quoteId, read, createdAt]
       properties:
         id:
           type: integer
@@ -1472,6 +1472,9 @@ components:
         commentText:
           type: string
           description: Preview of the reply text
+        commentContainsSpoilers:
+          type: boolean
+          description: True when the referenced comment is marked as containing spoilers AND the viewer is not its author — clients should mask commentText behind a spoiler placeholder. Always false for the comment author and for notifications without a comment.
         parentCommentId:
           type: [integer, "null"]
           description: The original top-level comment (null for mention-only notifications)

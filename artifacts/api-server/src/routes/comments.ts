@@ -156,6 +156,7 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
       text: body.data.text,
       actorId: userId,
       commentId: comment.id,
+      containsSpoilers: body.data.containsSpoilers ?? false,
     });
   } catch (err) {
     req.log.warn({ err }, "Failed to create mention notifications");
@@ -323,6 +324,7 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
           actorId: userId,
           commentId: reply.id,
           text: body.data.text,
+          containsSpoilers: body.data.containsSpoilers ?? false,
         });
       }
       // Even when reply notifications are off, don't double-notify the parent
@@ -336,6 +338,7 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
       actorId: userId,
       commentId: reply.id,
       excludeUserIds: notifiedUserIds,
+      containsSpoilers: body.data.containsSpoilers ?? false,
     });
   } catch (err) {
     req.log.warn({ err }, "Failed to create reply/mention notifications");
