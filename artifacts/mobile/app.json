@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Bookmarks",
-    "slug": "mobile",
+    "name": "Shelfmates",
+    "slug": "shelfmates",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "shelfmates",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -14,13 +14,14 @@
       "backgroundColor": "#0E1117"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.shelfmates.app"
     },
     "android": {
-      "package": "com.jasminmuze.commentaryreader"
+      "package": "com.shelfmates.app"
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       [
