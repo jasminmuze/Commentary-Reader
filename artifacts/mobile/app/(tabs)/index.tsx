@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -8,6 +8,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -104,6 +105,7 @@ export default function LibraryScreen() {
   const { user } = useUser();
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
+  const [search, setSearch] = useState("");
 
   const { data: library, isLoading, refetch, isRefetching } = useGetUserLibrary(
     user?.id ?? 0,
@@ -152,6 +154,20 @@ export default function LibraryScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
+  const trimmedSearch = search.trim().toLowerCase();
+  const filteredLibrary = useMemo(() => {
+    const entries = library ?? [];
+    if (!trimmedSearch) return entries;
+    return entries.filter((entry) => {
+      const title = entry.book?.title ?? entry.originalTitle ?? "";
+      const author = entry.book?.author ?? entry.originalAuthor ?? "";
+      return (
+        title.toLowerCase().includes(trimmedSearch) ||
+        author.toLowerCase().includes(trimmedSearch)
+      );
+    });
+  }, [library, trimmedSearch]);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
@@ -173,10 +189,29 @@ export default function LibraryScreen() {
         </Pressable>
       </View>
 
+      <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+        <Feather name="search" size={18} color={colors.mutedForeground} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.foreground }]}
+          placeholder="Search your library by title or author"
+          placeholderTextColor={colors.mutedForeground}
+          value={search}
+          onChangeText={setSearch}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+        {search.length > 0 ? (
+          <Pressable onPress={() => setSearch("")} hitSlop={8}>
+            <Feather name="x-circle" size={18} color={colors.mutedForeground} />
+          </Pressable>
+        ) : null}
+      </View>
+
       <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>MY LIBRARY</Text>
 
       <FlatList<LibraryEntry>
-        data={library ?? []}
+        data={filteredLibrary}
         keyExtractor={(item, index) => String(item.id ?? index)}
         renderItem={({ item }) => (
           <LibraryCard
@@ -190,6 +225,12 @@ export default function LibraryScreen() {
             <View>
               {[1, 2, 3].map((i) => <BookCardShimmer key={i} />)}
             </View>
+          ) : trimmedSearch ? (
+            <EmptyState
+              icon="search"
+              title="No books found"
+              subtitle="No books in your library match that search"
+            />
           ) : (
             <EmptyState
               icon="upload"
@@ -235,6 +276,17 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 8,
   },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    height: 46,
+    borderWidth: 1,
+    marginHorizontal: 16,
+    marginTop: 16,
+  },
+  searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
   list: { flexGrow: 1 },
   card: {
     flexDirection: "row",
