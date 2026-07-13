@@ -95,6 +95,9 @@ class NativeReadiumView(
     private val openScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var opening = false
     private var disposed = false
+    // On a cold start the view can attach before the Activity is registered on
+    // the React context, so we poll briefly instead of failing immediately.
+    private var activityWaitAttempts = 0
     private var publication: Publication? = null
     private var asset: Asset? = null
     private var navigator: EpubNavigatorFragment? = null
@@ -150,6 +153,7 @@ class NativeReadiumView(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        activityWaitAttempts = 0
         maybeOpen()
     }
 
@@ -159,9 +163,18 @@ class NativeReadiumView(
         val path = filePath
         if (libraryId < 0 || path.isNullOrBlank()) return
         val activity = themedContext.currentActivity as? FragmentActivity ?: run {
-            sendError("Reader could not find the host activity.")
+            // Cold start: the Activity may not be attached to the React context
+            // yet. Retry for a few seconds before giving up.
+            if (activityWaitAttempts < MAX_ACTIVITY_WAIT_ATTEMPTS) {
+                activityWaitAttempts += 1
+                sendDebug("view: host activity not ready, retrying ($activityWaitAttempts)")
+                postDelayed({ maybeOpen() }, ACTIVITY_WAIT_INTERVAL_MS)
+            } else {
+                sendError("Reader could not find the host activity.")
+            }
             return
         }
+        activityWaitAttempts = 0
 
         opening = true
         NativeReadiumViewRegistry.register(libraryId, this)
@@ -185,9 +198,28 @@ class NativeReadiumView(
 
                 when (result) {
                     is Try.Success -> {
+                        // Re-resolve the activity: the one captured before the
+                        // async open may have been destroyed in the meantime.
+                        val hostActivity =
+                            (themedContext.currentActivity as? FragmentActivity) ?: activity
+                        if (hostActivity.isDestroyed || hostActivity.isFinishing) {
+                            opening = false
+                            result.value.publication.close()
+                            result.value.asset.close()
+                            sendError("Reader lost the host activity while opening the EPUB.")
+                            return@runOnUiThread
+                        }
                         try {
-                            attachNavigator(activity, result.value)
+                            attachNavigator(hostActivity, result.value)
                         } catch (t: Throwable) {
+                            // Allow a retry (remount / prop update) instead of
+                            // wedging the view in a permanent "opening" state.
+                            opening = false
+                            navigator = null
+                            publication?.close()
+                            publication = null
+                            asset?.close()
+                            asset = null
                             sendError("Reader crashed while starting the navigator:\n${describeThrowable(t)}")
                         }
                     }
@@ -939,5 +971,7 @@ class NativeReadiumView(
         private const val MENU_ID_COMMENT = 0x5242
         private const val PULL_THRESHOLD_DP = 80f
         private const val CHAPTER_JUMP_COOLDOWN_MS = 700L
+        private const val MAX_ACTIVITY_WAIT_ATTEMPTS = 20
+        private const val ACTIVITY_WAIT_INTERVAL_MS = 250L
     }
 }

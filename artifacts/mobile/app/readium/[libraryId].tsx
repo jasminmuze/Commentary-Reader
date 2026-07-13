@@ -137,6 +137,12 @@ function hexTint(hex: string, opacity: number): number {
 
 const COMMUNITY_AMBER = "#F9E04B";
 
+// If the native "opened" event doesn't arrive within this window, remount the
+// native view and retry (cold-start races can drop the event or fail the open).
+const OPEN_TIMEOUT_MS = 12000;
+// Total attempts: 1 initial mount + 2 automatic remounts, then the error screen.
+const MAX_OPEN_ATTEMPTS = 3;
+
 const DECORATION_GROUP = "community";
 const QUOTE_DECORATION_PREFIX = "quote-";
 
@@ -240,6 +246,10 @@ function EmbeddedReader({
 
   const [chromeVisible, setChromeVisible] = useState(true);
   const [opened, setOpened] = useState(false);
+  // Cold-start defense: if the native "opened" event never arrives (e.g. it was
+  // emitted before the JS listeners were registered, or the native open silently
+  // failed), remount the native view to retry, then surface an error screen.
+  const [openAttempt, setOpenAttempt] = useState(0);
   const [toc, setToc] = useState<TocEntry[]>([]);
   const [searchable, setSearchable] = useState(false);
   const [anchoredCount, setAnchoredCount] = useState(0);
@@ -274,6 +284,56 @@ function EmbeddedReader({
   useEffect(() => {
     quotesRef.current = quotes;
   }, [quotes]);
+
+  // -------------------------------------------------------------------
+  // Open watchdog: auto-retry (native view remount) before failing hard
+  // -------------------------------------------------------------------
+
+  const openedRef = useRef(false);
+  useEffect(() => {
+    openedRef.current = opened;
+  }, [opened]);
+
+  const openAttemptRef = useRef(0);
+  const retryOrFail = useCallback(
+    (message: string) => {
+      if (openedRef.current) return;
+      if (openAttemptRef.current + 1 < MAX_OPEN_ATTEMPTS) {
+        openAttemptRef.current += 1;
+        setOpenAttempt(openAttemptRef.current);
+      } else {
+        onFatalError(message);
+      }
+    },
+    [onFatalError],
+  );
+
+  // Native errors before the book is open get the same retry treatment;
+  // errors after a successful open remain immediately fatal.
+  const handleNativeError = useCallback(
+    (message: string) => {
+      if (openedRef.current) {
+        onFatalError(message);
+      } else {
+        retryOrFail(message);
+      }
+    },
+    [onFatalError, retryOrFail],
+  );
+  const handleNativeErrorRef = useRef(handleNativeError);
+  useEffect(() => {
+    handleNativeErrorRef.current = handleNativeError;
+  }, [handleNativeError]);
+
+  useEffect(() => {
+    if (opened) return;
+    const timer = setTimeout(() => {
+      retryOrFail(
+        "The book couldn't be opened. Please close the reader and try again.",
+      );
+    }, OPEN_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [opened, openAttempt, retryOrFail]);
 
   // quoteId -> locator JSON string (the position found in this edition)
   const locatorByQuoteIdRef = useRef<Map<number, string>>(new Map());
@@ -701,7 +761,9 @@ function EmbeddedReader({
         "NativeReadiumHost.error",
         (event: { libraryId: number; message?: string }) => {
           if (event.libraryId !== libraryId) return;
-          onFatalError(event.message ?? "Something went wrong while opening the reader.");
+          handleNativeErrorRef.current(
+            event.message ?? "Something went wrong while opening the reader.",
+          );
         },
       ),
       DeviceEventEmitter.addListener(
@@ -771,6 +833,9 @@ function EmbeddedReader({
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {NativeReadiumView && initialSettingsJsonRef.current !== null ? (
         <NativeReadiumView
+          // Changing the key disposes and recreates the native view, which
+          // re-runs the whole native open — this is the retry mechanism.
+          key={openAttempt}
           style={StyleSheet.absoluteFill}
           libraryId={libraryId}
           filePath={nativeFilePath(localSrc)}
@@ -783,7 +848,7 @@ function EmbeddedReader({
         <View style={[StyleSheet.absoluteFill, styles.center, { backgroundColor: colors.background }]}>
           <ActivityIndicator color={colors.primary} />
           <Text style={{ color: colors.mutedForeground, marginTop: 10, fontSize: 13 }}>
-            Opening book…
+            {openAttempt > 0 ? "Taking longer than usual — retrying…" : "Opening book…"}
           </Text>
         </View>
       ) : null}
