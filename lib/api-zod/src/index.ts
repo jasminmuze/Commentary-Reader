@@ -8,6 +8,8 @@ export * from "./generated/types/commentInput";
 export * from "./generated/types/createBookInput";
 export * from "./generated/types/createLibraryInput";
 export * from "./generated/types/createQuoteInput";
+export * from "./generated/types/feedbackInput";
+export * from "./generated/types/feedbackInputType";
 export * from "./generated/types/feedItem";
 export * from "./generated/types/feedItemType";
 export * from "./generated/types/feedPage";

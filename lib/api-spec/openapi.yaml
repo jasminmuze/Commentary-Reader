@@ -1030,6 +1030,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkResult"
 
+  /feedback:
+    post:
+      operationId: submitFeedback
+      tags: [users]
+      summary: Submit in-app feedback or a bug report (author taken from bearer token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackInput"
+      responses:
+        "201":
+          description: Feedback stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
   /highlights/{highlightId}/like:
     post:
       operationId: likeHighlight
@@ -2058,6 +2077,19 @@ components:
           minLength: 1
           maxLength: 4096
           description: Expo push token, e.g. ExponentPushToken[xxxxxxxx]
+
+    FeedbackInput:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [feedback, bug]
+          description: General feedback or a bug report
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
 
     OkResult:
       type: object

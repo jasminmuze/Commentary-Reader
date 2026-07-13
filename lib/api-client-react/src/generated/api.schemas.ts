@@ -456,6 +456,27 @@ export interface PushTokenInput {
   token: string;
 }
 
+/**
+ * General feedback or a bug report
+ */
+export type FeedbackInputType = typeof FeedbackInputType[keyof typeof FeedbackInputType];
+
+
+export const FeedbackInputType = {
+  feedback: 'feedback',
+  bug: 'bug',
+} as const;
+
+export interface FeedbackInput {
+  /** General feedback or a bug report */
+  type: FeedbackInputType;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  text: string;
+}
+
 export interface OkResult {
   ok: boolean;
 }

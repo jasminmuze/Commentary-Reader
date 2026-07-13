@@ -15,6 +15,8 @@ export * from './createBookInput';
 export * from './createLibraryInput';
 export * from './createQuoteInput';
 export * from './createRoomInput';
+export * from './feedbackInput';
+export * from './feedbackInputType';
 export * from './feedItem';
 export * from './feedItemType';
 export * from './feedPage';

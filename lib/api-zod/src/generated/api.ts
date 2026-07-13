@@ -1118,6 +1118,19 @@ export const UnregisterPushTokenResponse = zod.object({
 
 
 /**
+ * @summary Submit in-app feedback or a bug report (author taken from bearer token)
+ */
+export const submitFeedbackBodyTextMax = 2000;
+
+
+
+export const SubmitFeedbackBody = zod.object({
+  "type": zod.enum(['feedback', 'bug']).describe('General feedback or a bug report'),
+  "text": zod.string().min(1).max(submitFeedbackBodyTextMax)
+})
+
+
+/**
  * @summary Toggle a like on a highlight (liker taken from bearer token)
  */
 export const LikeHighlightParams = zod.object({

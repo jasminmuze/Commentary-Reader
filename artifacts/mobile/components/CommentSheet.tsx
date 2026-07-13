@@ -67,9 +67,10 @@ function mentionSuggestions(
   ).filter((u) => u.toLowerCase().startsWith(lower) && u.toLowerCase() !== lower);
 }
 
-// "Contains spoilers" toggle chip shown next to the visibility options in
-// both compose bars (main comment + reply).
-function SpoilerToggleChip({
+// "Contains spoilers" checkbox shown on its own row below the visibility
+// options in both compose bars (main comment + reply). Visually distinct from
+// the visibility chips: spoiler flags the content, not who can see it.
+function SpoilerCheckbox({
   active,
   onToggle,
 }: {
@@ -80,30 +81,32 @@ function SpoilerToggleChip({
   return (
     <Pressable
       onPress={onToggle}
-      style={[
-        styles.visChip,
-        {
-          backgroundColor: active ? colors.accent : colors.card,
-          borderColor: active ? colors.accent : colors.border,
-          borderRadius: colors.radius,
-        },
-      ]}
+      style={styles.spoilerCheckRow}
+      hitSlop={6}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: active }}
       accessibilityLabel="Contains spoilers"
     >
-      <Feather
-        name="alert-triangle"
-        size={12}
-        color={active ? colors.accentForeground : colors.mutedForeground}
-      />
-      <Text
+      <View
         style={[
-          styles.visChipText,
-          { color: active ? colors.accentForeground : colors.mutedForeground },
+          styles.spoilerCheckBox,
+          {
+            backgroundColor: active ? colors.accent : "transparent",
+            borderColor: active ? colors.accent : colors.border,
+          },
         ]}
       >
-        Spoiler
+        {active ? (
+          <Feather name="check" size={12} color={colors.accentForeground} />
+        ) : null}
+      </View>
+      <Text
+        style={[
+          styles.spoilerCheckLabel,
+          { color: active ? colors.foreground : colors.mutedForeground },
+        ]}
+      >
+        Contains spoilers
       </Text>
     </Pressable>
   );
@@ -457,11 +460,11 @@ function ReplyThread({ parentComment, onBack, bottomPad, roomId, myProgress }: R
               );
             })
           )}
-          <SpoilerToggleChip
-            active={containsSpoilers}
-            onToggle={() => setContainsSpoilers((prev) => !prev)}
-          />
         </View>
+        <SpoilerCheckbox
+          active={containsSpoilers}
+          onToggle={() => setContainsSpoilers((prev) => !prev)}
+        />
         <View style={styles.inputRow}>
           <TextInput
             ref={inputRef}
@@ -879,11 +882,11 @@ export function CommentSheet({
                       );
                     })
                   )}
-                  <SpoilerToggleChip
-                    active={containsSpoilers}
-                    onToggle={() => setContainsSpoilers((prev) => !prev)}
-                  />
                 </View>
+                <SpoilerCheckbox
+                  active={containsSpoilers}
+                  onToggle={() => setContainsSpoilers((prev) => !prev)}
+                />
                 <View style={styles.inputRow}>
                   <TextInput
                     style={[
@@ -1013,6 +1016,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   visChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  spoilerCheckRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "flex-start",
+  },
+  spoilerCheckBox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  spoilerCheckLabel: {
     fontSize: 12,
     fontWeight: "600",
   },

@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "@/components/UserAvatar";
+import { FeedbackModal } from "@/components/FeedbackModal";
 import {
   useUpdateUserSettings,
   useGetAvatarUploadUrl,
@@ -27,7 +28,7 @@ import {
   useConfirmEmailVerification,
   ApiError,
 } from "@workspace/api-client-react";
-import type { Visibility } from "@workspace/api-client-react";
+import type { Visibility, FeedbackInputType } from "@workspace/api-client-react";
 
 const VISIBILITY_SETTINGS: {
   value: Visibility;
@@ -59,6 +60,7 @@ export default function ProfileScreen() {
   const [nicknameSaving, setNicknameSaving] = useState(false);
   const [verifyCode, setVerifyCode] = useState("");
   const [verifyMessage, setVerifyMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [feedbackType, setFeedbackType] = useState<FeedbackInputType | null>(null);
 
   type UserResponse = {
     id: number;
@@ -604,6 +606,55 @@ export default function ProfileScreen() {
           ))}
         </View>
       </View>
+
+      {/* Support */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>SUPPORT</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius, gap: 4, padding: 6 }]}>
+          <Pressable
+            onPress={() => setFeedbackType("feedback")}
+            style={({ pressed }) => [
+              styles.visRow,
+              { borderRadius: colors.radius, opacity: pressed ? 0.6 : 1 },
+            ]}
+          >
+            <View style={[styles.visIcon, { backgroundColor: colors.muted, borderRadius: 8 }]}>
+              <Feather name="message-circle" size={16} color={colors.mutedForeground} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.visLabel, { color: colors.foreground }]}>Send Feedback</Text>
+              <Text style={[styles.visDesc, { color: colors.mutedForeground }]}>
+                Share ideas or suggestions
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          </Pressable>
+          <Pressable
+            onPress={() => setFeedbackType("bug")}
+            style={({ pressed }) => [
+              styles.visRow,
+              { borderRadius: colors.radius, opacity: pressed ? 0.6 : 1 },
+            ]}
+          >
+            <View style={[styles.visIcon, { backgroundColor: colors.muted, borderRadius: 8 }]}>
+              <Feather name="alert-circle" size={16} color={colors.mutedForeground} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.visLabel, { color: colors.foreground }]}>Report a Bug</Text>
+              <Text style={[styles.visDesc, { color: colors.mutedForeground }]}>
+                Tell us when something breaks
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          </Pressable>
+        </View>
+      </View>
+
+      <FeedbackModal
+        visible={feedbackType !== null}
+        type={feedbackType ?? "feedback"}
+        onClose={() => setFeedbackType(null)}
+      />
 
       {/* Account */}
       <View style={styles.section}>
