@@ -1,5 +1,5 @@
 import { db, friendshipsTable, roomMembersTable } from "@workspace/db";
-import { and, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, or, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 /**
@@ -86,17 +86,21 @@ export async function getViewer(userId: number): Promise<Viewer> {
  * what `viewer` may see. Rows come in two scopes:
  *   - Community rows (roomId IS NULL) follow the visibility column:
  *     public, the viewer's own, or friends-only from a mutual friend.
- *   - Room-scoped rows (roomId NOT NULL) are visible ONLY to members of that
- *     room, regardless of the visibility column.
- * With no viewer (unauthenticated / list contexts) only public community rows
- * are visible.
+ *   - Room rows (roomId NOT NULL) follow the visibility column too:
+ *     - visibility = 'room': visible ONLY to members of that room (never in
+ *       community contexts).
+ *     - visibility = public/friends/private: the SAME row also appears in
+ *       community contexts under the normal community rules (one row, not a
+ *       copy — authored in a room but shared outward).
+ * With no viewer (unauthenticated / list contexts) only public rows are
+ * visible.
  * Pass `roomIdCol` whenever the table has a room scope column (comments,
- * user_highlights) so room content never leaks outside its room.
+ * user_highlights) so room-only content never leaks outside its room.
  *
- * `allowViewerRooms` controls the room branch:
+ * `allowViewerRooms` controls the members-only room branch:
  *   - false (default, LIST contexts: community overlays, feeds, profiles,
- *     counts): room rows are excluded entirely — room content only shows when
- *     a route explicitly filters by a roomId the viewer belongs to.
+ *     counts): 'room'-visibility rows are excluded entirely — they only show
+ *     when a route explicitly filters by a roomId the viewer belongs to.
  *   - true (ID-ADDRESSED contexts: open a specific comment/thread from a
  *     notification or room feed): room rows are visible to that room's members.
  */
@@ -128,8 +132,10 @@ export function visibilityPredicate(
 
   if (!roomIdCol) return communityClause;
 
+  // Community contexts see community rows AND room rows the author explicitly
+  // shared outward (visibility != 'room'); members-only rows stay in-room.
   const scoped: (SQL | undefined)[] = [
-    and(isNull(roomIdCol), communityClause),
+    and(or(isNull(roomIdCol), ne(visibilityCol, "room")), communityClause),
   ];
   if (allowViewerRooms && viewer && viewer.roomIds.length > 0) {
     scoped.push(inArray(roomIdCol, viewer.roomIds));

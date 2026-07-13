@@ -88,7 +88,7 @@ export const GetBookResponse = zod.object({
   "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
@@ -178,7 +178,7 @@ export const GetQuoteCommentsResponseItem = zod.object({
   "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
@@ -208,7 +208,7 @@ export const createCommentBodyAuthorProgressMax = 100;
 
 export const CreateCommentBody = zod.object({
   "text": zod.string().min(1),
-  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "containsSpoilers": zod.boolean().optional().describe('Mark this comment as containing spoilers (default false)'),
   "roomId": zod.number().optional().describe('Scope this comment to a reading room (author must be a member)'),
   "authorProgress": zod.number().min(createCommentBodyAuthorProgressMin).max(createCommentBodyAuthorProgressMax).optional().describe('Author\'s reading progress when writing (room spoiler guard)')
@@ -230,7 +230,7 @@ export const toggleHighlightBodyAuthorProgressMax = 100;
 export const ToggleHighlightBody = zod.object({
   "userLibraryId": zod.number().optional(),
   "cfiRange": zod.string().optional(),
-  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "roomId": zod.number().optional().describe('Scope this highlight to a reading room (author must be a member)'),
   "authorProgress": zod.number().min(toggleHighlightBodyAuthorProgressMin).max(toggleHighlightBodyAuthorProgressMax).optional().describe('Author\'s reading progress when highlighting (room spoiler guard)')
 })
@@ -298,7 +298,7 @@ export const GetCommentResponse = zod.object({
   "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
@@ -328,7 +328,7 @@ export const GetCommentRepliesResponseItem = zod.object({
   "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
@@ -358,7 +358,7 @@ export const createReplyBodyAuthorProgressMax = 100;
 
 export const CreateReplyBody = zod.object({
   "text": zod.string().min(1),
-  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "containsSpoilers": zod.boolean().optional().describe('Mark this comment as containing spoilers (default false)'),
   "roomId": zod.number().optional().describe('Scope this comment to a reading room (author must be a member)'),
   "authorProgress": zod.number().min(createReplyBodyAuthorProgressMin).max(createReplyBodyAuthorProgressMax).optional().describe('Author\'s reading progress when writing (room spoiler guard)')
@@ -570,7 +570,7 @@ export const CreateUserResponse = zod.object({
   "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
   "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
   "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
@@ -592,7 +592,7 @@ export const LoginUserResponse = zod.object({
   "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
   "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
   "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
@@ -613,7 +613,7 @@ export const GetUserResponse = zod.object({
   "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
   "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
   "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
@@ -653,7 +653,7 @@ export const GetFriendsResponseItem = zod.object({
   "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
   "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
   "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
@@ -679,7 +679,7 @@ export const AddFriendResponse = zod.object({
   "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
   "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
   "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
@@ -746,7 +746,7 @@ export const GetSavedCommentsResponseItem = zod.object({
   "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
@@ -817,7 +817,7 @@ export const GetUserBookRecordsResponse = zod.object({
   "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
@@ -838,7 +838,7 @@ export const GetUserBookRecordsResponse = zod.object({
   "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
@@ -910,7 +910,7 @@ export const updateUserSettingsBodyNicknameMax = 30;
 
 
 export const UpdateUserSettingsBody = zod.object({
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).optional().describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "nickname": zod.string().max(updateUserSettingsBodyNicknameMax).nullish().describe('New display name; null or empty string clears it (falls back to username)')
 })
 
@@ -922,7 +922,7 @@ export const UpdateUserSettingsResponse = zod.object({
   "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
   "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
   "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
@@ -964,7 +964,7 @@ export const ConfirmEmailVerificationResponse = zod.object({
   "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
   "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
   "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
@@ -1001,7 +1001,7 @@ export const SetAvatarResponse = zod.object({
   "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
   "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
   "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
@@ -1022,7 +1022,7 @@ export const RemoveAvatarResponse = zod.object({
   "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
   "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
   "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })

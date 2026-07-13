@@ -147,13 +147,24 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
     }
   }
 
+  // 'room' visibility (members only) is only meaningful with a room scope.
+  if (body.data.visibility === "room" && roomId == null) {
+    res.status(400).json({ error: "visibility 'room' requires roomId" });
+    return;
+  }
+
   let visibility = body.data.visibility;
   if (!visibility) {
-    const [author] = await db
-      .select({ defaultVisibility: usersTable.defaultVisibility })
-      .from(usersTable)
-      .where(eq(usersTable.id, userId));
-    visibility = author?.defaultVisibility ?? "public";
+    if (roomId != null) {
+      // Room-scoped default: members only.
+      visibility = "room";
+    } else {
+      const [author] = await db
+        .select({ defaultVisibility: usersTable.defaultVisibility })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId));
+      visibility = author?.defaultVisibility ?? "public";
+    }
   }
 
   const [comment] = await db
@@ -181,6 +192,11 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
       actorId: userId,
       commentId: comment.id,
       containsSpoilers: body.data.containsSpoilers ?? false,
+      // Room-only comments must never leak their text to non-members via
+      // mention notifications/pushes.
+      ...(comment.visibility === "room" && comment.roomId !== null
+        ? { restrictToRoomId: comment.roomId }
+        : {}),
     });
   } catch (err) {
     req.log.warn({ err }, "Failed to create mention notifications");
@@ -302,13 +318,25 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
     return;
   }
 
+  // Replies inherit the parent's room scope, so 'room' visibility is only
+  // valid when the parent thread is room-scoped.
+  if (body.data.visibility === "room" && parentComment.roomId == null) {
+    res.status(400).json({ error: "visibility 'room' requires a room-scoped thread" });
+    return;
+  }
+
   let visibility = body.data.visibility;
   if (!visibility) {
-    const [author] = await db
-      .select({ defaultVisibility: usersTable.defaultVisibility })
-      .from(usersTable)
-      .where(eq(usersTable.id, userId));
-    visibility = author?.defaultVisibility ?? "public";
+    if (parentComment.roomId != null) {
+      // Room-scoped default: members only.
+      visibility = "room";
+    } else {
+      const [author] = await db
+        .select({ defaultVisibility: usersTable.defaultVisibility })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId));
+      visibility = author?.defaultVisibility ?? "public";
+    }
   }
 
   const [reply] = await db
@@ -366,6 +394,11 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
       commentId: reply.id,
       excludeUserIds: notifiedUserIds,
       containsSpoilers: body.data.containsSpoilers ?? false,
+      // Room-only replies must never leak their text to non-members via
+      // mention notifications/pushes.
+      ...(reply.visibility === "room" && reply.roomId !== null
+        ? { restrictToRoomId: reply.roomId }
+        : {}),
     });
   } catch (err) {
     req.log.warn({ err }, "Failed to create reply/mention notifications");

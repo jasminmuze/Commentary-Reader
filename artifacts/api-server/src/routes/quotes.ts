@@ -188,6 +188,12 @@ router.post("/quotes/:quoteId/highlight", authenticate, async (req, res): Promis
     }
   }
 
+  // 'room' visibility (members only) is only meaningful with a room scope.
+  if (visibility === "room" && roomId == null) {
+    res.status(400).json({ error: "visibility 'room' requires roomId" });
+    return;
+  }
+
   const [quote] = await db
     .select()
     .from(quotesTable)
@@ -221,11 +227,16 @@ router.post("/quotes/:quoteId/highlight", authenticate, async (req, res): Promis
   } else {
     let resolvedVisibility = visibility;
     if (!resolvedVisibility) {
-      const [author] = await db
-        .select({ defaultVisibility: usersTable.defaultVisibility })
-        .from(usersTable)
-        .where(eq(usersTable.id, userId));
-      resolvedVisibility = author?.defaultVisibility ?? "public";
+      if (roomId != null) {
+        // Room-scoped default: members only.
+        resolvedVisibility = "room";
+      } else {
+        const [author] = await db
+          .select({ defaultVisibility: usersTable.defaultVisibility })
+          .from(usersTable)
+          .where(eq(usersTable.id, userId));
+        resolvedVisibility = author?.defaultVisibility ?? "public";
+      }
     }
     await db
       .insert(userHighlightsTable)

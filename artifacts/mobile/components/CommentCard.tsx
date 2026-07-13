@@ -112,7 +112,13 @@ export function CommentCard({ comment, onLike, onSave, onReply, onPress, compact
         ) : null}
         {comment.visibility !== "public" ? (
           <Feather
-            name={comment.visibility === "private" ? "lock" : "users"}
+            name={
+              comment.visibility === "private"
+                ? "lock"
+                : comment.visibility === "room"
+                  ? "home"
+                  : "users"
+            }
             size={12}
             color={colors.mutedForeground}
           />

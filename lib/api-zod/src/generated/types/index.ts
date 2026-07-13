@@ -11,6 +11,7 @@ export * from './book';
 export * from './bookDetail';
 export * from './comment';
 export * from './commentInput';
+export * from './contentVisibility';
 export * from './createBookInput';
 export * from './createLibraryInput';
 export * from './createQuoteInput';

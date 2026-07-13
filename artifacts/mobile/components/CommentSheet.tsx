@@ -33,7 +33,7 @@ import { useUser } from "@/context/UserContext";
 import { CommentCard } from "./CommentCard";
 import { EmptyState } from "./EmptyState";
 import { LoadingShimmer } from "./LoadingShimmer";
-import type { Comment, Visibility } from "@workspace/api-client-react";
+import type { Comment, ContentVisibility, Visibility } from "@workspace/api-client-react";
 
 type FilterType = "best" | "friends";
 
@@ -113,7 +113,7 @@ function SpoilerCheckbox({
 }
 
 const VISIBILITY_OPTIONS: {
-  value: Visibility;
+  value: ContentVisibility;
   label: string;
   icon: React.ComponentProps<typeof Feather>["name"];
 }[] = [
@@ -122,12 +122,20 @@ const VISIBILITY_OPTIONS: {
   { value: "private", label: "Private", icon: "lock" },
 ];
 
+// Room-scoped compose: default to members-only, but allow sharing the same
+// row outward to the whole community or to friends.
+const ROOM_VISIBILITY_OPTIONS: typeof VISIBILITY_OPTIONS = [
+  { value: "room", label: "Room only", icon: "home" },
+  { value: "public", label: "Public", icon: "globe" },
+  { value: "friends", label: "Friends", icon: "users" },
+];
+
 interface Props {
   visible: boolean;
   quoteId: number | null;
   quoteText: string;
   onClose: () => void;
-  onCommentSaved?: (visibility: Visibility) => void;
+  onCommentSaved?: (visibility: ContentVisibility) => void;
   /** When set, the sheet opens directly on this comment's reply thread. */
   initialReplyThread?: Comment | null;
   /** When set, the sheet shows only this reading room's comments and posts into it. */
@@ -202,8 +210,10 @@ function ReplyThread({ parentComment, onBack, bottomPad, roomId, myProgress }: R
     user?.id !== parentComment.userId &&
     !parentSpoilerRevealed;
   const [replyText, setReplyText] = useState(`@${parentComment.username} `);
-  const [visibility, setVisibility] = useState<Visibility>(
-    user?.defaultVisibility ?? "public",
+  // Room-scoped threads (parent lives in a room) default to members-only.
+  const threadRoomId = parentComment.roomId ?? roomId ?? null;
+  const [visibility, setVisibility] = useState<ContentVisibility>(
+    threadRoomId != null ? "room" : (user?.defaultVisibility ?? "public"),
   );
   const [containsSpoilers, setContainsSpoilers] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -411,55 +421,37 @@ function ReplyThread({ parentComment, onBack, bottomPad, roomId, myProgress }: R
         ]}
       >
         <View style={styles.visibilityRow}>
-          {roomId ? (
-            <View
-              style={[
-                styles.visChip,
-                {
-                  backgroundColor: colors.muted,
-                  borderColor: colors.border,
-                  borderRadius: colors.radius,
-                },
-              ]}
-            >
-              <Feather name="users" size={12} color={colors.mutedForeground} />
-              <Text style={[styles.visChipText, { color: colors.mutedForeground }]}>
-                Room members
-              </Text>
-            </View>
-          ) : (
-            VISIBILITY_OPTIONS.map((opt) => {
-              const active = visibility === opt.value;
-              return (
-                <Pressable
-                  key={opt.value}
-                  onPress={() => setVisibility(opt.value)}
+          {(threadRoomId != null ? ROOM_VISIBILITY_OPTIONS : VISIBILITY_OPTIONS).map((opt) => {
+            const active = visibility === opt.value;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => setVisibility(opt.value)}
+                style={[
+                  styles.visChip,
+                  {
+                    backgroundColor: active ? colors.primary : colors.card,
+                    borderColor: active ? colors.primary : colors.border,
+                    borderRadius: colors.radius,
+                  },
+                ]}
+              >
+                <Feather
+                  name={opt.icon}
+                  size={12}
+                  color={active ? colors.primaryForeground : colors.mutedForeground}
+                />
+                <Text
                   style={[
-                    styles.visChip,
-                    {
-                      backgroundColor: active ? colors.primary : colors.card,
-                      borderColor: active ? colors.primary : colors.border,
-                      borderRadius: colors.radius,
-                    },
+                    styles.visChipText,
+                    { color: active ? colors.primaryForeground : colors.mutedForeground },
                   ]}
                 >
-                  <Feather
-                    name={opt.icon}
-                    size={12}
-                    color={active ? colors.primaryForeground : colors.mutedForeground}
-                  />
-                  <Text
-                    style={[
-                      styles.visChipText,
-                      { color: active ? colors.primaryForeground : colors.mutedForeground },
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })
-          )}
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
         <SpoilerCheckbox
           active={containsSpoilers}
@@ -527,7 +519,9 @@ export function CommentSheet({
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<FilterType>("best");
   const [commentText, setCommentText] = useState("");
-  const [visibility, setVisibility] = useState<Visibility>(user?.defaultVisibility ?? "public");
+  const [visibility, setVisibility] = useState<ContentVisibility>(
+    roomId ? "room" : (user?.defaultVisibility ?? "public"),
+  );
   const [containsSpoilers, setContainsSpoilers] = useState(false);
   const [replyThread, setReplyThread] = useState<Comment | null>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -544,10 +538,10 @@ export function CommentSheet({
 
   useEffect(() => {
     if (visible) {
-      setVisibility(user?.defaultVisibility ?? "public");
+      setVisibility(roomId ? "room" : (user?.defaultVisibility ?? "public"));
       setContainsSpoilers(false);
     }
-  }, [visible, user?.defaultVisibility]);
+  }, [visible, user?.defaultVisibility, roomId]);
 
   useEffect(() => {
     if (visible) {
@@ -827,24 +821,7 @@ export function CommentSheet({
                 ]}
               >
                 <View style={styles.visibilityRow}>
-                  {roomId ? (
-                    <View
-                      style={[
-                        styles.visChip,
-                        {
-                          backgroundColor: colors.muted,
-                          borderColor: colors.border,
-                          borderRadius: colors.radius,
-                        },
-                      ]}
-                    >
-                      <Feather name="users" size={12} color={colors.mutedForeground} />
-                      <Text style={[styles.visChipText, { color: colors.mutedForeground }]}>
-                        Room members
-                      </Text>
-                    </View>
-                  ) : (
-                    VISIBILITY_OPTIONS.map((opt) => {
+                  {(roomId ? ROOM_VISIBILITY_OPTIONS : VISIBILITY_OPTIONS).map((opt) => {
                       const active = visibility === opt.value;
                       return (
                         <Pressable
@@ -880,8 +857,7 @@ export function CommentSheet({
                           </Text>
                         </Pressable>
                       );
-                    })
-                  )}
+                    })}
                 </View>
                 <SpoilerCheckbox
                   active={containsSpoilers}

@@ -1,5 +1,5 @@
-import { eq, inArray } from "drizzle-orm";
-import { db, notificationsTable, usersTable } from "@workspace/db";
+import { and, eq, inArray } from "drizzle-orm";
+import { db, notificationsTable, roomMembersTable, usersTable } from "@workspace/db";
 import { sendPushToUsers } from "./push";
 
 /** Push body shown instead of comment text when the comment is marked as a spoiler. */
@@ -150,8 +150,14 @@ export async function createMentionNotifications(options: {
   excludeUserIds?: Iterable<number>;
   /** When true, the push body is masked so spoilers never appear on the lock screen. */
   containsSpoilers?: boolean;
+  /**
+   * When set, mentions only notify members of this room. Used for
+   * visibility='room' comments so their text never leaks to non-members
+   * via in-app notifications or push bodies.
+   */
+  restrictToRoomId?: number;
 }): Promise<void> {
-  const { text, actorId, commentId, containsSpoilers } = options;
+  const { text, actorId, commentId, containsSpoilers, restrictToRoomId } = options;
   const excluded = new Set<number>(options.excludeUserIds ?? []);
   excluded.add(actorId);
 
@@ -163,9 +169,25 @@ export async function createMentionNotifications(options: {
     .from(usersTable)
     .where(inArray(usersTable.username, mentionedNames));
   // Respect each recipient's mention-notification setting (skips in-app AND push).
-  const toNotify = mentionedUsers.filter(
+  let toNotify = mentionedUsers.filter(
     (u) => !excluded.has(u.id) && u.notifyMentions,
   );
+  if (toNotify.length > 0 && restrictToRoomId !== undefined) {
+    const memberRows = await db
+      .select({ userId: roomMembersTable.userId })
+      .from(roomMembersTable)
+      .where(
+        and(
+          eq(roomMembersTable.roomId, restrictToRoomId),
+          inArray(
+            roomMembersTable.userId,
+            toNotify.map((u) => u.id),
+          ),
+        ),
+      );
+    const memberIds = new Set(memberRows.map((r) => r.userId));
+    toNotify = toNotify.filter((u) => memberIds.has(u.id));
+  }
   if (toNotify.length === 0) return;
 
   await db.insert(notificationsTable).values(

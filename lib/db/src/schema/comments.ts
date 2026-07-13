@@ -1,5 +1,5 @@
 import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
-import type { Visibility } from "./users";
+import type { ContentVisibility } from "./users";
 
 export const commentsTable = pgTable("comments", {
   id: serial("id").primaryKey(),
@@ -7,11 +7,12 @@ export const commentsTable = pgTable("comments", {
   quoteId: integer("quote_id").notNull(),
   userId: integer("user_id").notNull(),
   text: text("text").notNull(),
-  // Who can see this comment: public | friends (mutual follows) | private (author only).
+  // Who can see this comment: public | friends (mutual follows) | private
+  // (author only) | room (members of `roomId` only — requires roomId).
   visibility: text("visibility")
     .notNull()
     .default("public")
-    .$type<Visibility>(),
+    .$type<ContentVisibility>(),
   likeCount: integer("like_count").notNull().default(0),
   // Author-flagged spoiler: other users see the text blurred until they tap to reveal.
   containsSpoilers: boolean("contains_spoilers").notNull().default(false),

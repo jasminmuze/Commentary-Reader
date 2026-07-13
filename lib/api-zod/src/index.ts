@@ -63,3 +63,4 @@ export * from "./generated/types/userRecordsBook";
 export * from "./generated/types/userRef";
 export * from "./generated/types/userWithFriendStatus";
 export * from "./generated/types/visibility";
+export * from "./generated/types/contentVisibility";

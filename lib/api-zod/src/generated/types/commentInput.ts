@@ -5,12 +5,12 @@
  * Bookmarks - Social Ebook Reader API
  * OpenAPI spec version: 0.1.0
  */
-import type { Visibility } from './visibility';
+import type { ContentVisibility } from './contentVisibility';
 
 export interface CommentInput {
   /** @minLength 1 */
   text: string;
-  visibility?: Visibility;
+  visibility?: ContentVisibility;
   /** Mark this comment as containing spoilers (default false) */
   containsSpoilers?: boolean;
   /** Scope this comment to a reading room (author must be a member) */

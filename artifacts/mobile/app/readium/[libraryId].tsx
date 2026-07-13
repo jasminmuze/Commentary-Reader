@@ -29,7 +29,7 @@ import {
   useToggleHighlight,
   useUpdateReadingLocation,
 } from "@workspace/api-client-react";
-import type { LibraryEntry, Quote, Room } from "@workspace/api-client-react";
+import type { ContentVisibility, LibraryEntry, Quote, Room } from "@workspace/api-client-react";
 import { ScrollView } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
@@ -610,28 +610,48 @@ function EmbeddedReader({
             requestedQuoteIdsRef.current.add(quote.id);
             setLocatedVersion((v) => v + 1);
             if (event.action === "highlight") {
-              toggleHighlight.mutate(
-                {
-                  quoteId: quote.id,
-                  data: {
-                    userLibraryId: libraryId,
-                    cfiRange: event.locatorJson,
-                    ...(selectedRoomId
-                      ? {
-                          roomId: selectedRoomId,
-                          ...(readProgress !== null ? { authorProgress: readProgress } : {}),
-                        }
-                      : {}),
+              const doHighlight = (visibility?: ContentVisibility) => {
+                toggleHighlight.mutate(
+                  {
+                    quoteId: quote.id,
+                    data: {
+                      userLibraryId: libraryId,
+                      cfiRange: event.locatorJson,
+                      ...(visibility ? { visibility } : {}),
+                      ...(selectedRoomId
+                        ? {
+                            roomId: selectedRoomId,
+                            ...(readProgress !== null ? { authorProgress: readProgress } : {}),
+                          }
+                        : {}),
+                    },
                   },
-                },
-                {
-                  onSuccess: () => {
-                    queryClient.invalidateQueries({
-                      queryKey: getGetBookQuotesQueryKey(bookId),
-                    });
+                  {
+                    onSuccess: () => {
+                      queryClient.invalidateQueries({
+                        queryKey: getGetBookQuotesQueryKey(bookId),
+                      });
+                    },
                   },
-                },
-              );
+                );
+              };
+              if (selectedRoomId) {
+                // Room scope: let the author choose whether the highlight stays
+                // members-only or is also shared to the community/friends.
+                Alert.alert(
+                  "Who can see this highlight?",
+                  "Room only keeps it visible to room members.",
+                  [
+                    { text: "Public", onPress: () => doHighlight("public") },
+                    { text: "Friends", onPress: () => doHighlight("friends") },
+                    { text: "Room only", onPress: () => doHighlight("room") },
+                  ],
+                  { cancelable: true },
+                );
+              } else {
+                // Community scope: server applies the user's default visibility.
+                doHighlight();
+              }
             } else {
               setSelectedQuote({ id: quote.id, text: quote.text, cfiRange: event.locatorJson });
               setSheetVisible(true);

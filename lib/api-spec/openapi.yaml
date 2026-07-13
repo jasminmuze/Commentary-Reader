@@ -1583,7 +1583,7 @@ components:
         text:
           type: string
         visibility:
-          $ref: "#/components/schemas/Visibility"
+          $ref: "#/components/schemas/ContentVisibility"
         quoteText:
           type: string
         likeCount:
@@ -1619,7 +1619,7 @@ components:
           type: string
           minLength: 1
         visibility:
-          $ref: "#/components/schemas/Visibility"
+          $ref: "#/components/schemas/ContentVisibility"
         containsSpoilers:
           type: boolean
           description: Mark this comment as containing spoilers (default false)
@@ -1649,7 +1649,7 @@ components:
         cfiRange:
           type: string
         visibility:
-          $ref: "#/components/schemas/Visibility"
+          $ref: "#/components/schemas/ContentVisibility"
         roomId:
           type: integer
           description: Scope this highlight to a reading room (author must be a member)
@@ -1795,7 +1795,12 @@ components:
     Visibility:
       type: string
       enum: [public, friends, private]
-      description: Who can see a comment or highlight — public, friends (mutual follows), or private (author only)
+      description: Default visibility for new comments/highlights — public, friends (mutual follows), or private (author only)
+
+    ContentVisibility:
+      type: string
+      enum: [public, friends, private, room]
+      description: Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)
 
     User:
       type: object

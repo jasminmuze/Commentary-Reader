@@ -52,15 +52,16 @@ export interface QuoteReaderContext {
 }
 
 /**
- * Who can see a comment or highlight — public, friends (mutual follows), or private (author only)
+ * Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)
  */
-export type Visibility = typeof Visibility[keyof typeof Visibility];
+export type ContentVisibility = typeof ContentVisibility[keyof typeof ContentVisibility];
 
 
-export const Visibility = {
+export const ContentVisibility = {
   public: 'public',
   friends: 'friends',
   private: 'private',
+  room: 'room',
 } as const;
 
 export interface Comment {
@@ -74,7 +75,7 @@ export interface Comment {
   avatarUrl: string | null;
   avatarColor: string;
   text: string;
-  visibility: Visibility;
+  visibility: ContentVisibility;
   quoteText?: string;
   likeCount: number;
   likedByMe: boolean;
@@ -122,7 +123,7 @@ export interface BookDetail {
 export interface CommentInput {
   /** @minLength 1 */
   text: string;
-  visibility?: Visibility;
+  visibility?: ContentVisibility;
   /** Mark this comment as containing spoilers (default false) */
   containsSpoilers?: boolean;
   /** Scope this comment to a reading room (author must be a member) */
@@ -146,7 +147,7 @@ export interface CreateQuoteInput {
 export interface HighlightInput {
   userLibraryId?: number;
   cfiRange?: string;
-  visibility?: Visibility;
+  visibility?: ContentVisibility;
   /** Scope this highlight to a reading room (author must be a member) */
   roomId?: number;
   /**
@@ -247,6 +248,18 @@ export interface SaveResult {
 export interface UserRef {
   userId: number;
 }
+
+/**
+ * Default visibility for new comments/highlights — public, friends (mutual follows), or private (author only)
+ */
+export type Visibility = typeof Visibility[keyof typeof Visibility];
+
+
+export const Visibility = {
+  public: 'public',
+  friends: 'friends',
+  private: 'private',
+} as const;
 
 export interface User {
   id: number;

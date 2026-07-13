@@ -2,6 +2,10 @@ import { pgTable, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
 
 export type Visibility = "public" | "friends" | "private";
 
+// Content rows (comments/highlights) additionally support "room": visible only
+// to members of the row's reading room. Never valid for users.defaultVisibility.
+export type ContentVisibility = Visibility | "room";
+
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
