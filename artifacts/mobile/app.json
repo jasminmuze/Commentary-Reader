@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Shelfmates",
-    "slug": "shelfmates",
+    "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -43,6 +43,7 @@
       "eas": {
         "projectId": "a284d87c-da56-4e0d-9d2c-a3a6c87456ef"
       }
-    }
+    },
+    "owner": "jasminmuze"
   }
 }
