@@ -118,8 +118,16 @@ export default function FriendsScreen() {
             keyExtractor={(item, index) => String(item.id ?? index)}
             renderItem={({ item }) => (
               <View style={[styles.userRow, { borderColor: colors.border }]}>
-                <UserAvatar username={item.username} avatarColor={item.avatarColor} size={42} />
-                <Text style={[styles.userName, { color: colors.foreground }]}>{item.username}</Text>
+                <UserAvatar
+                  username={item.username}
+                  nickname={item.nickname}
+                  avatarUrl={item.avatarUrl}
+                  avatarColor={item.avatarColor}
+                  size={42}
+                />
+                <Text style={[styles.userName, { color: colors.foreground }]}>
+                  {item.nickname?.trim() || item.username}
+                </Text>
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionBtn,
@@ -155,8 +163,16 @@ export default function FriendsScreen() {
             keyExtractor={(item, index) => String(item.id ?? index)}
             renderItem={({ item }) => (
               <View style={[styles.userRow, { borderColor: colors.border }]}>
-                <UserAvatar username={item.username} avatarColor={item.avatarColor} size={42} />
-                <Text style={[styles.userName, { color: colors.foreground }]}>{item.username}</Text>
+                <UserAvatar
+                  username={item.username}
+                  nickname={item.nickname}
+                  avatarUrl={item.avatarUrl}
+                  avatarColor={item.avatarColor}
+                  size={42}
+                />
+                <Text style={[styles.userName, { color: colors.foreground }]}>
+                  {item.nickname?.trim() || item.username}
+                </Text>
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionBtn,

@@ -81,13 +81,15 @@ function FeedCard({
         <Pressable onPress={() => router.push(`/user/${item.userId}`)} hitSlop={8}>
           <UserAvatar
             username={item.username}
+            nickname={item.nickname}
+            avatarUrl={item.avatarUrl}
             avatarColor={item.avatarColor}
             size={32}
           />
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerLine, { color: colors.foreground }]} numberOfLines={2}>
-            <Text style={styles.username}>{item.username}</Text>
+            <Text style={styles.username}>{item.nickname?.trim() || item.username}</Text>
             <Text style={{ color: colors.mutedForeground }}>
               {isComment
                 ? " left a comment"

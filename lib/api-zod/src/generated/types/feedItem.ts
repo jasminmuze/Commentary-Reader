@@ -13,6 +13,10 @@ export interface FeedItem {
   id: number;
   userId: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   bookId: number;
   bookTitle: string;

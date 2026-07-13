@@ -171,8 +171,19 @@ export default function UserProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.profileSection}>
-          <UserAvatar username={profile.username} avatarColor={profile.avatarColor} size={88} />
-          <Text style={[styles.name, { color: colors.foreground }]}>{profile.username}</Text>
+          <UserAvatar
+            username={profile.username}
+            nickname={profile.nickname}
+            avatarUrl={profile.avatarUrl}
+            avatarColor={profile.avatarColor}
+            size={88}
+          />
+          <Text style={[styles.name, { color: colors.foreground }]}>
+            {profile.nickname?.trim() || profile.username}
+          </Text>
+          <Text style={[styles.since, { color: colors.mutedForeground }]}>
+            @{profile.username}
+          </Text>
           <Text style={[styles.since, { color: colors.mutedForeground }]}>
             Reading along since {memberSince}
           </Text>

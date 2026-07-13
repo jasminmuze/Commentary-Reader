@@ -63,6 +63,10 @@ export interface Comment {
   quoteId: number;
   userId: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   text: string;
   visibility: Visibility;
@@ -237,6 +241,23 @@ export interface UserRef {
 export interface User {
   id: number;
   username: string;
+  /**
+     * Display name shown instead of the username; null falls back to username
+     * @nullable
+     */
+  nickname: string | null;
+  /**
+     * Object path of the profile photo (e.g. /public-objects/avatars/...); null falls back to the colored initial avatar
+     * @nullable
+     */
+  avatarUrl: string | null;
+  /**
+     * Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts
+     * @nullable
+     */
+  email: string | null;
+  /** Whether the user confirmed their email; only meaningful in self contexts */
+  emailVerified: boolean;
   avatarColor: string;
   defaultVisibility: Visibility;
   createdAt: string;
@@ -260,6 +281,10 @@ export const UserProfileFriendStatus = {
 export interface UserProfile {
   id: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   createdAt: string;
   followerCount: number;
@@ -277,7 +302,32 @@ export interface UserProfile {
 }
 
 export interface UpdateUserSettings {
-  defaultVisibility: Visibility;
+  defaultVisibility?: Visibility;
+  /**
+     * New display name; null or empty string clears it (falls back to username)
+     * @maxLength 30
+     * @nullable
+     */
+  nickname?: string | null;
+}
+
+export interface VerifyEmailInput {
+  /**
+     * The 6-digit verification code from the email
+     * @minLength 6
+     * @maxLength 6
+     */
+  code: string;
+}
+
+export interface AvatarUploadUrl {
+  /** Presigned PUT URL for uploading the avatar image */
+  uploadURL: string;
+}
+
+export interface SetAvatarInput {
+  /** The presigned upload URL (or object path) returned after upload */
+  uploadURL: string;
 }
 
 export interface NotificationSettings {
@@ -296,6 +346,10 @@ export interface NotificationSettings {
 export interface UserWithFriendStatus {
   id: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   createdAt: string;
   isFriend: boolean;
@@ -304,6 +358,14 @@ export interface UserWithFriendStatus {
 export interface UserInput {
   /** @minLength 2 */
   username: string;
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * Optional display name shown instead of the username
+     * @minLength 1
+     * @maxLength 30
+     */
+  nickname?: string;
   /**
      * @minLength 8
      * @maxLength 100
@@ -346,6 +408,10 @@ export interface NotificationItem {
   type: NotificationItemType;
   actorId: number;
   actorUsername: string;
+  /** @nullable */
+  actorNickname: string | null;
+  /** @nullable */
+  actorAvatarUrl: string | null;
   actorAvatarColor: string;
   /** The reply comment that triggered the notification (0 for friend_* notifications) */
   commentId: number;
@@ -439,6 +505,10 @@ export interface FeedItem {
   id: number;
   userId: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   bookId: number;
   bookTitle: string;
@@ -519,6 +589,10 @@ export const RoomMemberInfoRole = {
 export interface RoomMemberInfo {
   userId: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   role: RoomMemberInfoRole;
   /**
@@ -592,6 +666,10 @@ export interface RoomFeedItem {
   id: number;
   userId: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   quoteId: number;
   /** Quote text — truncated to a preview length unless the viewer owns the book */

@@ -80,8 +80,16 @@ function FeedRow({
       ]}
     >
       <View style={styles.feedHead}>
-        <UserAvatar username={item.username} avatarColor={item.avatarColor} size={26} />
-        <Text style={[styles.feedUser, { color: colors.foreground }]}>{item.username}</Text>
+        <UserAvatar
+          username={item.username}
+          nickname={item.nickname}
+          avatarUrl={item.avatarUrl}
+          avatarColor={item.avatarColor}
+          size={26}
+        />
+        <Text style={[styles.feedUser, { color: colors.foreground }]}>
+          {item.nickname?.trim() || item.username}
+        </Text>
         <Text style={[styles.feedAction, { color: colors.mutedForeground }]}>
           {item.type === "highlight" ? "highlighted" : "commented"}
         </Text>
@@ -141,10 +149,18 @@ function MemberRow({
   const progress = member.readingProgress;
   return (
     <Pressable style={styles.memberRow} onPress={() => router.push(`/user/${member.userId}`)}>
-      <UserAvatar username={member.username} avatarColor={member.avatarColor} size={34} />
+      <UserAvatar
+        username={member.username}
+        nickname={member.nickname}
+        avatarUrl={member.avatarUrl}
+        avatarColor={member.avatarColor}
+        size={34}
+      />
       <View style={{ flex: 1 }}>
         <View style={styles.memberNameRow}>
-          <Text style={[styles.memberName, { color: colors.foreground }]}>{member.username}</Text>
+          <Text style={[styles.memberName, { color: colors.foreground }]}>
+            {member.nickname?.trim() || member.username}
+          </Text>
           {member.role === "owner" ? (
             <View style={[styles.ownerBadge, { backgroundColor: colors.muted, borderRadius: colors.radius }]}>
               <Text style={[styles.ownerBadgeText, { color: colors.mutedForeground }]}>OWNER</Text>
@@ -623,9 +639,15 @@ export default function RoomScreen() {
                   const invited = invitedIds.has(f.id);
                   return (
                     <View key={f.id} style={styles.inviteRow}>
-                      <UserAvatar username={f.username} avatarColor={f.avatarColor} size={32} />
+                      <UserAvatar
+                        username={f.username}
+                        nickname={f.nickname}
+                        avatarUrl={f.avatarUrl}
+                        avatarColor={f.avatarColor}
+                        size={32}
+                      />
                       <Text style={[styles.memberName, { color: colors.foreground, flex: 1 }]}>
-                        {f.username}
+                        {f.nickname?.trim() || f.username}
                       </Text>
                       <Pressable
                         onPress={() => handleInvite(f)}

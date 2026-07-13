@@ -157,6 +157,42 @@ export class ObjectStorageService {
     });
   }
 
+  // Gets a signed PUT URL for uploading an avatar image into the PUBLIC
+  // object dir (avatars are world-readable by design).
+  async getAvatarUploadURL(): Promise<string> {
+    const publicPath = this.getPublicObjectSearchPaths()[0]!;
+    const objectId = randomUUID();
+    const fullPath = `${publicPath}/avatars/${objectId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    return signObjectURL({
+      bucketName,
+      objectName,
+      method: "PUT",
+      ttlSec: 900,
+    });
+  }
+
+  // Converts an avatar upload URL (or already-normalized path) into the
+  // /public-objects/avatars/<id> path stored in users.avatar_url. Returns
+  // null if the URL doesn't point into a public avatars directory.
+  normalizeAvatarPath(rawPath: string): string | null {
+    let objectPath = rawPath;
+    if (rawPath.startsWith("https://storage.googleapis.com/")) {
+      const url = new URL(rawPath);
+      objectPath = url.pathname;
+    }
+    if (objectPath.startsWith("/public-objects/avatars/")) {
+      return objectPath;
+    }
+    for (const searchPath of this.getPublicObjectSearchPaths()) {
+      const prefix = searchPath.endsWith("/") ? searchPath : `${searchPath}/`;
+      if (objectPath.startsWith(`${prefix}avatars/`)) {
+        return `/public-objects/${objectPath.slice(prefix.length)}`;
+      }
+    }
+    return null;
+  }
+
   // Gets the object entity file from the object path.
   async getObjectEntityFile(objectPath: string): Promise<File> {
     if (!objectPath.startsWith("/objects/")) {

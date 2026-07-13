@@ -9,6 +9,10 @@
 export interface UserWithFriendStatus {
   id: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   createdAt: Date;
   isFriend: boolean;

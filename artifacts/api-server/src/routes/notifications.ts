@@ -114,6 +114,8 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
       type: n.type,
       actorId: n.actorId,
       actorUsername: actor?.username ?? "unknown",
+      actorNickname: actor?.nickname ?? null,
+      actorAvatarUrl: actor?.avatarUrl ?? null,
       actorAvatarColor: actor?.avatarColor ?? "#7A8BAA",
       commentId: n.commentId ?? 0,
       commentText: comment?.text ?? "",

@@ -8,5 +8,11 @@
 import type { Visibility } from './visibility';
 
 export interface UpdateUserSettings {
-  defaultVisibility: Visibility;
+  defaultVisibility?: Visibility;
+  /**
+     * New display name; null or empty string clears it (falls back to username)
+     * @maxLength 30
+     * @nullable
+     */
+  nickname?: string | null;
 }

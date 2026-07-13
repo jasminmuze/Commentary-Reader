@@ -309,6 +309,8 @@ export async function formatComment(
     quoteId: comment.quoteId,
     userId: comment.userId,
     username: user?.username ?? "unknown",
+    nickname: user?.nickname ?? null,
+    avatarUrl: user?.avatarUrl ?? null,
     avatarColor: user?.avatarColor ?? "#7A8BAA",
     text: comment.text,
     visibility: comment.visibility,

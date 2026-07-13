@@ -7,6 +7,22 @@ export const usersTable = pgTable("users", {
   username: text("username").notNull().unique(),
   // bcrypt hash; null for legacy/seeded demo accounts (cannot log in).
   passwordHash: text("password_hash"),
+  // Signup email; null only for legacy/seeded accounts created before email
+  // became required. Unique when present.
+  email: text("email").unique(),
+  // Optional display name shown instead of username; username stays the
+  // immutable handle (mentions, login).
+  nickname: text("nickname"),
+  // Object path (e.g. /public-objects/avatars/<uuid>) for the profile photo;
+  // null falls back to the colored initial avatar.
+  avatarUrl: text("avatar_url"),
+  // Set when the user confirms the 6-digit email verification code.
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  // sha256 hash of the pending verification code (never the raw code).
+  emailVerificationCodeHash: text("email_verification_code_hash"),
+  emailVerificationExpiresAt: timestamp("email_verification_expires_at", { withTimezone: true }),
+  // Last send time — used to rate-limit resends.
+  emailVerificationSentAt: timestamp("email_verification_sent_at", { withTimezone: true }),
   avatarColor: text("avatar_color").notNull(),
   // Default visibility applied to new comments/highlights unless overridden.
   defaultVisibility: text("default_visibility")

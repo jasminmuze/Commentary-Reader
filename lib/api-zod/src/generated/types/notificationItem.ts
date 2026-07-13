@@ -13,6 +13,10 @@ export interface NotificationItem {
   type: NotificationItemType;
   actorId: number;
   actorUsername: string;
+  /** @nullable */
+  actorNickname: string | null;
+  /** @nullable */
+  actorAvatarUrl: string | null;
   actorAvatarColor: string;
   /** The reply comment that triggered the notification (0 for friend_* notifications) */
   commentId: number;

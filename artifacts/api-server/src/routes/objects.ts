@@ -14,6 +14,25 @@ router.post("/objects/upload", authenticate, async (_req, res): Promise<void> =>
   res.json({ uploadURL });
 });
 
+// Serves public objects (e.g. avatar images) without authentication — these
+// live in the public search paths and are world-readable by design, so
+// <Image> tags can load them without auth headers.
+router.get("/public-objects/*filePath", async (req, res): Promise<void> => {
+  const svc = new ObjectStorageService();
+  const splat = (req.params as Record<string, unknown>)["filePath"];
+  const filePath = Array.isArray(splat) ? splat.join("/") : String(splat ?? "");
+  try {
+    const file = await svc.searchPublicObject(filePath);
+    if (!file) {
+      res.sendStatus(404);
+      return;
+    }
+    await svc.downloadObject(file, res, 86400);
+  } catch {
+    res.sendStatus(500);
+  }
+});
+
 // Serves an uploaded EPUB, enforcing the object's ACL.
 // The requester identity is taken from the verified bearer token (req.userId).
 router.get("/objects/*objectPath", authenticate, async (req, res): Promise<void> => {

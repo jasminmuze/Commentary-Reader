@@ -105,6 +105,8 @@ function NotificationCard({
         <View style={styles.avatarWrap}>
           <UserAvatar
             username={item.actorUsername}
+            nickname={item.actorNickname}
+            avatarUrl={item.actorAvatarUrl}
             avatarColor={item.actorAvatarColor}
             size={36}
           />
@@ -115,7 +117,7 @@ function NotificationCard({
 
         <View style={styles.cardBody}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-            <Text style={styles.bold}>{item.actorUsername}</Text>
+            <Text style={styles.bold}>{item.actorNickname?.trim() || item.actorUsername}</Text>
             {title}
           </Text>
 

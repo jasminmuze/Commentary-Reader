@@ -174,7 +174,7 @@ export default function LibraryScreen() {
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
         <View>
           <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Good reading,</Text>
-          <Text style={[styles.username, { color: colors.foreground }]}>{user?.username ?? "Reader"}</Text>
+          <Text style={[styles.username, { color: colors.foreground }]}>{user?.nickname?.trim() || user?.username || "Reader"}</Text>
         </View>
         <Pressable
           style={({ pressed }) => [styles.uploadBtn, { backgroundColor: colors.primary, opacity: pressed || uploading ? 0.8 : 1 }]}

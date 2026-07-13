@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, like, inArray, count, desc, max } from "drizzle-orm";
+import { eq, and, or, isNull, lt, like, inArray, count, desc, max } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -13,6 +13,13 @@ import {
 } from "@workspace/db";
 import {
   CreateUserBody,
+  SendVerificationEmailParams,
+  ConfirmEmailVerificationParams,
+  ConfirmEmailVerificationBody,
+  GetAvatarUploadUrlParams,
+  SetAvatarParams,
+  SetAvatarBody,
+  RemoveAvatarParams,
   GetUserParams,
   GetFriendsParams,
   AddFriendParams,
@@ -32,8 +39,11 @@ import {
 } from "@workspace/api-zod";
 import type { UserRecordsBook, UserHighlightItem } from "@workspace/api-zod";
 import bcrypt from "bcryptjs";
+import { createHash, randomInt } from "crypto";
 import { LoginUserBody } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
+import { sendVerificationEmail } from "../lib/email";
+import { ObjectStorageService } from "../lib/objectStorage";
 import {
   getViewer,
   isFollowing,
@@ -55,6 +65,82 @@ function randomAvatarColor(): string {
 // unknown usernames (see /users/login).
 const DUMMY_BCRYPT_HASH = bcrypt.hashSync("timing-equalizer-dummy", 10);
 
+const VERIFICATION_CODE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const VERIFICATION_RESEND_INTERVAL_MS = 60 * 1000; // 60s between sends
+
+function hashVerificationCode(code: string): string {
+  return createHash("sha256").update(code).digest("hex");
+}
+
+function generateVerificationCode(): string {
+  return String(randomInt(0, 1_000_000)).padStart(6, "0");
+}
+
+type DbUser = typeof usersTable.$inferSelect;
+
+// Serializes a user row for API responses. Email + verification status are
+// self-only (returned as null/false to other viewers).
+function formatUser(user: DbUser, opts: { self: boolean; token?: string }) {
+  return {
+    id: user.id,
+    username: user.username,
+    nickname: user.nickname ?? null,
+    avatarUrl: user.avatarUrl ?? null,
+    email: opts.self ? (user.email ?? null) : null,
+    emailVerified: opts.self ? user.emailVerifiedAt != null : false,
+    avatarColor: user.avatarColor,
+    defaultVisibility: user.defaultVisibility,
+    createdAt: user.createdAt.toISOString(),
+    ...(opts.token ? { token: opts.token } : {}),
+  };
+}
+
+// Generates + stores a hashed verification code and emails it. The resend
+// cooldown is enforced atomically in the UPDATE's WHERE clause so concurrent
+// requests can't double-send. Returns "cooldown" if another send happened
+// within the resend interval. Throws if the email send fails (caller decides
+// how to surface it); on send failure the cooldown is rolled back so the user
+// can retry immediately.
+async function issueVerificationCode(user: DbUser): Promise<"sent" | "cooldown"> {
+  if (!user.email) throw new Error("No email on account");
+  const code = generateVerificationCode();
+  const cooldownCutoff = new Date(Date.now() - VERIFICATION_RESEND_INTERVAL_MS);
+  const claimed = await db
+    .update(usersTable)
+    .set({
+      emailVerificationCodeHash: hashVerificationCode(code),
+      emailVerificationExpiresAt: new Date(Date.now() + VERIFICATION_CODE_TTL_MS),
+      emailVerificationSentAt: new Date(),
+    })
+    .where(
+      and(
+        eq(usersTable.id, user.id),
+        or(
+          isNull(usersTable.emailVerificationSentAt),
+          lt(usersTable.emailVerificationSentAt, cooldownCutoff),
+        ),
+      ),
+    )
+    .returning({ id: usersTable.id });
+  if (claimed.length === 0) return "cooldown";
+  try {
+    await sendVerificationEmail(user.email, code);
+  } catch (err) {
+    // Roll back the cooldown so a failed send doesn't lock the user out of
+    // retrying for the whole interval.
+    try {
+      await db
+        .update(usersTable)
+        .set({ emailVerificationSentAt: null })
+        .where(eq(usersTable.id, user.id));
+    } catch {
+      // Best-effort rollback; the original send error is what matters.
+    }
+    throw err;
+  }
+  return "sent";
+}
+
 const router: IRouter = Router();
 
 router.post("/users", async (req, res): Promise<void> => {
@@ -64,20 +150,46 @@ router.post("/users", async (req, res): Promise<void> => {
     return;
   }
 
+  const email = body.data.email.trim().toLowerCase();
   const existing = await db.select().from(usersTable).where(eq(usersTable.username, body.data.username));
   if (existing.length > 0) {
     res.status(409).json({ error: "Username already taken" });
     return;
   }
+  const emailTaken = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email));
+  if (emailTaken.length > 0) {
+    res.status(409).json({ error: "Email already in use" });
+    return;
+  }
 
   const passwordHash = await bcrypt.hash(body.data.password, 10);
-  const [user] = await db.insert(usersTable).values({
-    username: body.data.username,
-    passwordHash,
-    avatarColor: randomAvatarColor(),
-  }).returning();
+  const nickname = body.data.nickname?.trim() || null;
+  let user: DbUser | undefined;
+  try {
+    [user] = await db.insert(usersTable).values({
+      username: body.data.username,
+      email,
+      nickname,
+      passwordHash,
+      avatarColor: randomAvatarColor(),
+    }).returning();
+  } catch (err: unknown) {
+    // Unique-constraint race (username or email inserted concurrently).
+    const pgCode = (err as { code?: string })?.code;
+    if (pgCode === "23505") {
+      res.status(409).json({ error: "Username or email already taken" });
+      return;
+    }
+    throw err;
+  }
 
-  res.json({ id: user!.id, username: user!.username, avatarColor: user!.avatarColor, defaultVisibility: user!.defaultVisibility, createdAt: user!.createdAt.toISOString(), token: createToken(user!.id) });
+  // Best-effort: kick off the verification email. Signup still succeeds if
+  // delivery fails — the user can resend from their profile.
+  issueVerificationCode(user!).catch((err) => {
+    req.log.error({ err }, "Failed to send signup verification email");
+  });
+
+  res.json(formatUser(user!, { self: true, token: createToken(user!.id) }));
 });
 
 router.post("/users/login", async (req, res): Promise<void> => {
@@ -102,7 +214,180 @@ router.post("/users/login", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility, createdAt: user.createdAt.toISOString(), token: createToken(user.id) });
+  res.json(formatUser(user, { self: true, token: createToken(user.id) }));
+});
+
+// Send (or resend) the email verification code. Self only, rate-limited.
+router.post("/users/:userId/verify-email/send", authenticate, async (req, res): Promise<void> => {
+  const params = SendVerificationEmailParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, params.data.userId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  if (!user.email) {
+    res.status(400).json({ error: "No email on this account" });
+    return;
+  }
+  if (user.emailVerifiedAt) {
+    res.status(400).json({ error: "Email already verified" });
+    return;
+  }
+  if (
+    user.emailVerificationSentAt &&
+    Date.now() - user.emailVerificationSentAt.getTime() < VERIFICATION_RESEND_INTERVAL_MS
+  ) {
+    res.status(429).json({ error: "Verification email sent recently — try again in a minute" });
+    return;
+  }
+
+  try {
+    const outcome = await issueVerificationCode(user);
+    if (outcome === "cooldown") {
+      res.status(429).json({ error: "Verification email sent recently — try again in a minute" });
+      return;
+    }
+  } catch (err) {
+    req.log.error({ err }, "Verification email send failed");
+    res.status(502).json({ error: "Failed to send verification email" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+// Confirm the 6-digit verification code. Self only.
+router.post("/users/:userId/verify-email/confirm", authenticate, async (req, res): Promise<void> => {
+  const params = ConfirmEmailVerificationParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const body = ConfirmEmailVerificationBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, params.data.userId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  if (user.emailVerifiedAt) {
+    res.json(formatUser(user, { self: true }));
+    return;
+  }
+  if (
+    !user.emailVerificationCodeHash ||
+    !user.emailVerificationExpiresAt ||
+    user.emailVerificationExpiresAt.getTime() < Date.now()
+  ) {
+    res.status(400).json({ error: "Code expired — request a new one" });
+    return;
+  }
+  if (hashVerificationCode(body.data.code) !== user.emailVerificationCodeHash) {
+    res.status(400).json({ error: "Incorrect code" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(usersTable)
+    .set({
+      emailVerifiedAt: new Date(),
+      emailVerificationCodeHash: null,
+      emailVerificationExpiresAt: null,
+    })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+  res.json(formatUser(updated!, { self: true }));
+});
+
+// Presigned PUT URL for a new avatar image (public object dir). Self only.
+router.post("/users/:userId/avatar/upload-url", authenticate, async (req, res): Promise<void> => {
+  const params = GetAvatarUploadUrlParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const svc = new ObjectStorageService();
+  const uploadURL = await svc.getAvatarUploadURL();
+  res.json({ uploadURL });
+});
+
+// Set the avatar after the client uploaded it to the presigned URL. Self only.
+router.put("/users/:userId/avatar", authenticate, async (req, res): Promise<void> => {
+  const params = SetAvatarParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const body = SetAvatarBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const svc = new ObjectStorageService();
+  const avatarUrl = svc.normalizeAvatarPath(body.data.uploadURL);
+  if (!avatarUrl) {
+    res.status(400).json({ error: "Invalid avatar upload URL" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(usersTable)
+    .set({ avatarUrl })
+    .where(eq(usersTable.id, params.data.userId))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json(formatUser(updated, { self: true }));
+});
+
+// Remove the avatar (falls back to the colored initial). Self only.
+router.delete("/users/:userId/avatar", authenticate, async (req, res): Promise<void> => {
+  const params = RemoveAvatarParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const [updated] = await db
+    .update(usersTable)
+    .set({ avatarUrl: null })
+    .where(eq(usersTable.id, params.data.userId))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json(formatUser(updated, { self: true }));
 });
 
 router.get("/users/search", authenticate, async (req, res): Promise<void> => {
@@ -131,6 +416,8 @@ router.get("/users/search", authenticate, async (req, res): Promise<void> => {
         return {
           id: u.id,
           username: u.username,
+          nickname: u.nickname ?? null,
+          avatarUrl: u.avatarUrl ?? null,
           avatarColor: u.avatarColor,
           createdAt: u.createdAt.toISOString(),
           isFriend,
@@ -154,7 +441,7 @@ router.get("/users/:userId", authenticate, async (req, res): Promise<void> => {
     return;
   }
 
-  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility, createdAt: user.createdAt.toISOString() });
+  res.json(formatUser(user, { self: req.userId === user.id }));
 });
 
 // Public profile with follower/following + activity counts and the viewer's
@@ -251,6 +538,8 @@ router.get("/users/:userId/profile", authenticate, async (req, res): Promise<voi
   res.json({
     id: user.id,
     username: user.username,
+    nickname: user.nickname ?? null,
+    avatarUrl: user.avatarUrl ?? null,
     avatarColor: user.avatarColor,
     createdAt: user.createdAt.toISOString(),
     followerCount: Number(followerRow?.c ?? 0),
@@ -281,9 +570,27 @@ router.patch("/users/:userId/settings", authenticate, async (req, res): Promise<
     return;
   }
 
+  const updates: Partial<typeof usersTable.$inferInsert> = {};
+  if (body.data.defaultVisibility !== undefined) {
+    updates.defaultVisibility = body.data.defaultVisibility;
+  }
+  if (body.data.nickname !== undefined) {
+    // null or empty/whitespace-only string clears the nickname.
+    updates.nickname = body.data.nickname?.trim() || null;
+  }
+  if (Object.keys(updates).length === 0) {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, params.data.userId));
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    res.json(formatUser(user, { self: true }));
+    return;
+  }
+
   const [user] = await db
     .update(usersTable)
-    .set({ defaultVisibility: body.data.defaultVisibility })
+    .set(updates)
     .where(eq(usersTable.id, params.data.userId))
     .returning();
   if (!user) {
@@ -291,7 +598,7 @@ router.patch("/users/:userId/settings", authenticate, async (req, res): Promise<
     return;
   }
 
-  res.json({ id: user.id, username: user.username, avatarColor: user.avatarColor, defaultVisibility: user.defaultVisibility, createdAt: user.createdAt.toISOString() });
+  res.json(formatUser(user, { self: true }));
 });
 
 // Get the current user's per-type notification settings (self only).
@@ -394,7 +701,7 @@ router.get("/users/:userId/friends", authenticate, async (req, res): Promise<voi
   const friendIds = friendships.map((f) => f.friendId);
   const friends = await db.select().from(usersTable);
   const filtered = friends.filter((u) => friendIds.includes(u.id));
-  res.json(filtered.map((u) => ({ id: u.id, username: u.username, avatarColor: u.avatarColor, defaultVisibility: u.defaultVisibility, createdAt: u.createdAt.toISOString() })));
+  res.json(filtered.map((u) => formatUser(u, { self: false })));
 });
 
 router.post("/users/:userId/friends", authenticate, async (req, res): Promise<void> => {
@@ -436,7 +743,7 @@ router.post("/users/:userId/friends", authenticate, async (req, res): Promise<vo
     .values({ userId, friendId })
     .onConflictDoNothing();
 
-  res.json({ id: friend.id, username: friend.username, avatarColor: friend.avatarColor, defaultVisibility: friend.defaultVisibility, createdAt: friend.createdAt.toISOString() });
+  res.json(formatUser(friend, { self: false }));
 });
 
 router.delete("/users/:userId/friends/:friendId", authenticate, async (req, res): Promise<void> => {

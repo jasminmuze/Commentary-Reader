@@ -13,6 +13,10 @@ export interface RoomFeedItem {
   id: number;
   userId: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   quoteId: number;
   /** Quote text — truncated to a preview length unless the viewer owns the book */

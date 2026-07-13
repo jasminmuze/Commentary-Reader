@@ -82,10 +82,16 @@ export function CommentCard({ comment, onLike, onSave, onReply, onPress, compact
         onPress={() => router.push(`/user/${comment.userId}`)}
         hitSlop={6}
       >
-        <UserAvatar username={comment.username} avatarColor={comment.avatarColor} size={32} />
+        <UserAvatar
+          username={comment.username}
+          nickname={comment.nickname}
+          avatarUrl={comment.avatarUrl}
+          avatarColor={comment.avatarColor}
+          size={32}
+        />
         <View style={styles.headerText}>
           <Text style={[styles.username, { color: colors.foreground }]}>
-            {comment.username}
+            {comment.nickname?.trim() || comment.username}
           </Text>
           <Text style={[styles.time, { color: colors.mutedForeground }]}>
             {timeAgo(comment.createdAt)}

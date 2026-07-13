@@ -38,8 +38,13 @@ setAuthTokenGetter(() => AsyncStorage.getItem(TOKEN_KEY));
 interface CurrentUser {
   id: number;
   username: string;
+  nickname: string | null;
+  avatarUrl: string | null;
+  email: string | null;
+  emailVerified: boolean;
   avatarColor: string;
   defaultVisibility: Visibility;
+  createdAt: string | null;
 }
 
 interface UserContextType {
@@ -67,6 +72,8 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<AuthMode>("signup");
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [nickname, setNickname] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const createUser = useCreateUser();
@@ -78,8 +85,13 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
     async (user: {
       id: number;
       username: string;
+      nickname?: string | null;
+      avatarUrl?: string | null;
+      email?: string | null;
+      emailVerified?: boolean;
       avatarColor: string;
       defaultVisibility?: Visibility;
+      createdAt?: string | Date;
       token?: string;
     }) => {
       await AsyncStorage.setItem(USER_ID_KEY, String(user.id));
@@ -89,8 +101,13 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
       onComplete({
         id: user.id,
         username: user.username,
+        nickname: user.nickname ?? null,
+        avatarUrl: user.avatarUrl ?? null,
+        email: user.email ?? null,
+        emailVerified: user.emailVerified ?? false,
         avatarColor: user.avatarColor,
         defaultVisibility: user.defaultVisibility ?? "public",
+        createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
       });
     },
     [onComplete],
@@ -110,6 +127,17 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
       setError("Only letters, numbers, and underscores (_) are allowed");
       return;
     }
+    const trimmedEmail = email.trim().toLowerCase();
+    if (mode === "signup") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+        setError("Please enter a valid email address");
+        return;
+      }
+      if (nickname.trim().length > 30) {
+        setError("Nickname must be 30 characters or fewer");
+        return;
+      }
+    }
     if (mode === "signup" && password.length < 8) {
       setError("Password must be at least 8 characters");
       return;
@@ -120,29 +148,48 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
     }
     setError("");
 
-    const mutation = mode === "signup" ? createUser : loginUser;
-    mutation.mutate(
-      { data: { username: trimmed, password } },
-      {
-        onSuccess: (user) => {
-          void persistAndComplete(user);
+    const onError = (err: unknown) => {
+      if (err instanceof ApiError) {
+        if (err.status === 409) {
+          const body = JSON.stringify(err.data ?? "");
+          setError(
+            body.includes("Email")
+              ? "That email is already in use. Want to log in instead?"
+              : "That username is already taken. Want to log in instead?",
+          );
+          return;
+        }
+        if (err.status === 401) {
+          setError("Incorrect username or password");
+          return;
+        }
+      }
+      setError("Something went wrong. Please try again in a moment.");
+    };
+    const onSuccess = (user: Parameters<typeof persistAndComplete>[0]) => {
+      void persistAndComplete(user);
+    };
+
+    if (mode === "signup") {
+      const trimmedNickname = nickname.trim();
+      createUser.mutate(
+        {
+          data: {
+            username: trimmed,
+            email: trimmedEmail,
+            ...(trimmedNickname ? { nickname: trimmedNickname } : {}),
+            password,
+          },
         },
-        onError: (err: unknown) => {
-          if (err instanceof ApiError) {
-            if (err.status === 409) {
-              setError("That username is already taken. Want to log in instead?");
-              return;
-            }
-            if (err.status === 401) {
-              setError("Incorrect username or password");
-              return;
-            }
-          }
-          setError("Something went wrong. Please try again in a moment.");
-        },
-      },
-    );
-  }, [username, password, mode, createUser, loginUser, persistAndComplete]);
+        { onSuccess, onError },
+      );
+    } else {
+      loginUser.mutate(
+        { data: { username: trimmed, password } },
+        { onSuccess, onError },
+      );
+    }
+  }, [username, email, nickname, password, mode, createUser, loginUser, persistAndComplete]);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
 
@@ -184,6 +231,54 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
             autoCorrect={false}
             returnKeyType="next"
           />
+
+          {mode === "signup" ? (
+            <>
+              <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
+                Email
+              </Text>
+              <TextInput
+                style={[
+                  styles.onboardingInput,
+                  {
+                    backgroundColor: colors.card,
+                    color: colors.foreground,
+                    borderColor: error ? colors.destructive : colors.border,
+                    borderRadius: colors.radius,
+                  },
+                ]}
+                placeholder="you@example.com"
+                placeholderTextColor={colors.mutedForeground}
+                value={email}
+                onChangeText={(t) => { setEmail(t); setError(""); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                returnKeyType="next"
+              />
+
+              <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
+                Nickname (optional)
+              </Text>
+              <TextInput
+                style={[
+                  styles.onboardingInput,
+                  {
+                    backgroundColor: colors.card,
+                    color: colors.foreground,
+                    borderColor: error ? colors.destructive : colors.border,
+                    borderRadius: colors.radius,
+                  },
+                ]}
+                placeholder="How your name appears to others"
+                placeholderTextColor={colors.mutedForeground}
+                value={nickname}
+                onChangeText={(t) => { setNickname(t); setError(""); }}
+                autoCorrect={false}
+                returnKeyType="next"
+              />
+            </>
+          ) : null}
 
           <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
             Password
@@ -266,7 +361,17 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           const res = await fetch(apiUrl(`/api/users/${storedId}`), { headers });
           if (res.ok) {
             const data = await res.json();
-            setUserState({ id: data.id, username: data.username, avatarColor: data.avatarColor, defaultVisibility: data.defaultVisibility ?? "public" });
+            setUserState({
+              id: data.id,
+              username: data.username,
+              nickname: data.nickname ?? null,
+              avatarUrl: data.avatarUrl ?? null,
+              email: data.email ?? null,
+              emailVerified: data.emailVerified ?? false,
+              avatarColor: data.avatarColor,
+              defaultVisibility: data.defaultVisibility ?? "public",
+              createdAt: data.createdAt ?? null,
+            });
           } else if (res.status === 401) {
             // Expired/invalid token — clear stored credentials and show login.
             await AsyncStorage.multiRemove([USER_ID_KEY, TOKEN_KEY, PUSH_TOKEN_KEY]);

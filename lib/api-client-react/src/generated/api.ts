@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AvatarUploadUrl,
   Book,
   BookDetail,
   Comment,
@@ -57,6 +58,7 @@ import type {
   RoomInviteInput,
   SaveResult,
   SearchUsersParams,
+  SetAvatarInput,
   UnreadCount,
   UpdateReadingLocationInput,
   UpdateRoomInput,
@@ -67,7 +69,8 @@ import type {
   UserInput,
   UserProfile,
   UserRecordsBook,
-  UserWithFriendStatus
+  UserWithFriendStatus,
+  VerifyEmailInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -2792,6 +2795,360 @@ export const useUpdateUserSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateUserSettingsMutationOptions(options));
+    }
+
+export const getSendVerificationEmailUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/verify-email/send`
+}
+
+/**
+ * @summary Send (or resend) the email verification code (self only)
+ */
+export const sendVerificationEmail = async (userId: number, options?: RequestInit): Promise<OkResult> => {
+
+  return customFetch<OkResult>(getSendVerificationEmailUrl(userId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSendVerificationEmailMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendVerificationEmail>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendVerificationEmail>>, TError,{userId: number}, TContext> => {
+
+const mutationKey = ['sendVerificationEmail'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendVerificationEmail>>, {userId: number}> = (props) => {
+          const {userId} = props ?? {};
+
+          return  sendVerificationEmail(userId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendVerificationEmailMutationResult = NonNullable<Awaited<ReturnType<typeof sendVerificationEmail>>>
+
+    export type SendVerificationEmailMutationError = ErrorType<void>
+
+    /**
+ * @summary Send (or resend) the email verification code (self only)
+ */
+export const useSendVerificationEmail = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendVerificationEmail>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendVerificationEmail>>,
+        TError,
+        {userId: number},
+        TContext
+      > => {
+      return useMutation(getSendVerificationEmailMutationOptions(options));
+    }
+
+export const getConfirmEmailVerificationUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/verify-email/confirm`
+}
+
+/**
+ * @summary Confirm the 6-digit email verification code (self only)
+ */
+export const confirmEmailVerification = async (userId: number,
+    verifyEmailInput: VerifyEmailInput, options?: RequestInit): Promise<User> => {
+
+  return customFetch<User>(getConfirmEmailVerificationUrl(userId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      verifyEmailInput,)
+  }
+);}
+
+
+
+
+export const getConfirmEmailVerificationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmEmailVerification>>, TError,{userId: number;data: BodyType<VerifyEmailInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmEmailVerification>>, TError,{userId: number;data: BodyType<VerifyEmailInput>}, TContext> => {
+
+const mutationKey = ['confirmEmailVerification'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmEmailVerification>>, {userId: number;data: BodyType<VerifyEmailInput>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  confirmEmailVerification(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmEmailVerificationMutationResult = NonNullable<Awaited<ReturnType<typeof confirmEmailVerification>>>
+    export type ConfirmEmailVerificationMutationBody = BodyType<VerifyEmailInput>
+    export type ConfirmEmailVerificationMutationError = ErrorType<void>
+
+    /**
+ * @summary Confirm the 6-digit email verification code (self only)
+ */
+export const useConfirmEmailVerification = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmEmailVerification>>, TError,{userId: number;data: BodyType<VerifyEmailInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmEmailVerification>>,
+        TError,
+        {userId: number;data: BodyType<VerifyEmailInput>},
+        TContext
+      > => {
+      return useMutation(getConfirmEmailVerificationMutationOptions(options));
+    }
+
+export const getGetAvatarUploadUrlUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/avatar/upload-url`
+}
+
+/**
+ * @summary Get a presigned URL to upload a profile photo (self only)
+ */
+export const getAvatarUploadUrl = async (userId: number, options?: RequestInit): Promise<AvatarUploadUrl> => {
+
+  return customFetch<AvatarUploadUrl>(getGetAvatarUploadUrlUrl(userId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getGetAvatarUploadUrlMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getAvatarUploadUrl>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof getAvatarUploadUrl>>, TError,{userId: number}, TContext> => {
+
+const mutationKey = ['getAvatarUploadUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getAvatarUploadUrl>>, {userId: number}> = (props) => {
+          const {userId} = props ?? {};
+
+          return  getAvatarUploadUrl(userId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetAvatarUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof getAvatarUploadUrl>>>
+
+    export type GetAvatarUploadUrlMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Get a presigned URL to upload a profile photo (self only)
+ */
+export const useGetAvatarUploadUrl = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getAvatarUploadUrl>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof getAvatarUploadUrl>>,
+        TError,
+        {userId: number},
+        TContext
+      > => {
+      return useMutation(getGetAvatarUploadUrlMutationOptions(options));
+    }
+
+export const getSetAvatarUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/avatar`
+}
+
+/**
+ * @summary Set the profile photo after uploading it (self only)
+ */
+export const setAvatar = async (userId: number,
+    setAvatarInput: SetAvatarInput, options?: RequestInit): Promise<User> => {
+
+  return customFetch<User>(getSetAvatarUrl(userId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      setAvatarInput,)
+  }
+);}
+
+
+
+
+export const getSetAvatarMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setAvatar>>, TError,{userId: number;data: BodyType<SetAvatarInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setAvatar>>, TError,{userId: number;data: BodyType<SetAvatarInput>}, TContext> => {
+
+const mutationKey = ['setAvatar'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setAvatar>>, {userId: number;data: BodyType<SetAvatarInput>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  setAvatar(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetAvatarMutationResult = NonNullable<Awaited<ReturnType<typeof setAvatar>>>
+    export type SetAvatarMutationBody = BodyType<SetAvatarInput>
+    export type SetAvatarMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Set the profile photo after uploading it (self only)
+ */
+export const useSetAvatar = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setAvatar>>, TError,{userId: number;data: BodyType<SetAvatarInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setAvatar>>,
+        TError,
+        {userId: number;data: BodyType<SetAvatarInput>},
+        TContext
+      > => {
+      return useMutation(getSetAvatarMutationOptions(options));
+    }
+
+export const getRemoveAvatarUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/avatar`
+}
+
+/**
+ * @summary Remove the profile photo (self only)
+ */
+export const removeAvatar = async (userId: number, options?: RequestInit): Promise<User> => {
+
+  return customFetch<User>(getRemoveAvatarUrl(userId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getRemoveAvatarMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeAvatar>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeAvatar>>, TError,{userId: number}, TContext> => {
+
+const mutationKey = ['removeAvatar'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeAvatar>>, {userId: number}> = (props) => {
+          const {userId} = props ?? {};
+
+          return  removeAvatar(userId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveAvatarMutationResult = NonNullable<Awaited<ReturnType<typeof removeAvatar>>>
+
+    export type RemoveAvatarMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove the profile photo (self only)
+ */
+export const useRemoveAvatar = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeAvatar>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeAvatar>>,
+        TError,
+        {userId: number},
+        TContext
+      > => {
+      return useMutation(getRemoveAvatarMutationOptions(options));
     }
 
 export const getGetNotificationsUrl = (userId: number,) => {

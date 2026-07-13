@@ -481,7 +481,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/User"
         "409":
-          description: Username already taken
+          description: Username or email already taken
 
   /users/login:
     post:
@@ -805,6 +805,119 @@ paths:
       responses:
         "200":
           description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{userId}/verify-email/send:
+    post:
+      operationId: sendVerificationEmail
+      tags: [users]
+      summary: Send (or resend) the email verification code (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Verification email sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "400":
+          description: No email on account, or email already verified
+        "429":
+          description: Sent too recently — wait before resending
+        "502":
+          description: Email delivery failed
+
+  /users/{userId}/verify-email/confirm:
+    post:
+      operationId: confirmEmailVerification
+      tags: [users]
+      summary: Confirm the 6-digit email verification code (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyEmailInput"
+      responses:
+        "200":
+          description: Email verified — returns the updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid or expired code
+
+  /users/{userId}/avatar/upload-url:
+    post:
+      operationId: getAvatarUploadUrl
+      tags: [users]
+      summary: Get a presigned URL to upload a profile photo (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Presigned upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarUploadUrl"
+
+  /users/{userId}/avatar:
+    put:
+      operationId: setAvatar
+      tags: [users]
+      summary: Set the profile photo after uploading it (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAvatarInput"
+      responses:
+        "200":
+          description: Updated user with the new avatarUrl
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: removeAvatar
+      tags: [users]
+      summary: Remove the profile photo (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated user with avatarUrl cleared
           content:
             application/json:
               schema:
@@ -1426,7 +1539,7 @@ components:
 
     Comment:
       type: object
-      required: [id, quoteId, userId, username, avatarColor, text, visibility, likeCount, likedByMe, savedByMe, replyCount, containsSpoilers, roomId, authorProgress, createdAt]
+      required: [id, quoteId, userId, username, nickname, avatarUrl, avatarColor, text, visibility, likeCount, likedByMe, savedByMe, replyCount, containsSpoilers, roomId, authorProgress, createdAt]
       properties:
         id:
           type: integer
@@ -1436,6 +1549,10 @@ components:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
         avatarColor:
           type: string
         text:
@@ -1657,12 +1774,24 @@ components:
 
     User:
       type: object
-      required: [id, username, avatarColor, defaultVisibility, createdAt]
+      required: [id, username, nickname, avatarUrl, email, emailVerified, avatarColor, defaultVisibility, createdAt]
       properties:
         id:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+          description: Display name shown instead of the username; null falls back to username
+        avatarUrl:
+          type: [string, "null"]
+          description: Object path of the profile photo (e.g. /public-objects/avatars/...); null falls back to the colored initial avatar
+        email:
+          type: [string, "null"]
+          description: Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts
+        emailVerified:
+          type: boolean
+          description: Whether the user confirmed their email; only meaningful in self contexts
         avatarColor:
           type: string
         defaultVisibility:
@@ -1680,6 +1809,8 @@ components:
         [
           id,
           username,
+          nickname,
+          avatarUrl,
           avatarColor,
           createdAt,
           followerCount,
@@ -1696,6 +1827,10 @@ components:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
         avatarColor:
           type: string
         createdAt:
@@ -1729,10 +1864,39 @@ components:
 
     UpdateUserSettings:
       type: object
-      required: [defaultVisibility]
       properties:
         defaultVisibility:
           $ref: "#/components/schemas/Visibility"
+        nickname:
+          type: [string, "null"]
+          maxLength: 30
+          description: New display name; null or empty string clears it (falls back to username)
+
+    VerifyEmailInput:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+          description: The 6-digit verification code from the email
+
+    AvatarUploadUrl:
+      type: object
+      required: [uploadURL]
+      properties:
+        uploadURL:
+          type: string
+          description: Presigned PUT URL for uploading the avatar image
+
+    SetAvatarInput:
+      type: object
+      required: [uploadURL]
+      properties:
+        uploadURL:
+          type: string
+          description: The presigned upload URL (or object path) returned after upload
 
     NotificationSettings:
       type: object
@@ -1756,12 +1920,16 @@ components:
 
     UserWithFriendStatus:
       type: object
-      required: [id, username, avatarColor, createdAt, isFriend]
+      required: [id, username, nickname, avatarUrl, avatarColor, createdAt, isFriend]
       properties:
         id:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
         avatarColor:
           type: string
         createdAt:
@@ -1772,11 +1940,20 @@ components:
 
     UserInput:
       type: object
-      required: [username, password]
+      required: [username, email, password]
       properties:
         username:
           type: string
           minLength: 2
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        nickname:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: Optional display name shown instead of the username
         password:
           type: string
           minLength: 8
@@ -1807,7 +1984,7 @@ components:
 
     NotificationItem:
       type: object
-      required: [id, type, actorId, actorUsername, actorAvatarColor, commentId, commentText, commentContainsSpoilers, parentCommentId, quoteId, read, createdAt]
+      required: [id, type, actorId, actorUsername, actorNickname, actorAvatarUrl, actorAvatarColor, commentId, commentText, commentContainsSpoilers, parentCommentId, quoteId, read, createdAt]
       properties:
         id:
           type: integer
@@ -1819,6 +1996,10 @@ components:
           type: integer
         actorUsername:
           type: string
+        actorNickname:
+          type: [string, "null"]
+        actorAvatarUrl:
+          type: [string, "null"]
         actorAvatarColor:
           type: string
         commentId:
@@ -1950,7 +2131,7 @@ components:
 
     FeedItem:
       type: object
-      required: [type, id, userId, username, avatarColor, bookId, bookTitle, bookAuthor, coverColor, quoteId, quoteText, quoteTextTruncated, likeCount, likedByMe, containsSpoilers, createdAt]
+      required: [type, id, userId, username, nickname, avatarUrl, avatarColor, bookId, bookTitle, bookAuthor, coverColor, quoteId, quoteText, quoteTextTruncated, likeCount, likedByMe, containsSpoilers, createdAt]
       properties:
         type:
           type: string
@@ -1962,6 +2143,10 @@ components:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
         avatarColor:
           type: string
         bookId:
@@ -2070,12 +2255,16 @@ components:
 
     RoomMemberInfo:
       type: object
-      required: [userId, username, avatarColor, role, readingProgress]
+      required: [userId, username, nickname, avatarUrl, avatarColor, role, readingProgress]
       properties:
         userId:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
         avatarColor:
           type: string
         role:
@@ -2142,7 +2331,7 @@ components:
 
     RoomFeedItem:
       type: object
-      required: [type, id, userId, username, avatarColor, quoteId, quoteText, quoteTextTruncated, likeCount, likedByMe, containsSpoilers, authorProgress, createdAt]
+      required: [type, id, userId, username, nickname, avatarUrl, avatarColor, quoteId, quoteText, quoteTextTruncated, likeCount, likedByMe, containsSpoilers, authorProgress, createdAt]
       properties:
         type:
           type: string
@@ -2154,6 +2343,10 @@ components:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
         avatarColor:
           type: string
         quoteId:

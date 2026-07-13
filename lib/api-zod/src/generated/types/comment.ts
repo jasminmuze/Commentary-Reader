@@ -12,6 +12,10 @@ export interface Comment {
   quoteId: number;
   userId: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   text: string;
   visibility: Visibility;

@@ -82,6 +82,8 @@ export const GetBookResponse = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
   "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
@@ -170,6 +172,8 @@ export const GetQuoteCommentsResponseItem = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
   "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
@@ -288,6 +292,8 @@ export const GetCommentResponse = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
   "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
@@ -316,6 +322,8 @@ export const GetCommentRepliesResponseItem = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
   "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
@@ -532,6 +540,10 @@ export const GetUserLibraryResponse = zod.array(GetUserLibraryResponseItem)
  */
 export const createUserBodyUsernameMin = 2;
 
+export const createUserBodyEmailMax = 254;
+
+export const createUserBodyNicknameMax = 30;
+
 export const createUserBodyPasswordMin = 8;
 export const createUserBodyPasswordMax = 100;
 
@@ -539,12 +551,18 @@ export const createUserBodyPasswordMax = 100;
 
 export const CreateUserBody = zod.object({
   "username": zod.string().min(createUserBodyUsernameMin),
+  "email": zod.string().email().max(createUserBodyEmailMax),
+  "nickname": zod.string().min(1).max(createUserBodyNicknameMax).optional().describe('Optional display name shown instead of the username'),
   "password": zod.string().min(createUserBodyPasswordMin).max(createUserBodyPasswordMax)
 })
 
 export const CreateUserResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
@@ -563,6 +581,10 @@ export const LoginUserBody = zod.object({
 export const LoginUserResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
@@ -580,6 +602,10 @@ export const GetUserParams = zod.object({
 export const GetUserResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
@@ -597,6 +623,8 @@ export const SearchUsersQueryParams = zod.object({
 export const SearchUsersResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "createdAt": zod.coerce.date(),
   "isFriend": zod.boolean()
@@ -614,6 +642,10 @@ export const GetFriendsParams = zod.object({
 export const GetFriendsResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
@@ -636,6 +668,10 @@ export const AddFriendBody = zod.object({
 export const AddFriendResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
@@ -700,6 +736,8 @@ export const GetSavedCommentsResponseItem = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
   "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
@@ -769,6 +807,8 @@ export const GetUserBookRecordsResponse = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
   "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
@@ -788,6 +828,8 @@ export const GetUserBookRecordsResponse = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
   "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
@@ -835,6 +877,8 @@ export const GetUserProfileParams = zod.object({
 export const GetUserProfileResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "createdAt": zod.coerce.date(),
   "followerCount": zod.number(),
@@ -855,13 +899,122 @@ export const UpdateUserSettingsParams = zod.object({
   "userId": zod.coerce.number()
 })
 
+export const updateUserSettingsBodyNicknameMax = 30;
+
+
+
 export const UpdateUserSettingsBody = zod.object({
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)')
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "nickname": zod.string().max(updateUserSettingsBodyNicknameMax).nullish().describe('New display name; null or empty string clears it (falls back to username)')
 })
 
 export const UpdateUserSettingsResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
+  "avatarColor": zod.string(),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
+})
+
+
+/**
+ * @summary Send (or resend) the email verification code (self only)
+ */
+export const SendVerificationEmailParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const SendVerificationEmailResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Confirm the 6-digit email verification code (self only)
+ */
+export const ConfirmEmailVerificationParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const confirmEmailVerificationBodyCodeMin = 6;
+export const confirmEmailVerificationBodyCodeMax = 6;
+
+
+
+export const ConfirmEmailVerificationBody = zod.object({
+  "code": zod.string().min(confirmEmailVerificationBodyCodeMin).max(confirmEmailVerificationBodyCodeMax).describe('The 6-digit verification code from the email')
+})
+
+export const ConfirmEmailVerificationResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
+  "avatarColor": zod.string(),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
+})
+
+
+/**
+ * @summary Get a presigned URL to upload a profile photo (self only)
+ */
+export const GetAvatarUploadUrlParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetAvatarUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().describe('Presigned PUT URL for uploading the avatar image')
+})
+
+
+/**
+ * @summary Set the profile photo after uploading it (self only)
+ */
+export const SetAvatarParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const SetAvatarBody = zod.object({
+  "uploadURL": zod.string().describe('The presigned upload URL (or object path) returned after upload')
+})
+
+export const SetAvatarResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
+  "avatarColor": zod.string(),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
+})
+
+
+/**
+ * @summary Remove the profile photo (self only)
+ */
+export const RemoveAvatarParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const RemoveAvatarResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
   "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
@@ -882,6 +1035,8 @@ export const GetNotificationsResponse = zod.object({
   "type": zod.enum(['reply', 'mention', 'friend_request', 'friend_accept', 'highlight_like', 'comment_like', 'room_invite']).describe('reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room'),
   "actorId": zod.number(),
   "actorUsername": zod.string(),
+  "actorNickname": zod.string().nullable(),
+  "actorAvatarUrl": zod.string().nullable(),
   "actorAvatarColor": zod.string(),
   "commentId": zod.number().describe('The reply comment that triggered the notification (0 for friend_\* notifications)'),
   "commentText": zod.string().describe('Preview of the reply text'),
@@ -1034,6 +1189,8 @@ export const GetFeedResponse = zod.object({
   "id": zod.number().describe('Highlight id or comment id depending on type'),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "bookId": zod.number(),
   "bookTitle": zod.string(),
@@ -1159,6 +1316,8 @@ export const GetRoomResponse = zod.object({
   "members": zod.array(zod.object({
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "role": zod.enum(['owner', 'member']),
   "readingProgress": zod.number().nullable().describe('The member\'s reading progress (0-100) in this book, or null if unknown')
@@ -1295,6 +1454,8 @@ export const GetRoomFeedResponseItem = zod.object({
   "id": zod.number().describe('Highlight id or comment id depending on type'),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "quoteId": zod.number(),
   "quoteText": zod.string().describe('Quote text — truncated to a preview length unless the viewer owns the book'),

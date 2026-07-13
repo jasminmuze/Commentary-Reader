@@ -10,6 +10,10 @@ import type { RoomMemberInfoRole } from './roomMemberInfoRole';
 export interface RoomMemberInfo {
   userId: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   role: RoomMemberInfoRole;
   /**

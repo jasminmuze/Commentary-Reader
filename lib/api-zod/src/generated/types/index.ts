@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './avatarUploadUrl';
 export * from './book';
 export * from './bookDetail';
 export * from './comment';
@@ -54,6 +55,7 @@ export * from './roomMemberInfo';
 export * from './roomMemberInfoRole';
 export * from './saveResult';
 export * from './searchUsersParams';
+export * from './setAvatarInput';
 export * from './unreadCount';
 export * from './updateReadingLocationInput';
 export * from './updateRoomInput';
@@ -67,4 +69,5 @@ export * from './userProfileFriendStatus';
 export * from './userRecordsBook';
 export * from './userRef';
 export * from './userWithFriendStatus';
+export * from './verifyEmailInput';
 export * from './visibility';
