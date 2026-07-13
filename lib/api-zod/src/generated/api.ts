@@ -29,6 +29,7 @@ export const ListBooksResponseItem = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -64,6 +65,7 @@ export const GetBookResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number(),
@@ -401,6 +403,7 @@ export const GetLibraryEntryResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -442,6 +445,7 @@ export const MatchLibraryEntryResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -490,6 +494,7 @@ export const UpdateReadingLocationResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -527,6 +532,7 @@ export const GetUserLibraryResponseItem = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -1209,6 +1215,7 @@ export const GetFeedResponse = zod.object({
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the book cover image, or null for a color cover'),
   "quoteId": zod.number(),
   "quoteText": zod.string().describe('Quote text — truncated to a preview length unless the viewer owns the book'),
   "quoteTextTruncated": zod.boolean().describe('Whether quoteText was truncated for copyright protection'),

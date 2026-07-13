@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -25,6 +26,7 @@ import {
 import type { Book } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
+import { apiUrl } from "@/lib/api";
 
 export default function MatchScreen() {
   const colors = useColors();
@@ -163,7 +165,15 @@ export default function MatchScreen() {
               onPress={() => handleMatch(item.id)}
               disabled={busy}
             >
-              <View style={[styles.spine, { backgroundColor: item.coverColor }]} />
+              {item.coverUrl ? (
+                <Image
+                  source={{ uri: apiUrl(`/api${item.coverUrl}`) }}
+                  style={styles.coverThumb}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.spine, { backgroundColor: item.coverColor }]} />
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={[styles.bookTitle, { color: colors.foreground }]} numberOfLines={2}>{item.title}</Text>
                 <Text style={[styles.bookAuthor, { color: colors.mutedForeground }]} numberOfLines={1}>{item.author}</Text>
@@ -272,6 +282,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   spine: { width: 8, alignSelf: "stretch", borderRadius: 4 },
+  coverThumb: { width: 34, height: 48, borderRadius: 4 },
   bookTitle: { fontSize: 15, fontWeight: "700", letterSpacing: -0.2 },
   bookAuthor: { fontSize: 13, marginTop: 1 },
   bookMeta: { fontSize: 11, marginTop: 4 },

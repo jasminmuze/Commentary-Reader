@@ -153,6 +153,7 @@ export function toBook(
     author: book.author,
     description: book.description,
     coverColor: book.coverColor,
+    coverUrl: book.coverUrl ?? null,
     quoteCount: counts.quoteCount,
     commentCount: counts.commentCount,
     highlightCount: counts.highlightCount,

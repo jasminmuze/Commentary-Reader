@@ -15,6 +15,11 @@ export interface Book {
   author: string;
   description: string;
   coverColor: string;
+  /**
+     * Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
+     * @nullable
+     */
+  coverUrl: string | null;
   quoteCount: number;
   commentCount: number;
   highlightCount: number;
@@ -102,6 +107,11 @@ export interface BookDetail {
   author: string;
   description: string;
   coverColor: string;
+  /**
+     * Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
+     * @nullable
+     */
+  coverUrl: string | null;
   quoteCount: number;
   commentCount: number;
   highlightCount: number;
@@ -535,6 +545,11 @@ export interface FeedItem {
   bookTitle: string;
   bookAuthor: string;
   coverColor: string;
+  /**
+     * Public object path of the book cover image, or null for a color cover
+     * @nullable
+     */
+  coverUrl: string | null;
   quoteId: number;
   /** Quote text — truncated to a preview length unless the viewer owns the book */
   quoteText: string;

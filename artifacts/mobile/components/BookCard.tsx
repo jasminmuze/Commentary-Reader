@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -8,6 +9,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
+import { apiUrl } from "@/lib/api";
 import type { Book } from "@workspace/api-client-react";
 
 interface Props {
@@ -31,14 +33,22 @@ export function BookCard({ book, onPress }: Props) {
       ]}
       onPress={onPress}
     >
-      <View style={[styles.spine, { backgroundColor: book.coverColor, borderRadius: colors.radius }]}>
-        <Text style={styles.spineTitle} numberOfLines={6}>
-          {book.title}
-        </Text>
-        <Text style={styles.spineAuthor} numberOfLines={2}>
-          {book.author}
-        </Text>
-      </View>
+      {book.coverUrl ? (
+        <Image
+          source={{ uri: apiUrl(`/api${book.coverUrl}`) }}
+          style={styles.coverImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.spine, { backgroundColor: book.coverColor, borderRadius: colors.radius }]}>
+          <Text style={styles.spineTitle} numberOfLines={6}>
+            {book.title}
+          </Text>
+          <Text style={styles.spineAuthor} numberOfLines={2}>
+            {book.author}
+          </Text>
+        </View>
+      )}
 
       <View style={styles.info}>
         <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={2}>
@@ -72,6 +82,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginHorizontal: 16,
     marginVertical: 6,
+  },
+  coverImage: {
+    width: 80,
+    alignSelf: "stretch",
+    minHeight: 110,
   },
   spine: {
     width: 80,

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -28,6 +29,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingShimmer } from "@/components/LoadingShimmer";
 import { navigateToQuote } from "@/lib/quoteNavigation";
+import { apiUrl } from "@/lib/api";
 
 const PAGE_SIZE = 20;
 
@@ -108,7 +110,15 @@ function FeedCard({
       </View>
 
       <View style={styles.quoteRow}>
-        <View style={[styles.quoteBar, { backgroundColor: item.coverColor }]} />
+        {item.coverUrl ? (
+          <Image
+            source={{ uri: apiUrl(`/api${item.coverUrl}`) }}
+            style={styles.coverThumb}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={[styles.quoteBar, { backgroundColor: item.coverColor }]} />
+        )}
         <Text style={[styles.quoteText, { color: colors.foreground }]} numberOfLines={5}>
           {item.quoteText}
         </Text>
@@ -417,6 +427,11 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     alignSelf: "stretch",
     minHeight: 20,
+  },
+  coverThumb: {
+    width: 26,
+    height: 38,
+    borderRadius: 3,
   },
   quoteText: {
     flex: 1,

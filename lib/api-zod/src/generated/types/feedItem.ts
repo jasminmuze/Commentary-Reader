@@ -22,6 +22,11 @@ export interface FeedItem {
   bookTitle: string;
   bookAuthor: string;
   coverColor: string;
+  /**
+     * Public object path of the book cover image, or null for a color cover
+     * @nullable
+     */
+  coverUrl: string | null;
   quoteId: number;
   /** Quote text — truncated to a preview length unless the viewer owns the book */
   quoteText: string;

@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -25,6 +26,7 @@ import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { CommentSheet } from "@/components/CommentSheet";
 import { CommentCard } from "@/components/CommentCard";
+import { apiUrl } from "@/lib/api";
 
 function QuoteRow({ quote, onPress, colors }: {
   quote: Quote;
@@ -122,9 +124,17 @@ export default function BookDetailScreen() {
         >
           {/* Cover + stats */}
           <View style={styles.heroRow}>
-            <View style={[styles.cover, { backgroundColor: book.coverColor, borderRadius: colors.radius }]}>
-              <Text style={styles.coverTitle} numberOfLines={6}>{book.title}</Text>
-            </View>
+            {book.coverUrl ? (
+              <Image
+                source={{ uri: apiUrl(`/api${book.coverUrl}`) }}
+                style={[styles.coverImage, { borderRadius: colors.radius }]}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.cover, { backgroundColor: book.coverColor, borderRadius: colors.radius }]}>
+                <Text style={styles.coverTitle} numberOfLines={6}>{book.title}</Text>
+              </View>
+            )}
             <View style={styles.heroInfo}>
               <Text style={[styles.description, { color: colors.mutedForeground }]} numberOfLines={6}>
                 {book.description}
@@ -267,6 +277,10 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingHorizontal: 20,
     paddingTop: 20,
+  },
+  coverImage: {
+    width: 96,
+    height: 140,
   },
   cover: {
     width: 96,

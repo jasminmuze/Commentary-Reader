@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -26,7 +27,7 @@ import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { EmptyState } from "@/components/EmptyState";
 import { BookCardShimmer } from "@/components/LoadingShimmer";
-import { uploadEpub } from "@/lib/api";
+import { apiUrl, uploadEpub } from "@/lib/api";
 
 function LibraryCard({ entry, onOpen, onMatch }: {
   entry: LibraryEntry;
@@ -52,9 +53,17 @@ function LibraryCard({ entry, onOpen, onMatch }: {
       ]}
       onPress={onOpen}
     >
-      <View style={[styles.spine, { backgroundColor: spineColor, borderRadius: colors.radius }]}>
-        <Text style={styles.spineTitle} numberOfLines={6}>{title}</Text>
-      </View>
+      {entry.book?.coverUrl ? (
+        <Image
+          source={{ uri: apiUrl(`/api${entry.book.coverUrl}`) }}
+          style={[styles.coverImage, { borderRadius: colors.radius }]}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.spine, { backgroundColor: spineColor, borderRadius: colors.radius }]}>
+          <Text style={styles.spineTitle} numberOfLines={6}>{title}</Text>
+        </View>
+      )}
       <View style={styles.cardInfo}>
         <Text style={[styles.cardTitle, { color: colors.foreground }]} numberOfLines={2}>{title}</Text>
         <Text style={[styles.cardAuthor, { color: colors.mutedForeground }]} numberOfLines={1}>{author}</Text>
@@ -295,6 +304,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginHorizontal: 16,
     marginVertical: 6,
+  },
+  coverImage: {
+    width: 64,
+    minHeight: 92,
+    alignSelf: "stretch",
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
   },
   spine: {
     width: 64,

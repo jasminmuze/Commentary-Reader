@@ -172,6 +172,22 @@ export class ObjectStorageService {
     });
   }
 
+  // Uploads a book cover image (extracted server-side from an EPUB) into the
+  // PUBLIC object dir and returns its /public-objects/covers/<id> path.
+  // Covers are world-readable by design (like avatars).
+  async uploadBookCover(data: Uint8Array, contentType: string): Promise<string> {
+    const publicPath = this.getPublicObjectSearchPaths()[0]!;
+    const objectId = randomUUID();
+    const fullPath = `${publicPath}/covers/${objectId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    await file.save(Buffer.from(data), {
+      contentType,
+      resumable: false,
+    });
+    return `/public-objects/covers/${objectId}`;
+  }
+
   // Converts an avatar upload URL (or already-normalized path) into the
   // /public-objects/avatars/<id> path stored in users.avatar_url. Returns
   // null if the URL doesn't point into a public avatars directory.

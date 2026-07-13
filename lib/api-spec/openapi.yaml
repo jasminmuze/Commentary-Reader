@@ -1468,7 +1468,7 @@ components:
 
     Book:
       type: object
-      required: [id, title, author, description, coverColor, quoteCount, commentCount, highlightCount]
+      required: [id, title, author, description, coverColor, coverUrl, quoteCount, commentCount, highlightCount]
       properties:
         id:
           type: integer
@@ -1480,6 +1480,9 @@ components:
           type: string
         coverColor:
           type: string
+        coverUrl:
+          type: [string, "null"]
+          description: Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
         quoteCount:
           type: integer
         commentCount:
@@ -1529,7 +1532,7 @@ components:
 
     BookDetail:
       type: object
-      required: [id, title, author, description, coverColor, quoteCount, commentCount, highlightCount, topQuotes, bestComments]
+      required: [id, title, author, description, coverColor, coverUrl, quoteCount, commentCount, highlightCount, topQuotes, bestComments]
       properties:
         id:
           type: integer
@@ -1541,6 +1544,9 @@ components:
           type: string
         coverColor:
           type: string
+        coverUrl:
+          type: [string, "null"]
+          description: Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
         quoteCount:
           type: integer
         commentCount:
@@ -2163,7 +2169,7 @@ components:
 
     FeedItem:
       type: object
-      required: [type, id, userId, username, nickname, avatarUrl, avatarColor, bookId, bookTitle, bookAuthor, coverColor, quoteId, quoteText, quoteTextTruncated, likeCount, likedByMe, containsSpoilers, createdAt]
+      required: [type, id, userId, username, nickname, avatarUrl, avatarColor, bookId, bookTitle, bookAuthor, coverColor, coverUrl, quoteId, quoteText, quoteTextTruncated, likeCount, likedByMe, containsSpoilers, createdAt]
       properties:
         type:
           type: string
@@ -2189,6 +2195,9 @@ components:
           type: string
         coverColor:
           type: string
+        coverUrl:
+          type: [string, "null"]
+          description: Public object path of the book cover image, or null for a color cover
         quoteId:
           type: integer
         quoteText:

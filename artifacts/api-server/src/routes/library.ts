@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db, booksTable, userLibraryTable } from "@workspace/db";
 import {
   CreateLibraryEntryBody,
@@ -17,7 +17,7 @@ import type {
   MatchResult,
 } from "@workspace/api-zod";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { extractEpubMetadata } from "../lib/epubMetadata";
+import { extractEpubMetadata, extractEpubCover } from "../lib/epubMetadata";
 import { formatBook } from "../lib/queries";
 import { normalizeTitle, normalizeAuthor } from "../lib/text";
 import { authenticate } from "../middlewares/authenticate.js";
@@ -26,6 +26,36 @@ const router: IRouter = Router();
 
 function normIsbn(s: string): string {
   return s.replace(/[^0-9xX]/g, "").toLowerCase();
+}
+
+// Best-effort: if the canonical book has no cover yet, extract one from the
+// uploaded EPUB and store it. First cover wins (`WHERE cover_url IS NULL`
+// guards against concurrent uploads); existing covers are never overwritten.
+// Never throws — a cover failure must not break the upload/match flow.
+async function maybeSetBookCover(
+  bookId: number,
+  buffer: Uint8Array,
+  log: { warn: (obj: unknown, msg: string) => void },
+): Promise<void> {
+  try {
+    const [book] = await db
+      .select({ coverUrl: booksTable.coverUrl })
+      .from(booksTable)
+      .where(eq(booksTable.id, bookId));
+    if (!book || book.coverUrl) return;
+
+    const cover = extractEpubCover(buffer);
+    if (!cover) return;
+
+    const svc = new ObjectStorageService();
+    const coverUrl = await svc.uploadBookCover(cover.data, cover.mimeType);
+    await db
+      .update(booksTable)
+      .set({ coverUrl })
+      .where(and(eq(booksTable.id, bookId), isNull(booksTable.coverUrl)));
+  } catch (err) {
+    log.warn({ err, bookId }, "Failed to extract/store EPUB cover");
+  }
 }
 
 async function formatLibraryEntry(
@@ -133,6 +163,17 @@ router.post("/library", authenticate, async (req, res): Promise<void> => {
     })
     .returning();
 
+  // If the matched canonical book has no cover yet, extract one from this
+  // upload (before formatting so the response already carries coverUrl).
+  if (matchedBook) {
+    await maybeSetBookCover(matchedBook.id, buffer, req.log);
+    const [fresh] = await db
+      .select()
+      .from(booksTable)
+      .where(eq(booksTable.id, matchedBook.id));
+    if (fresh) matchedBook = await formatBook(fresh);
+  }
+
   const result: LibraryUploadResult = {
     entry: await formatLibraryEntry(entry!),
     match: { status, book: matchedBook, candidates },
@@ -204,6 +245,20 @@ router.patch("/library/:libraryId", authenticate, async (req, res): Promise<void
     res.status(404).json({ error: "Library entry not found" });
     return;
   }
+
+  // Manual match: if the book still has no cover, try extracting one from
+  // this entry's EPUB (best-effort — re-downloads the file).
+  if (!book.coverUrl) {
+    try {
+      const svc = new ObjectStorageService();
+      const file = await svc.getObjectEntityFile(entry.epubObjectPath);
+      const [buf] = await file.download();
+      await maybeSetBookCover(book.id, buf, req.log);
+    } catch (err) {
+      req.log.warn({ err, bookId: book.id }, "Cover extraction on match failed");
+    }
+  }
+
   res.json(await formatLibraryEntry(entry));
 });
 

@@ -135,6 +135,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       bookTitle: booksTable.title,
       bookAuthor: booksTable.author,
       coverColor: booksTable.coverColor,
+      coverUrl: booksTable.coverUrl,
       createdAt: userHighlightsTable.createdAt,
     })
     .from(userHighlightsTable)
@@ -176,6 +177,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       bookTitle: booksTable.title,
       bookAuthor: booksTable.author,
       coverColor: booksTable.coverColor,
+      coverUrl: booksTable.coverUrl,
       likeCount: commentsTable.likeCount,
       createdAt: commentsTable.createdAt,
     })
@@ -273,6 +275,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       bookTitle: r.bookTitle,
       bookAuthor: r.bookAuthor,
       coverColor: r.coverColor,
+      coverUrl: r.coverUrl ?? null,
       quoteId: r.quoteId,
       quoteText: preview.text,
       quoteTextTruncated: preview.truncated,

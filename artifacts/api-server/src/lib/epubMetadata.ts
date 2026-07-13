@@ -7,6 +7,11 @@ export interface EpubMetadata {
   isbn?: string;
 }
 
+export interface EpubCover {
+  data: Uint8Array;
+  mimeType: string;
+}
+
 // fast-xml-parser produces strings, numbers, nested objects ({ "#text": ... }),
 // or arrays depending on the document. These helpers coerce defensively.
 function textOf(node: unknown): string | undefined {
@@ -47,6 +52,131 @@ function extractIsbn(identifiers: string[]): string | undefined {
     if (/^(97[89])?\d{9}[\dxX]$/.test(digits)) return digits;
   }
   return undefined;
+}
+
+function asArray<T>(node: T | T[] | undefined | null): T[] {
+  if (node == null) return [];
+  return Array.isArray(node) ? node : [node];
+}
+
+// Raster formats only — SVG is deliberately excluded because covers are
+// served publicly and RN <Image> can't render it anyway.
+const ALLOWED_COVER_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+
+const IMAGE_MIME_BY_EXT: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+
+/**
+ * Extract the cover image from an EPUB buffer. Supports both conventions:
+ * - EPUB3: manifest item with properties containing "cover-image"
+ * - EPUB2: <meta name="cover" content="<manifest item id>"> in metadata
+ * Returns null when no cover is found or the input is malformed (never throws).
+ */
+export function extractEpubCover(buf: Uint8Array): EpubCover | null {
+  try {
+    const files = unzipSync(buf);
+    const containerKey = Object.keys(files).find(
+      (k) => k.toLowerCase() === "meta-inf/container.xml",
+    );
+    if (!containerKey) return null;
+
+    const parser = new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: "@_",
+      removeNSPrefix: true,
+    });
+
+    const container = parser.parse(strFromU8(files[containerKey]!));
+    let rootfile = container?.container?.rootfiles?.rootfile;
+    if (Array.isArray(rootfile)) rootfile = rootfile[0];
+    const opfPath = rootfile?.["@_full-path"];
+    if (!opfPath || typeof opfPath !== "string") return null;
+
+    const opfKey =
+      Object.keys(files).find((k) => k === opfPath) ??
+      Object.keys(files).find(
+        (k) => k.toLowerCase() === opfPath.toLowerCase(),
+      );
+    if (!opfKey) return null;
+
+    const opf = parser.parse(strFromU8(files[opfKey]!));
+    const pkg = opf?.package;
+    if (!pkg) return null;
+
+    const items = asArray<Record<string, unknown>>(pkg.manifest?.item);
+
+    // EPUB3: properties="cover-image" (may hold multiple space-separated values).
+    let coverItem = items.find((it) => {
+      const props = it["@_properties"];
+      return (
+        typeof props === "string" &&
+        props.split(/\s+/).includes("cover-image")
+      );
+    });
+
+    // EPUB2: <meta name="cover" content="item-id">.
+    if (!coverItem) {
+      const metas = asArray<Record<string, unknown>>(pkg.metadata?.meta);
+      const coverMeta = metas.find(
+        (m) => String(m["@_name"] ?? "").toLowerCase() === "cover",
+      );
+      const coverId = coverMeta?.["@_content"];
+      if (coverId != null) {
+        coverItem = items.find(
+          (it) => String(it["@_id"]) === String(coverId),
+        );
+      }
+    }
+
+    if (!coverItem) return null;
+    const href = coverItem["@_href"];
+    if (!href || typeof href !== "string") return null;
+
+    // Resolve href relative to the OPF's directory, normalizing ../ segments.
+    const opfDir = opfKey.includes("/")
+      ? opfKey.slice(0, opfKey.lastIndexOf("/") + 1)
+      : "";
+    const decodedHref = decodeURIComponent(href);
+    const segments: string[] = [];
+    for (const seg of `${opfDir}${decodedHref}`.split("/")) {
+      if (seg === "" || seg === ".") continue;
+      if (seg === "..") segments.pop();
+      else segments.push(seg);
+    }
+    const resolved = segments.join("/");
+
+    const imageKey =
+      Object.keys(files).find((k) => k === resolved) ??
+      Object.keys(files).find(
+        (k) => k.toLowerCase() === resolved.toLowerCase(),
+      );
+    if (!imageKey) return null;
+
+    const data = files[imageKey]!;
+    if (data.length === 0) return null;
+
+    const declaredType = coverItem["@_media-type"];
+    const ext = imageKey.split(".").pop()?.toLowerCase() ?? "";
+    const mimeType =
+      typeof declaredType === "string" && ALLOWED_COVER_MIMES.has(declaredType)
+        ? declaredType
+        : IMAGE_MIME_BY_EXT[ext];
+    if (!mimeType || !ALLOWED_COVER_MIMES.has(mimeType)) return null;
+
+    return { data, mimeType };
+  } catch {
+    return null;
+  }
 }
 
 /**
