@@ -16,6 +16,7 @@ import {
 } from "@workspace/api-zod";
 import type { NotificationItem } from "@workspace/api-zod";
 import { authenticate } from "../middlewares/authenticate.js";
+import { getViewer, visibilityPredicate } from "../lib/social";
 
 const router: IRouter = Router();
 
@@ -37,12 +38,12 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
     .orderBy(desc(notificationsTable.createdAt))
     .limit(50);
 
-  const unreadCount = notifs.filter((n) => !n.read).length;
-
   if (notifs.length === 0) {
     res.json({ notifications: [], unreadCount: 0 });
     return;
   }
+
+  const viewer = await getViewer(req.userId);
 
   const actorIds = [...new Set(notifs.map((n) => n.actorId))];
   // friend_* notifications have no comment; highlight_like has a highlight instead.
@@ -66,16 +67,45 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
     ),
   ];
 
+  // Re-check visibility at read time: a notification may reference a comment or
+  // highlight the viewer can no longer see (e.g. room-only content after the
+  // viewer left the room). allowViewerRooms=true keeps room-only rows visible
+  // to CURRENT members; everyone else falls under the community rules.
   const [actors, comments, highlights, rooms] = await Promise.all([
     db.select().from(usersTable).where(inArray(usersTable.id, actorIds)),
     commentIds.length
-      ? db.select().from(commentsTable).where(inArray(commentsTable.id, commentIds))
+      ? db
+          .select()
+          .from(commentsTable)
+          .where(
+            and(
+              inArray(commentsTable.id, commentIds),
+              visibilityPredicate(
+                commentsTable.visibility,
+                commentsTable.userId,
+                viewer,
+                commentsTable.roomId,
+                true,
+              ),
+            ),
+          )
       : Promise.resolve([]),
     highlightIds.length
       ? db
           .select()
           .from(userHighlightsTable)
-          .where(inArray(userHighlightsTable.id, highlightIds))
+          .where(
+            and(
+              inArray(userHighlightsTable.id, highlightIds),
+              visibilityPredicate(
+                userHighlightsTable.visibility,
+                userHighlightsTable.userId,
+                viewer,
+                userHighlightsTable.roomId,
+                true,
+              ),
+            ),
+          )
       : Promise.resolve([]),
     roomIds.length
       ? db
@@ -101,7 +131,17 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
     : [];
   const quoteMap = new Map(quotes.map((q) => [q.id, q]));
 
-  const items: NotificationItem[] = notifs.map((n) => {
+  // Drop notifications whose linked comment/highlight is gone or no longer
+  // visible to the viewer (deleted, or room-only content after leaving the
+  // room) so old notifications can't reveal text the viewer may not see.
+  const visibleNotifs = notifs.filter((n) => {
+    if (n.commentId != null && !commentMap.has(n.commentId)) return false;
+    if (n.highlightId != null && !highlightMap.has(n.highlightId)) return false;
+    return true;
+  });
+  const unreadCount = visibleNotifs.filter((n) => !n.read).length;
+
+  const items: NotificationItem[] = visibleNotifs.map((n) => {
     const actor = actorMap.get(n.actorId);
     const comment = n.commentId != null ? commentMap.get(n.commentId) : undefined;
     const highlight =
