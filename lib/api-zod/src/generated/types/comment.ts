@@ -28,5 +28,15 @@ export interface Comment {
   parentId?: number | null;
   /** Author-flagged spoiler; clients blur the text for other users until tapped */
   containsSpoilers: boolean;
+  /**
+     * Non-null when the comment is scoped to a reading room (members only)
+     * @nullable
+     */
+  roomId: number | null;
+  /**
+     * Author's reading progress (0-100) when writing; null when unknown or not room-scoped
+     * @nullable
+     */
+  authorProgress: number | null;
   createdAt: Date;
 }

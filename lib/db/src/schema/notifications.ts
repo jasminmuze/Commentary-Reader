@@ -6,7 +6,8 @@ export type NotificationType =
   | "friend_request"
   | "friend_accept"
   | "highlight_like"
-  | "comment_like";
+  | "comment_like"
+  | "room_invite";
 
 export const notificationsTable = pgTable("notifications", {
   id: serial("id").primaryKey(),
@@ -22,6 +23,8 @@ export const notificationsTable = pgTable("notifications", {
   commentId: integer("comment_id"),
   // The liked highlight (only set for highlight_like notifications).
   highlightId: integer("highlight_id"),
+  // The reading room (only set for room_invite notifications).
+  roomId: integer("room_id"),
   read: boolean("read").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

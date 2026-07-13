@@ -10,6 +10,7 @@ import notificationsRouter from "./notifications";
 import pushTokensRouter from "./pushTokens";
 import friendRequestsRouter from "./friendRequests";
 import feedRouter from "./feed";
+import roomsRouter from "./rooms";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(notificationsRouter);
 router.use(pushTokensRouter);
 router.use(friendRequestsRouter);
 router.use(feedRouter);
+router.use(roomsRouter);
 
 export default router;

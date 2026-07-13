@@ -9,4 +9,8 @@ import type { GetQuoteCommentsFilter } from './getQuoteCommentsFilter';
 
 export type GetQuoteCommentsParams = {
 filter?: GetQuoteCommentsFilter;
+/**
+ * Only comments scoped to this room (viewer must be a member)
+ */
+roomId?: number;
 };

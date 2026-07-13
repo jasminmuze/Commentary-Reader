@@ -11,3 +11,6 @@ export * from "./userHighlights";
 export * from "./userLibrary";
 export * from "./notifications";
 export * from "./pushTokens";
+export * from "./readingRooms";
+export * from "./roomMembers";
+export * from "./roomInvites";

@@ -194,6 +194,7 @@ router.get("/users/:userId/profile", authenticate, async (req, res): Promise<voi
           userHighlightsTable.visibility,
           userHighlightsTable.userId,
           viewer,
+          userHighlightsTable.roomId,
         ),
       ),
     );
@@ -207,6 +208,7 @@ router.get("/users/:userId/profile", authenticate, async (req, res): Promise<voi
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
+          commentsTable.roomId,
         ),
       ),
     );
@@ -310,6 +312,7 @@ router.get("/users/:userId/notification-settings", authenticate, async (req, res
       notifyReplies: usersTable.notifyReplies,
       notifyMentions: usersTable.notifyMentions,
       notifyFriends: usersTable.notifyFriends,
+      notifyRooms: usersTable.notifyRooms,
     })
     .from(usersTable)
     .where(eq(usersTable.id, params.data.userId));
@@ -323,6 +326,7 @@ router.get("/users/:userId/notification-settings", authenticate, async (req, res
     replies: user.notifyReplies,
     mentions: user.notifyMentions,
     friends: user.notifyFriends,
+    rooms: user.notifyRooms,
   });
 });
 
@@ -351,6 +355,7 @@ router.put("/users/:userId/notification-settings", authenticate, async (req, res
       notifyReplies: body.data.replies,
       notifyMentions: body.data.mentions,
       notifyFriends: body.data.friends,
+      notifyRooms: body.data.rooms,
     })
     .where(eq(usersTable.id, params.data.userId))
     .returning();
@@ -364,6 +369,7 @@ router.put("/users/:userId/notification-settings", authenticate, async (req, res
     replies: user.notifyReplies,
     mentions: user.notifyMentions,
     friends: user.notifyFriends,
+    rooms: user.notifyRooms,
   });
 });
 
@@ -485,6 +491,7 @@ router.get("/users/:userId/saved-comments", authenticate, async (req, res): Prom
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
+          commentsTable.roomId,
         ),
       ),
     );
@@ -561,6 +568,7 @@ router.get("/users/:userId/records", authenticate, async (req, res): Promise<voi
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
+          commentsTable.roomId,
         ),
       ),
     )
@@ -691,6 +699,7 @@ router.get("/users/:userId/records/:bookId", authenticate, async (req, res): Pro
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
+          commentsTable.roomId,
         ),
       ),
     )

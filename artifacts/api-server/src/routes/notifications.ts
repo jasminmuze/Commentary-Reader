@@ -7,6 +7,7 @@ import {
   commentsTable,
   quotesTable,
   userHighlightsTable,
+  readingRoomsTable,
 } from "@workspace/db";
 import {
   GetNotificationsParams,
@@ -59,8 +60,13 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
         .filter((id): id is number => id != null),
     ),
   ];
+  const roomIds = [
+    ...new Set(
+      notifs.map((n) => n.roomId).filter((id): id is number => id != null),
+    ),
+  ];
 
-  const [actors, comments, highlights] = await Promise.all([
+  const [actors, comments, highlights, rooms] = await Promise.all([
     db.select().from(usersTable).where(inArray(usersTable.id, actorIds)),
     commentIds.length
       ? db.select().from(commentsTable).where(inArray(commentsTable.id, commentIds))
@@ -71,11 +77,18 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
           .from(userHighlightsTable)
           .where(inArray(userHighlightsTable.id, highlightIds))
       : Promise.resolve([]),
+    roomIds.length
+      ? db
+          .select({ id: readingRoomsTable.id, name: readingRoomsTable.name })
+          .from(readingRoomsTable)
+          .where(inArray(readingRoomsTable.id, roomIds))
+      : Promise.resolve([]),
   ]);
 
   const actorMap = new Map(actors.map((a) => [a.id, a]));
   const commentMap = new Map(comments.map((c) => [c.id, c]));
   const highlightMap = new Map(highlights.map((h) => [h.id, h]));
+  const roomMap = new Map(rooms.map((r) => [r.id, r]));
 
   const quoteIds = [
     ...new Set([
@@ -113,6 +126,9 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
       parentCommentId: comment?.parentId ?? null,
       quoteId: quoteId ?? 0,
       quoteText: quote?.text ?? "",
+      roomId: n.roomId ?? null,
+      roomName:
+        n.roomId != null ? (roomMap.get(n.roomId)?.name ?? "") : "",
       read: n.read,
       createdAt: n.createdAt,
     };

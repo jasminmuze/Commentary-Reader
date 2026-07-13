@@ -79,6 +79,16 @@ export interface Comment {
   parentId?: number | null;
   /** Author-flagged spoiler; clients blur the text for other users until tapped */
   containsSpoilers: boolean;
+  /**
+     * Non-null when the comment is scoped to a reading room (members only)
+     * @nullable
+     */
+  roomId: number | null;
+  /**
+     * Author's reading progress (0-100) when writing; null when unknown or not room-scoped
+     * @nullable
+     */
+  authorProgress: number | null;
   createdAt: string;
 }
 
@@ -101,6 +111,14 @@ export interface CommentInput {
   visibility?: Visibility;
   /** Mark this comment as containing spoilers (default false) */
   containsSpoilers?: boolean;
+  /** Scope this comment to a reading room (author must be a member) */
+  roomId?: number;
+  /**
+     * Author's reading progress when writing (room spoiler guard)
+     * @minimum 0
+     * @maximum 100
+     */
+  authorProgress?: number;
 }
 
 export interface CreateQuoteInput {
@@ -115,6 +133,14 @@ export interface HighlightInput {
   userLibraryId?: number;
   cfiRange?: string;
   visibility?: Visibility;
+  /** Scope this highlight to a reading room (author must be a member) */
+  roomId?: number;
+  /**
+     * Author's reading progress when highlighting (room spoiler guard)
+     * @minimum 0
+     * @maximum 100
+     */
+  authorProgress?: number;
 }
 
 export interface HighlightResult {
@@ -255,6 +281,8 @@ export interface UpdateUserSettings {
 }
 
 export interface NotificationSettings {
+  /** Notify on reading-room invites */
+  rooms: boolean;
   /** Notify when someone likes my highlight or comment */
   likes: boolean;
   /** Notify when someone replies to my comment */
@@ -297,7 +325,7 @@ export interface FriendRequestInput {
 }
 
 /**
- * reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment
+ * reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room
  */
 export type NotificationItemType = typeof NotificationItemType[keyof typeof NotificationItemType];
 
@@ -309,11 +337,12 @@ export const NotificationItemType = {
   friend_accept: 'friend_accept',
   highlight_like: 'highlight_like',
   comment_like: 'comment_like',
+  room_invite: 'room_invite',
 } as const;
 
 export interface NotificationItem {
   id: number;
-  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment */
+  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room */
   type: NotificationItemType;
   actorId: number;
   actorUsername: string;
@@ -332,6 +361,13 @@ export interface NotificationItem {
   quoteId: number;
   /** The quote text for navigation context */
   quoteText?: string;
+  /**
+     * The reading room (room_invite notifications only)
+     * @nullable
+     */
+  roomId?: number | null;
+  /** The reading room name (room_invite notifications only) */
+  roomName?: string;
   read: boolean;
   createdAt: string;
 }
@@ -433,12 +469,166 @@ export interface FeedPage {
   nextCursor: string | null;
 }
 
+export interface CreateRoomInput {
+  canonicalBookId: number;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+  /** @maxLength 500 */
+  description?: string;
+  isPublic: boolean;
+}
+
+export interface UpdateRoomInput {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name?: string;
+  /** @maxLength 500 */
+  description?: string;
+  isPublic?: boolean;
+}
+
+export interface Room {
+  id: number;
+  canonicalBookId: number;
+  name: string;
+  description: string;
+  isPublic: boolean;
+  ownerId: number;
+  memberCount: number;
+  bookTitle: string;
+  bookAuthor: string;
+  coverColor: string;
+  /** Whether the viewer is a member of this room */
+  isMember?: boolean;
+  createdAt: string;
+}
+
+export type RoomMemberInfoRole = typeof RoomMemberInfoRole[keyof typeof RoomMemberInfoRole];
+
+
+export const RoomMemberInfoRole = {
+  owner: 'owner',
+  member: 'member',
+} as const;
+
+export interface RoomMemberInfo {
+  userId: number;
+  username: string;
+  avatarColor: string;
+  role: RoomMemberInfoRole;
+  /**
+     * The member's reading progress (0-100) in this book, or null if unknown
+     * @nullable
+     */
+  readingProgress: number | null;
+}
+
+/**
+ * The viewer's role, or null when not a member
+ * @nullable
+ */
+export type RoomDetailMyRole = typeof RoomDetailMyRole[keyof typeof RoomDetailMyRole] | null;
+
+
+export const RoomDetailMyRole = {
+  owner: 'owner',
+  member: 'member',
+} as const;
+
+export interface RoomDetail {
+  id: number;
+  canonicalBookId: number;
+  name: string;
+  description: string;
+  isPublic: boolean;
+  ownerId: number;
+  memberCount: number;
+  bookTitle: string;
+  bookAuthor: string;
+  coverColor: string;
+  createdAt: string;
+  members: RoomMemberInfo[];
+  isMember: boolean;
+  /**
+     * The viewer's role, or null when not a member
+     * @nullable
+     */
+  myRole: RoomDetailMyRole;
+  /** Whether the viewer has a pending invite to this room */
+  invitePending: boolean;
+  /**
+     * The viewer's library entry for this book (to open the reader), or null
+     * @nullable
+     */
+  myLibraryId: number | null;
+  /**
+     * The viewer's reading progress (0-100) in this book (spoiler guard), or null
+     * @nullable
+     */
+  myReadingProgress: number | null;
+}
+
+export interface RoomInviteInput {
+  /** The friend to invite */
+  userId: number;
+}
+
+export type RoomFeedItemType = typeof RoomFeedItemType[keyof typeof RoomFeedItemType];
+
+
+export const RoomFeedItemType = {
+  highlight: 'highlight',
+  comment: 'comment',
+} as const;
+
+export interface RoomFeedItem {
+  type: RoomFeedItemType;
+  /** Highlight id or comment id depending on type */
+  id: number;
+  userId: number;
+  username: string;
+  avatarColor: string;
+  quoteId: number;
+  /** Quote text — truncated to a preview length unless the viewer owns the book */
+  quoteText: string;
+  /** Whether quoteText was truncated for copyright protection */
+  quoteTextTruncated: boolean;
+  /** Present only when type is comment */
+  commentText?: string;
+  likeCount: number;
+  likedByMe: boolean;
+  /** Author-flagged spoiler (comments only) */
+  containsSpoilers: boolean;
+  /**
+     * Author's reading progress (0-100) when posting — blur when greater than the viewer's progress
+     * @nullable
+     */
+  authorProgress: number | null;
+  createdAt: string;
+}
+
 export type ListBooksParams = {
 q?: string;
 };
 
+export type GetBookQuotesParams = {
+/**
+ * Restrict overlay to quotes with activity in this room (viewer must be a member)
+ */
+roomId?: number;
+};
+
 export type GetQuoteCommentsParams = {
 filter?: GetQuoteCommentsFilter;
+/**
+ * Only comments scoped to this room (viewer must be a member)
+ */
+roomId?: number;
 };
 
 export type GetQuoteCommentsFilter = typeof GetQuoteCommentsFilter[keyof typeof GetQuoteCommentsFilter];
@@ -464,5 +654,16 @@ cursor?: string;
  * @maximum 50
  */
 limit?: number;
+};
+
+export type ListRoomsParams = {
+q?: string;
+};
+
+export type GetMyRoomsParams = {
+/**
+ * Only my rooms for this canonical book (reader scope picker)
+ */
+bookId?: number;
 };
 

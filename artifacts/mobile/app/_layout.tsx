@@ -40,6 +40,8 @@ function RootLayoutNav() {
       <Stack.Screen name="records/index" options={{ headerShown: false }} />
       <Stack.Screen name="notification-settings" options={{ headerShown: false }} />
       <Stack.Screen name="records/[bookId]" options={{ headerShown: false }} />
+      <Stack.Screen name="room/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="room/create" options={{ headerShown: false }} />
     </Stack>
   );
 }

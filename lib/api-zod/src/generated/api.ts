@@ -92,6 +92,8 @@ export const GetBookResponse = zod.object({
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
   "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 }))
 })
@@ -102,6 +104,10 @@ export const GetBookResponse = zod.object({
  */
 export const GetBookQuotesParams = zod.object({
   "bookId": zod.coerce.number()
+})
+
+export const GetBookQuotesQueryParams = zod.object({
+  "roomId": zod.coerce.number().optional().describe('Restrict overlay to quotes with activity in this room (viewer must be a member)')
 })
 
 export const GetBookQuotesResponseItem = zod.object({
@@ -155,7 +161,8 @@ export const GetQuoteCommentsParams = zod.object({
 export const getQuoteCommentsQueryFilterDefault = `all`;
 
 export const GetQuoteCommentsQueryParams = zod.object({
-  "filter": zod.enum(['best', 'friends', 'all']).default(getQuoteCommentsQueryFilterDefault)
+  "filter": zod.enum(['best', 'friends', 'all']).default(getQuoteCommentsQueryFilterDefault),
+  "roomId": zod.coerce.number().optional().describe('Only comments scoped to this room (viewer must be a member)')
 })
 
 export const GetQuoteCommentsResponseItem = zod.object({
@@ -173,6 +180,8 @@ export const GetQuoteCommentsResponseItem = zod.object({
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
   "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 })
 export const GetQuoteCommentsResponse = zod.array(GetQuoteCommentsResponseItem)
@@ -186,12 +195,17 @@ export const CreateCommentParams = zod.object({
 })
 
 
+export const createCommentBodyAuthorProgressMin = 0;
+export const createCommentBodyAuthorProgressMax = 100;
+
 
 
 export const CreateCommentBody = zod.object({
   "text": zod.string().min(1),
   "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
-  "containsSpoilers": zod.boolean().optional().describe('Mark this comment as containing spoilers (default false)')
+  "containsSpoilers": zod.boolean().optional().describe('Mark this comment as containing spoilers (default false)'),
+  "roomId": zod.number().optional().describe('Scope this comment to a reading room (author must be a member)'),
+  "authorProgress": zod.number().min(createCommentBodyAuthorProgressMin).max(createCommentBodyAuthorProgressMax).optional().describe('Author\'s reading progress when writing (room spoiler guard)')
 })
 
 
@@ -202,10 +216,17 @@ export const ToggleHighlightParams = zod.object({
   "quoteId": zod.coerce.number()
 })
 
+export const toggleHighlightBodyAuthorProgressMin = 0;
+export const toggleHighlightBodyAuthorProgressMax = 100;
+
+
+
 export const ToggleHighlightBody = zod.object({
   "userLibraryId": zod.number().optional(),
   "cfiRange": zod.string().optional(),
-  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)')
+  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "roomId": zod.number().optional().describe('Scope this highlight to a reading room (author must be a member)'),
+  "authorProgress": zod.number().min(toggleHighlightBodyAuthorProgressMin).max(toggleHighlightBodyAuthorProgressMax).optional().describe('Author\'s reading progress when highlighting (room spoiler guard)')
 })
 
 export const ToggleHighlightResponse = zod.object({
@@ -277,6 +298,8 @@ export const GetCommentResponse = zod.object({
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
   "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 })
 
@@ -303,6 +326,8 @@ export const GetCommentRepliesResponseItem = zod.object({
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
   "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 })
 export const GetCommentRepliesResponse = zod.array(GetCommentRepliesResponseItem)
@@ -316,12 +341,17 @@ export const CreateReplyParams = zod.object({
 })
 
 
+export const createReplyBodyAuthorProgressMin = 0;
+export const createReplyBodyAuthorProgressMax = 100;
+
 
 
 export const CreateReplyBody = zod.object({
   "text": zod.string().min(1),
   "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
-  "containsSpoilers": zod.boolean().optional().describe('Mark this comment as containing spoilers (default false)')
+  "containsSpoilers": zod.boolean().optional().describe('Mark this comment as containing spoilers (default false)'),
+  "roomId": zod.number().optional().describe('Scope this comment to a reading room (author must be a member)'),
+  "authorProgress": zod.number().min(createReplyBodyAuthorProgressMin).max(createReplyBodyAuthorProgressMax).optional().describe('Author\'s reading progress when writing (room spoiler guard)')
 })
 
 
@@ -680,6 +710,8 @@ export const GetSavedCommentsResponseItem = zod.object({
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
   "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 })
 export const GetSavedCommentsResponse = zod.array(GetSavedCommentsResponseItem)
@@ -747,6 +779,8 @@ export const GetUserBookRecordsResponse = zod.object({
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
   "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 })),
   "savedComments": zod.array(zod.object({
@@ -764,6 +798,8 @@ export const GetUserBookRecordsResponse = zod.object({
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
   "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 }))
 })
@@ -843,7 +879,7 @@ export const GetNotificationsParams = zod.object({
 export const GetNotificationsResponse = zod.object({
   "notifications": zod.array(zod.object({
   "id": zod.number(),
-  "type": zod.enum(['reply', 'mention', 'friend_request', 'friend_accept', 'highlight_like', 'comment_like']).describe('reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment'),
+  "type": zod.enum(['reply', 'mention', 'friend_request', 'friend_accept', 'highlight_like', 'comment_like', 'room_invite']).describe('reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room'),
   "actorId": zod.number(),
   "actorUsername": zod.string(),
   "actorAvatarColor": zod.string(),
@@ -853,6 +889,8 @@ export const GetNotificationsResponse = zod.object({
   "parentCommentId": zod.number().nullable().describe('The original top-level comment (null for mention-only notifications)'),
   "quoteId": zod.number(),
   "quoteText": zod.string().optional().describe('The quote text for navigation context'),
+  "roomId": zod.number().nullish().describe('The reading room (room_invite notifications only)'),
+  "roomName": zod.string().optional().describe('The reading room name (room_invite notifications only)'),
   "read": zod.boolean(),
   "createdAt": zod.coerce.date()
 })),
@@ -945,6 +983,7 @@ export const GetNotificationSettingsParams = zod.object({
 })
 
 export const GetNotificationSettingsResponse = zod.object({
+  "rooms": zod.boolean().describe('Notify on reading-room invites'),
   "likes": zod.boolean().describe('Notify when someone likes my highlight or comment'),
   "replies": zod.boolean().describe('Notify when someone replies to my comment'),
   "mentions": zod.boolean().describe('Notify when someone @mentions me'),
@@ -960,6 +999,7 @@ export const UpdateNotificationSettingsParams = zod.object({
 })
 
 export const UpdateNotificationSettingsBody = zod.object({
+  "rooms": zod.boolean().describe('Notify on reading-room invites'),
   "likes": zod.boolean().describe('Notify when someone likes my highlight or comment'),
   "replies": zod.boolean().describe('Notify when someone replies to my comment'),
   "mentions": zod.boolean().describe('Notify when someone @mentions me'),
@@ -967,6 +1007,7 @@ export const UpdateNotificationSettingsBody = zod.object({
 })
 
 export const UpdateNotificationSettingsResponse = zod.object({
+  "rooms": zod.boolean().describe('Notify on reading-room invites'),
   "likes": zod.boolean().describe('Notify when someone likes my highlight or comment'),
   "replies": zod.boolean().describe('Notify when someone replies to my comment'),
   "mentions": zod.boolean().describe('Notify when someone @mentions me'),
@@ -1009,5 +1050,286 @@ export const GetFeedResponse = zod.object({
 })),
   "nextCursor": zod.string().nullable().describe('Pass as cursor to fetch the next page; null when there are no more items')
 })
+
+
+/**
+ * @summary Search / browse public reading rooms (by room name or book title)
+ */
+export const ListRoomsQueryParams = zod.object({
+  "q": zod.coerce.string().optional()
+})
+
+export const ListRoomsResponseItem = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number(),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+export const ListRoomsResponse = zod.array(ListRoomsResponseItem)
+
+
+/**
+ * @summary Create a reading room (creator becomes the owner)
+ */
+export const createRoomBodyNameMax = 80;
+
+export const createRoomBodyDescriptionMax = 500;
+
+
+
+export const CreateRoomBody = zod.object({
+  "canonicalBookId": zod.number(),
+  "name": zod.string().min(1).max(createRoomBodyNameMax),
+  "description": zod.string().max(createRoomBodyDescriptionMax).optional(),
+  "isPublic": zod.boolean()
+})
+
+
+/**
+ * @summary Trending public rooms (recent member growth + comment activity)
+ */
+export const GetTrendingRoomsResponseItem = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number(),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+export const GetTrendingRoomsResponse = zod.array(GetTrendingRoomsResponseItem)
+
+
+/**
+ * @summary Rooms the authenticated user is a member of
+ */
+export const GetMyRoomsQueryParams = zod.object({
+  "bookId": zod.coerce.number().optional().describe('Only my rooms for this canonical book (reader scope picker)')
+})
+
+export const GetMyRoomsResponseItem = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number(),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+export const GetMyRoomsResponse = zod.array(GetMyRoomsResponseItem)
+
+
+/**
+ * @summary Room home — book, members with reading progress, viewer state
+ */
+export const GetRoomParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const GetRoomResponse = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number(),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "members": zod.array(zod.object({
+  "userId": zod.number(),
+  "username": zod.string(),
+  "avatarColor": zod.string(),
+  "role": zod.enum(['owner', 'member']),
+  "readingProgress": zod.number().nullable().describe('The member\'s reading progress (0-100) in this book, or null if unknown')
+})),
+  "isMember": zod.boolean(),
+  "myRole": zod.union([zod.literal('owner'),zod.literal('member'),zod.literal(null)]).nullable().describe('The viewer\'s role, or null when not a member'),
+  "invitePending": zod.boolean().describe('Whether the viewer has a pending invite to this room'),
+  "myLibraryId": zod.number().nullable().describe('The viewer\'s library entry for this book (to open the reader), or null'),
+  "myReadingProgress": zod.number().nullable().describe('The viewer\'s reading progress (0-100) in this book (spoiler guard), or null')
+})
+
+
+/**
+ * @summary Update room name/description/privacy (owner only)
+ */
+export const UpdateRoomParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const updateRoomBodyNameMax = 80;
+
+export const updateRoomBodyDescriptionMax = 500;
+
+
+
+export const UpdateRoomBody = zod.object({
+  "name": zod.string().min(1).max(updateRoomBodyNameMax).optional(),
+  "description": zod.string().max(updateRoomBodyDescriptionMax).optional(),
+  "isPublic": zod.boolean().optional()
+})
+
+export const UpdateRoomResponse = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number(),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Join a public room (idempotent)
+ */
+export const JoinRoomParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const JoinRoomResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Leave a room (the owner cannot leave their own room)
+ */
+export const LeaveRoomParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const LeaveRoomResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Remove a member from the room (owner only)
+ */
+export const RemoveRoomMemberParams = zod.object({
+  "roomId": zod.coerce.number(),
+  "userId": zod.coerce.number()
+})
+
+export const RemoveRoomMemberResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Invite a friend to the room (any member; idempotent while pending)
+ */
+export const InviteToRoomParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const InviteToRoomBody = zod.object({
+  "userId": zod.number().describe('The friend to invite')
+})
+
+export const InviteToRoomResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Accept a pending invite to this room (invitee only)
+ */
+export const AcceptRoomInviteParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const AcceptRoomInviteResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Decline a pending invite to this room (invitee only)
+ */
+export const DeclineRoomInviteParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const DeclineRoomInviteResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Latest room-scoped highlights and comments (members only)
+ */
+export const GetRoomFeedParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const GetRoomFeedResponseItem = zod.object({
+  "type": zod.enum(['highlight', 'comment']),
+  "id": zod.number().describe('Highlight id or comment id depending on type'),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "avatarColor": zod.string(),
+  "quoteId": zod.number(),
+  "quoteText": zod.string().describe('Quote text — truncated to a preview length unless the viewer owns the book'),
+  "quoteTextTruncated": zod.boolean().describe('Whether quoteText was truncated for copyright protection'),
+  "commentText": zod.string().optional().describe('Present only when type is comment'),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler (comments only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when posting — blur when greater than the viewer\'s progress'),
+  "createdAt": zod.coerce.date()
+})
+export const GetRoomFeedResponse = zod.array(GetRoomFeedResponseItem)
+
+
+/**
+ * @summary Public rooms for a book (plus the viewer's own rooms for it)
+ */
+export const GetBookRoomsParams = zod.object({
+  "bookId": zod.coerce.number()
+})
+
+export const GetBookRoomsResponseItem = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number(),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+export const GetBookRoomsResponse = zod.array(GetBookRoomsResponseItem)
 
 

@@ -127,6 +127,55 @@ interface Props {
   onCommentSaved?: (visibility: Visibility) => void;
   /** When set, the sheet opens directly on this comment's reply thread. */
   initialReplyThread?: Comment | null;
+  /** When set, the sheet shows only this reading room's comments and posts into it. */
+  roomId?: number | null;
+  /** Viewer's reading progress (0-100) — used for the room spoiler guard. */
+  myProgress?: number | null;
+}
+
+// Room spoiler guard: blur content written by someone further into the book
+// than the viewer, until explicitly revealed.
+function ProgressGuard({
+  authorProgress,
+  myProgress,
+  children,
+}: {
+  authorProgress: number | null | undefined;
+  myProgress: number | null | undefined;
+  children: React.ReactNode;
+}) {
+  const colors = useColors();
+  const [revealed, setRevealed] = useState(false);
+  const guarded =
+    !revealed &&
+    authorProgress !== null &&
+    authorProgress !== undefined &&
+    myProgress !== null &&
+    myProgress !== undefined &&
+    authorProgress > myProgress;
+  if (!guarded) return <>{children}</>;
+  return (
+    <Pressable
+      onPress={() => setRevealed(true)}
+      style={[
+        styles.spoilerCover,
+        {
+          backgroundColor: colors.muted,
+          borderColor: colors.border,
+          borderRadius: colors.radius,
+          marginHorizontal: 16,
+          marginVertical: 6,
+        },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel="Ahead of your progress — tap to reveal"
+    >
+      <Feather name="eye-off" size={14} color={colors.mutedForeground} />
+      <Text style={[styles.spoilerCoverText, { color: colors.mutedForeground }]}>
+        Ahead of your progress ({authorProgress}%) — tap to reveal
+      </Text>
+    </Pressable>
+  );
 }
 
 // ── Reply thread sub-view ────────────────────────────────────────────────────
@@ -135,9 +184,11 @@ interface ReplyThreadProps {
   parentComment: Comment;
   onBack: () => void;
   bottomPad: number;
+  roomId?: number | null;
+  myProgress?: number | null;
 }
 
-function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
+function ReplyThread({ parentComment, onBack, bottomPad, roomId, myProgress }: ReplyThreadProps) {
   const colors = useColors();
   const { user } = useUser();
   const queryClient = useQueryClient();
@@ -180,7 +231,14 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
     createReply.mutate(
       {
         commentId: parentComment.id,
-        data: { text: replyText.trim(), visibility, containsSpoilers },
+        data: {
+          text: replyText.trim(),
+          visibility,
+          containsSpoilers,
+          ...(roomId
+            ? { roomId, ...(myProgress !== null && myProgress !== undefined ? { authorProgress: myProgress } : {}) }
+            : {}),
+        },
       },
       {
         onSuccess: () => {
@@ -195,7 +253,7 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         },
       },
     );
-  }, [user, replyText, visibility, containsSpoilers, createReply, parentComment, queryClient]);
+  }, [user, replyText, visibility, containsSpoilers, createReply, parentComment, queryClient, roomId, myProgress]);
 
   const handleMentionChip = (username: string) => {
     setReplyText((prev) => completeMentionText(prev, username));
@@ -350,37 +408,55 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         ]}
       >
         <View style={styles.visibilityRow}>
-          {VISIBILITY_OPTIONS.map((opt) => {
-            const active = visibility === opt.value;
-            return (
-              <Pressable
-                key={opt.value}
-                onPress={() => setVisibility(opt.value)}
-                style={[
-                  styles.visChip,
-                  {
-                    backgroundColor: active ? colors.primary : colors.card,
-                    borderColor: active ? colors.primary : colors.border,
-                    borderRadius: colors.radius,
-                  },
-                ]}
-              >
-                <Feather
-                  name={opt.icon}
-                  size={12}
-                  color={active ? colors.primaryForeground : colors.mutedForeground}
-                />
-                <Text
+          {roomId ? (
+            <View
+              style={[
+                styles.visChip,
+                {
+                  backgroundColor: colors.muted,
+                  borderColor: colors.border,
+                  borderRadius: colors.radius,
+                },
+              ]}
+            >
+              <Feather name="users" size={12} color={colors.mutedForeground} />
+              <Text style={[styles.visChipText, { color: colors.mutedForeground }]}>
+                Room members
+              </Text>
+            </View>
+          ) : (
+            VISIBILITY_OPTIONS.map((opt) => {
+              const active = visibility === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => setVisibility(opt.value)}
                   style={[
-                    styles.visChipText,
-                    { color: active ? colors.primaryForeground : colors.mutedForeground },
+                    styles.visChip,
+                    {
+                      backgroundColor: active ? colors.primary : colors.card,
+                      borderColor: active ? colors.primary : colors.border,
+                      borderRadius: colors.radius,
+                    },
                   ]}
                 >
-                  {opt.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+                  <Feather
+                    name={opt.icon}
+                    size={12}
+                    color={active ? colors.primaryForeground : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.visChipText,
+                      { color: active ? colors.primaryForeground : colors.mutedForeground },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
           <SpoilerToggleChip
             active={containsSpoilers}
             onToggle={() => setContainsSpoilers((prev) => !prev)}
@@ -439,6 +515,8 @@ export function CommentSheet({
   onClose,
   onCommentSaved,
   initialReplyThread,
+  roomId,
+  myProgress,
 }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -485,13 +563,14 @@ export function CommentSheet({
     }
   }, [visible, slideAnim]);
 
+  const listParams = roomId ? { filter, roomId } : { filter };
   const { data: comments, isLoading } = useGetQuoteComments(
     quoteId ?? 0,
-    { filter },
+    listParams,
     {
       query: {
         enabled: !!quoteId && visible,
-        queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { filter }),
+        queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, listParams),
       },
     },
   );
@@ -507,13 +586,13 @@ export function CommentSheet({
         {
           onSuccess: () => {
             queryClient.invalidateQueries({
-              queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { filter }),
+              queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0),
             });
           },
         },
       );
     },
-    [likeComment, queryClient, quoteId, filter],
+    [likeComment, queryClient, quoteId],
   );
 
   const handleSave = useCallback(
@@ -523,13 +602,13 @@ export function CommentSheet({
         {
           onSuccess: () => {
             queryClient.invalidateQueries({
-              queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { filter }),
+              queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0),
             });
           },
         },
       );
     },
-    [saveComment, queryClient, quoteId, filter],
+    [saveComment, queryClient, quoteId],
   );
 
   // @mention autocomplete: suggest quote commenters matching the partial
@@ -548,23 +627,30 @@ export function CommentSheet({
     if (!user || !quoteId || !commentText.trim()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     createComment.mutate(
-      { quoteId, data: { text: commentText.trim(), visibility, containsSpoilers } },
+      {
+        quoteId,
+        data: {
+          text: commentText.trim(),
+          visibility,
+          containsSpoilers,
+          ...(roomId
+            ? { roomId, ...(myProgress !== null && myProgress !== undefined ? { authorProgress: myProgress } : {}) }
+            : {}),
+        },
+      },
       {
         onSuccess: () => {
           setCommentText("");
           setContainsSpoilers(false);
           Keyboard.dismiss();
           queryClient.invalidateQueries({
-            queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "best" }),
-          });
-          queryClient.invalidateQueries({
-            queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "friends" }),
+            queryKey: getGetQuoteCommentsQueryKey(quoteId),
           });
           onCommentSaved?.(visibility);
         },
       },
     );
-  }, [user, quoteId, commentText, visibility, containsSpoilers, createComment, queryClient, onCommentSaved]);
+  }, [user, quoteId, commentText, visibility, containsSpoilers, createComment, queryClient, onCommentSaved, roomId, myProgress]);
 
   const translateY = slideAnim.interpolate({
     inputRange: [0, 1],
@@ -603,6 +689,8 @@ export function CommentSheet({
               parentComment={replyThread}
               onBack={() => setReplyThread(null)}
               bottomPad={bottomPad}
+              roomId={roomId}
+              myProgress={myProgress}
             />
           ) : (
             /* ── Main comment list view ── */
@@ -655,12 +743,17 @@ export function CommentSheet({
                 data={comments ?? []}
                 keyExtractor={(item, index) => String(item.id ?? index)}
                 renderItem={({ item }) => (
-                  <CommentCard
-                    comment={item}
-                    onLike={handleLike}
-                    onSave={handleSave}
-                    onReply={setReplyThread}
-                  />
+                  <ProgressGuard
+                    authorProgress={roomId ? item.authorProgress : null}
+                    myProgress={myProgress}
+                  >
+                    <CommentCard
+                      comment={item}
+                      onLike={handleLike}
+                      onSave={handleSave}
+                      onReply={setReplyThread}
+                    />
+                  </ProgressGuard>
                 )}
                 ListEmptyComponent={
                   isLoading ? (
@@ -731,43 +824,61 @@ export function CommentSheet({
                 ]}
               >
                 <View style={styles.visibilityRow}>
-                  {VISIBILITY_OPTIONS.map((opt) => {
-                    const active = visibility === opt.value;
-                    return (
-                      <Pressable
-                        key={opt.value}
-                        onPress={() => setVisibility(opt.value)}
-                        style={[
-                          styles.visChip,
-                          {
-                            backgroundColor: active ? colors.primary : colors.card,
-                            borderColor: active ? colors.primary : colors.border,
-                            borderRadius: colors.radius,
-                          },
-                        ]}
-                      >
-                        <Feather
-                          name={opt.icon}
-                          size={12}
-                          color={
-                            active ? colors.primaryForeground : colors.mutedForeground
-                          }
-                        />
-                        <Text
+                  {roomId ? (
+                    <View
+                      style={[
+                        styles.visChip,
+                        {
+                          backgroundColor: colors.muted,
+                          borderColor: colors.border,
+                          borderRadius: colors.radius,
+                        },
+                      ]}
+                    >
+                      <Feather name="users" size={12} color={colors.mutedForeground} />
+                      <Text style={[styles.visChipText, { color: colors.mutedForeground }]}>
+                        Room members
+                      </Text>
+                    </View>
+                  ) : (
+                    VISIBILITY_OPTIONS.map((opt) => {
+                      const active = visibility === opt.value;
+                      return (
+                        <Pressable
+                          key={opt.value}
+                          onPress={() => setVisibility(opt.value)}
                           style={[
-                            styles.visChipText,
+                            styles.visChip,
                             {
-                              color: active
-                                ? colors.primaryForeground
-                                : colors.mutedForeground,
+                              backgroundColor: active ? colors.primary : colors.card,
+                              borderColor: active ? colors.primary : colors.border,
+                              borderRadius: colors.radius,
                             },
                           ]}
                         >
-                          {opt.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                          <Feather
+                            name={opt.icon}
+                            size={12}
+                            color={
+                              active ? colors.primaryForeground : colors.mutedForeground
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.visChipText,
+                              {
+                                color: active
+                                  ? colors.primaryForeground
+                                  : colors.mutedForeground,
+                              },
+                            ]}
+                          >
+                            {opt.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
                   <SpoilerToggleChip
                     active={containsSpoilers}
                     onToggle={() => setContainsSpoilers((prev) => !prev)}

@@ -9,7 +9,7 @@ import type { NotificationItemType } from './notificationItemType';
 
 export interface NotificationItem {
   id: number;
-  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment */
+  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room */
   type: NotificationItemType;
   actorId: number;
   actorUsername: string;
@@ -28,6 +28,13 @@ export interface NotificationItem {
   quoteId: number;
   /** The quote text for navigation context */
   quoteText?: string;
+  /**
+     * The reading room (room_invite notifications only)
+     * @nullable
+     */
+  roomId?: number | null;
+  /** The reading room name (room_invite notifications only) */
+  roomName?: string;
   read: boolean;
   createdAt: Date;
 }

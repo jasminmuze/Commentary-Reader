@@ -11,6 +11,7 @@ import {
 } from "@workspace/db";
 import {
   GetBookQuotesParams,
+  GetBookQuotesQueryParams,
   CreateQuoteParams,
   CreateQuoteBody,
   GetQuoteReaderContextParams,
@@ -40,8 +41,16 @@ router.get("/books/:bookId/quotes", authenticate, async (req, res): Promise<void
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const queryParams = GetBookQuotesQueryParams.safeParse(req.query);
+  const roomId = queryParams.success ? queryParams.data.roomId : undefined;
   const userId = req.userId;
   const viewer = await getViewer(userId);
+
+  // Room scope: overlay shows only that room's activity, members only.
+  if (roomId != null && !viewer.roomIds.includes(roomId)) {
+    res.status(403).json({ error: "Not a member of this room" });
+    return;
+  }
 
   const quotes = await db
     .select()
@@ -49,7 +58,7 @@ router.get("/books/:bookId/quotes", authenticate, async (req, res): Promise<void
     .where(eq(quotesTable.canonicalBookId, params.data.bookId))
     .orderBy(asc(quotesTable.id));
   const quoteIds = quotes.map((q) => q.id);
-  const counts = await getQuoteCountsMap(quoteIds, viewer);
+  const counts = await getQuoteCountsMap(quoteIds, viewer, roomId);
   const highlighted = await getHighlightedQuoteIds(userId, quoteIds);
 
   // Copyright guardrail: full quote text only for owners of this book
@@ -167,7 +176,17 @@ router.post("/quotes/:quoteId/highlight", authenticate, async (req, res): Promis
 
   const { quoteId } = params.data;
   const userId = req.userId;
-  const { userLibraryId, cfiRange, visibility } = body.data;
+  const { userLibraryId, cfiRange, visibility, roomId, authorProgress } =
+    body.data;
+
+  // Room-scoped highlight: author must be a member of the room.
+  if (roomId != null) {
+    const viewer = await getViewer(userId);
+    if (!viewer.roomIds.includes(roomId)) {
+      res.status(403).json({ error: "Not a member of this room" });
+      return;
+    }
+  }
 
   const [quote] = await db
     .select()
@@ -216,6 +235,8 @@ router.post("/quotes/:quoteId/highlight", authenticate, async (req, res): Promis
         userLibraryId: userLibraryId ?? null,
         cfiRange: cfiRange ?? null,
         visibility: resolvedVisibility,
+        roomId: roomId ?? null,
+        authorProgress: authorProgress ?? null,
       })
       .onConflictDoNothing();
     highlighted = true;
@@ -259,6 +280,8 @@ router.post("/highlights/:highlightId/like", authenticate, async (req, res): Pro
           userHighlightsTable.visibility,
           userHighlightsTable.userId,
           viewer,
+          userHighlightsTable.roomId,
+          true,
         ),
       ),
     )

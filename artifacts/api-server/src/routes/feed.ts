@@ -107,6 +107,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       userHighlightsTable.visibility,
       userHighlightsTable.userId,
       viewer,
+      userHighlightsTable.roomId,
     ),
   ];
   if (cursor) {
@@ -144,7 +145,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
 
   const commentFilters: SQL[] = [
     inArray(commentsTable.userId, followingIds),
-    visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer),
+    visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId),
   ];
   if (cursor) {
     commentFilters.push(

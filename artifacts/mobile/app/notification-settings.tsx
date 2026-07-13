@@ -52,6 +52,12 @@ const SETTING_ROWS: {
     description: "Friend requests and accepted requests",
     icon: "users",
   },
+  {
+    key: "rooms",
+    label: "Reading rooms",
+    description: "Reading room invites",
+    icon: "book-open",
+  },
 ];
 
 export default function NotificationSettingsScreen() {

@@ -143,6 +143,7 @@ router.get("/books/:bookId", authenticate, async (req, res): Promise<void> => {
             commentsTable.visibility,
             commentsTable.userId,
             viewer,
+            commentsTable.roomId,
           ),
         ),
       )

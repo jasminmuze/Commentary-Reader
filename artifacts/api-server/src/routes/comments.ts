@@ -50,14 +50,25 @@ router.get("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<
   const filter = queryParams.success
     ? (queryParams.data.filter ?? "all")
     : "all";
+  const roomId = queryParams.success ? queryParams.data.roomId : undefined;
 
   const { quoteId } = params.data;
   const viewer = await getViewer(userId);
-  const visible = visibilityPredicate(
-    commentsTable.visibility,
-    commentsTable.userId,
-    viewer,
-  );
+  // Room scope: only that room's comments, members only. Otherwise the
+  // community visibility rules (which exclude other rooms' content).
+  if (roomId != null && !viewer.roomIds.includes(roomId)) {
+    res.status(403).json({ error: "Not a member of this room" });
+    return;
+  }
+  const visible =
+    roomId != null
+      ? eq(commentsTable.roomId, roomId)
+      : visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+          commentsTable.roomId,
+        );
   // Only return top-level comments — replies are fetched separately.
   const topLevel = isNull(commentsTable.parentId);
   let comments;
@@ -125,6 +136,17 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
   }
 
   const userId = req.userId;
+
+  // Room-scoped comment: author must be a member of the room.
+  const roomId = body.data.roomId ?? null;
+  if (roomId != null) {
+    const viewer = await getViewer(userId);
+    if (!viewer.roomIds.includes(roomId)) {
+      res.status(403).json({ error: "Not a member of this room" });
+      return;
+    }
+  }
+
   let visibility = body.data.visibility;
   if (!visibility) {
     const [author] = await db
@@ -143,6 +165,8 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
       visibility,
       likeCount: 0,
       containsSpoilers: body.data.containsSpoilers ?? false,
+      roomId,
+      authorProgress: body.data.authorProgress ?? null,
     })
     .returning();
   if (!comment) {
@@ -183,7 +207,7 @@ router.get("/comments/:commentId", authenticate, async (req, res): Promise<void>
     .where(
       and(
         eq(commentsTable.id, params.data.commentId),
-        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer),
+        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId, true),
       ),
     )
     .limit(1);
@@ -216,7 +240,7 @@ router.get("/comments/:commentId/replies", authenticate, async (req, res): Promi
       and(
         eq(commentsTable.id, commentId),
         isNull(commentsTable.parentId),
-        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer),
+        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId, true),
       ),
     )
     .limit(1);
@@ -231,7 +255,7 @@ router.get("/comments/:commentId/replies", authenticate, async (req, res): Promi
     .where(
       and(
         eq(commentsTable.parentId, commentId),
-        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer),
+        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId, true),
       ),
     )
     .orderBy(asc(commentsTable.createdAt));
@@ -269,7 +293,7 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
       and(
         eq(commentsTable.id, commentId),
         isNull(commentsTable.parentId),
-        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer),
+        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId, true),
       ),
     )
     .limit(1);
@@ -297,6 +321,9 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
       likeCount: 0,
       parentId: commentId,
       containsSpoilers: body.data.containsSpoilers ?? false,
+      // Replies inherit the parent's room scope so threads never straddle scopes.
+      roomId: parentComment.roomId ?? null,
+      authorProgress: body.data.authorProgress ?? null,
     })
     .returning();
   if (!reply) {
@@ -375,6 +402,8 @@ router.post("/comments/:commentId/like", authenticate, async (req, res): Promise
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
+          commentsTable.roomId,
+          true,
         ),
       ),
     )
@@ -458,6 +487,8 @@ router.post("/comments/:commentId/save", authenticate, async (req, res): Promise
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
+          commentsTable.roomId,
+          true,
         ),
       ),
     )

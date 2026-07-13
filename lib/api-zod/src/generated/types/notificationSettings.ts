@@ -7,6 +7,8 @@
  */
 
 export interface NotificationSettings {
+  /** Notify on reading-room invites */
+  rooms: boolean;
   /** Notify when someone likes my highlight or comment */
   likes: boolean;
   /** Notify when someone replies to my comment */

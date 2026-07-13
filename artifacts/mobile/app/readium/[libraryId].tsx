@@ -21,13 +21,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetBookQuotesQueryKey,
   getGetLibraryEntryQueryKey,
+  getGetMyRoomsQueryKey,
   useCreateQuote,
   useGetBookQuotes,
   useGetLibraryEntry,
+  useGetMyRooms,
   useToggleHighlight,
   useUpdateReadingLocation,
 } from "@workspace/api-client-react";
-import type { LibraryEntry, Quote } from "@workspace/api-client-react";
+import type { LibraryEntry, Quote, Room } from "@workspace/api-client-react";
+import { ScrollView } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { useFileSystem } from "@/hooks/useFileSystem";
@@ -204,6 +207,9 @@ function EmbeddedReader({
   nativeReadium,
   onFatalError,
   targetQuote,
+  myRooms,
+  selectedRoomId,
+  onSelectRoom,
 }: {
   entry: LibraryEntry;
   quotes: Quote[];
@@ -213,6 +219,9 @@ function EmbeddedReader({
   nativeReadium: NativeReadiumHostModule;
   onFatalError: (message: string) => void;
   targetQuote: { id: number; text: string } | null;
+  myRooms: Room[];
+  selectedRoomId: number | null;
+  onSelectRoom: (roomId: number | null) => void;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -544,7 +553,16 @@ function EmbeddedReader({
               toggleHighlight.mutate(
                 {
                   quoteId: quote.id,
-                  data: { userLibraryId: libraryId, cfiRange: event.locatorJson },
+                  data: {
+                    userLibraryId: libraryId,
+                    cfiRange: event.locatorJson,
+                    ...(selectedRoomId
+                      ? {
+                          roomId: selectedRoomId,
+                          ...(readProgress !== null ? { authorProgress: readProgress } : {}),
+                        }
+                      : {}),
+                  },
                 },
                 {
                   onSuccess: () => {
@@ -567,7 +585,7 @@ function EmbeddedReader({
         },
       );
     },
-    [createQuote, ensureMatched, libraryId, queryClient, toggleHighlight],
+    [createQuote, ensureMatched, libraryId, queryClient, toggleHighlight, selectedRoomId, readProgress],
   );
   const handleTextSelectedRef = useRef(handleTextSelected);
   useEffect(() => {
@@ -820,6 +838,77 @@ function EmbeddedReader({
         </View>
       ) : null}
 
+      {chromeVisible && canonicalBookId && myRooms.length > 0 ? (
+        <View
+          style={[
+            styles.scopeRow,
+            { top: insets.top + 62, backgroundColor: colors.background + "F2" },
+          ]}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.scopeContent}
+          >
+            <Pressable
+              onPress={() => onSelectRoom(null)}
+              style={[
+                styles.scopeChip,
+                {
+                  backgroundColor: selectedRoomId === null ? colors.primary : colors.card,
+                  borderColor: selectedRoomId === null ? colors.primary : colors.border,
+                },
+              ]}
+            >
+              <Feather
+                name="globe"
+                size={12}
+                color={selectedRoomId === null ? colors.primaryForeground : colors.mutedForeground}
+              />
+              <Text
+                style={[
+                  styles.scopeChipText,
+                  { color: selectedRoomId === null ? colors.primaryForeground : colors.mutedForeground },
+                ]}
+              >
+                Everyone
+              </Text>
+            </Pressable>
+            {myRooms.map((room) => {
+              const active = selectedRoomId === room.id;
+              return (
+                <Pressable
+                  key={room.id}
+                  onPress={() => onSelectRoom(active ? null : room.id)}
+                  style={[
+                    styles.scopeChip,
+                    {
+                      backgroundColor: active ? colors.primary : colors.card,
+                      borderColor: active ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name={room.isPublic ? "users" : "lock"}
+                    size={12}
+                    color={active ? colors.primaryForeground : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.scopeChipText,
+                      { color: active ? colors.primaryForeground : colors.mutedForeground },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {room.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+
       {chromeVisible && readProgress !== null ? (
         <View
           style={[
@@ -879,6 +968,8 @@ function EmbeddedReader({
         visible={sheetVisible}
         quoteId={selectedQuote?.id ?? null}
         quoteText={selectedQuote?.text ?? ""}
+        roomId={selectedRoomId}
+        myProgress={readProgress}
         onClose={() => setSheetVisible(false)}
         onCommentSaved={(visibility) => {
           const locatorJson = selectedQuote?.cfiRange;
@@ -886,7 +977,20 @@ function EmbeddedReader({
           const bookId = canonicalBookIdRef.current;
           if (!locatorJson || !qId || !bookId) return;
           toggleHighlight.mutate(
-            { quoteId: qId, data: { userLibraryId: libraryId, cfiRange: locatorJson, visibility } },
+            {
+              quoteId: qId,
+              data: {
+                userLibraryId: libraryId,
+                cfiRange: locatorJson,
+                visibility,
+                ...(selectedRoomId
+                  ? {
+                      roomId: selectedRoomId,
+                      ...(readProgress !== null ? { authorProgress: readProgress } : {}),
+                    }
+                  : {}),
+              },
+            },
             {
               onSuccess: () => {
                 queryClient.invalidateQueries({ queryKey: getGetBookQuotesQueryKey(bookId) });
@@ -949,10 +1053,25 @@ export default function ReadiumRoute() {
   }, [isFetching, entry]);
 
   const canonicalBookId = entry?.canonicalBookId ?? null;
-  const { data: quotes } = useGetBookQuotes(canonicalBookId ?? 0, {
+
+  // Reader scope: null = everyone (community), otherwise a reading room id.
+  const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
+
+  const { data: myRooms } = useGetMyRooms(
+    canonicalBookId ? { bookId: canonicalBookId } : undefined,
+    {
+      query: {
+        enabled: !!canonicalBookId,
+        queryKey: getGetMyRoomsQueryKey(canonicalBookId ? { bookId: canonicalBookId } : undefined),
+      },
+    },
+  );
+
+  const quotesParams = selectedRoomId ? { roomId: selectedRoomId } : undefined;
+  const { data: quotes } = useGetBookQuotes(canonicalBookId ?? 0, quotesParams, {
     query: {
       enabled: !!canonicalBookId,
-      queryKey: getGetBookQuotesQueryKey(canonicalBookId ?? 0),
+      queryKey: getGetBookQuotesQueryKey(canonicalBookId ?? 0, quotesParams),
     },
   });
 
@@ -1100,6 +1219,9 @@ export default function ReadiumRoute() {
       nativeReadium={nativeReadium}
       onFatalError={handleFatalError}
       targetQuote={targetQuote}
+      myRooms={myRooms ?? []}
+      selectedRoomId={selectedRoomId}
+      onSelectRoom={setSelectedRoomId}
     />
   );
 }
@@ -1188,4 +1310,23 @@ const styles = StyleSheet.create({
   progressTrack: { height: 2, borderRadius: 1, overflow: "hidden" },
   progressFill: { height: 2, borderRadius: 1 },
   progressLabel: { fontSize: 11, textAlign: "center", marginTop: 4, letterSpacing: -0.2 },
+  scopeRow: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 9,
+    paddingVertical: 6,
+  },
+  scopeContent: { paddingHorizontal: 16, gap: 8 },
+  scopeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderRadius: 16,
+    maxWidth: 200,
+  },
+  scopeChipText: { fontSize: 12, fontWeight: "700" },
 });

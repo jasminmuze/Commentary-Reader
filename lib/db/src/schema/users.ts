@@ -19,6 +19,7 @@ export const usersTable = pgTable("users", {
   notifyReplies: boolean("notify_replies").notNull().default(true),
   notifyMentions: boolean("notify_mentions").notNull().default(true),
   notifyFriends: boolean("notify_friends").notNull().default(true),
+  notifyRooms: boolean("notify_rooms").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

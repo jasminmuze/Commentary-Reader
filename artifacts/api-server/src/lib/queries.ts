@@ -67,6 +67,7 @@ export async function getBookCountsMap(
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
+          commentsTable.roomId,
         ),
       ),
     );
@@ -86,6 +87,7 @@ export async function getBookCountsMap(
           userHighlightsTable.visibility,
           userHighlightsTable.userId,
           viewer,
+          userHighlightsTable.roomId,
         ),
       ),
     );
@@ -107,6 +109,7 @@ export async function getBookCountsMap(
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
+          commentsTable.roomId,
         ),
       ),
     )
@@ -127,6 +130,7 @@ export async function getBookCountsMap(
           userHighlightsTable.visibility,
           userHighlightsTable.userId,
           viewer,
+          userHighlightsTable.roomId,
         ),
       ),
     )
@@ -170,25 +174,40 @@ export interface QuoteCounts {
 export async function getQuoteCountsMap(
   quoteIds: number[],
   viewer?: Viewer,
+  /**
+   * When set, count ONLY rows scoped to this room (reader "room scope" mode).
+   * Callers must verify the viewer's membership before passing it.
+   */
+  roomId?: number,
 ): Promise<Map<number, QuoteCounts>> {
   const map = new Map<number, QuoteCounts>();
   for (const id of quoteIds)
     map.set(id, { highlightCount: 0, commentCount: 0 });
   if (quoteIds.length === 0) return map;
 
-  const hc = await db
-    .select({ quoteId: userHighlightsTable.quoteId, c: count() })
-    .from(userHighlightsTable)
-    .where(
-      and(
-        inArray(userHighlightsTable.quoteId, quoteIds),
-        visibilityPredicate(
+  const highlightScope =
+    roomId != null
+      ? eq(userHighlightsTable.roomId, roomId)
+      : visibilityPredicate(
           userHighlightsTable.visibility,
           userHighlightsTable.userId,
           viewer,
-        ),
-      ),
-    )
+          userHighlightsTable.roomId,
+        );
+  const commentScope =
+    roomId != null
+      ? eq(commentsTable.roomId, roomId)
+      : visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+          commentsTable.roomId,
+        );
+
+  const hc = await db
+    .select({ quoteId: userHighlightsTable.quoteId, c: count() })
+    .from(userHighlightsTable)
+    .where(and(inArray(userHighlightsTable.quoteId, quoteIds), highlightScope))
     .groupBy(userHighlightsTable.quoteId);
   for (const r of hc) {
     const m = map.get(r.quoteId);
@@ -198,16 +217,7 @@ export async function getQuoteCountsMap(
   const cc = await db
     .select({ quoteId: commentsTable.quoteId, c: count() })
     .from(commentsTable)
-    .where(
-      and(
-        inArray(commentsTable.quoteId, quoteIds),
-        visibilityPredicate(
-          commentsTable.visibility,
-          commentsTable.userId,
-          viewer,
-        ),
-      ),
-    )
+    .where(and(inArray(commentsTable.quoteId, quoteIds), commentScope))
     .groupBy(commentsTable.quoteId);
   for (const r of cc) {
     const m = map.get(r.quoteId);
@@ -309,6 +319,8 @@ export async function formatComment(
     replyCount,
     parentId: comment.parentId ?? null,
     containsSpoilers: comment.containsSpoilers,
+    roomId: comment.roomId ?? null,
+    authorProgress: comment.authorProgress ?? null,
     createdAt: comment.createdAt,
   };
 }

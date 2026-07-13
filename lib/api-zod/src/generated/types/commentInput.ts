@@ -13,4 +13,12 @@ export interface CommentInput {
   visibility?: Visibility;
   /** Mark this comment as containing spoilers (default false) */
   containsSpoilers?: boolean;
+  /** Scope this comment to a reading room (author must be a member) */
+  roomId?: number;
+  /**
+     * Author's reading progress when writing (room spoiler guard)
+     * @minimum 0
+     * @maximum 100
+     */
+  authorProgress?: number;
 }

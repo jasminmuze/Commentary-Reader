@@ -17,9 +17,13 @@ import {
   useMarkNotificationRead,
   useAcceptFriendRequest,
   useDeclineFriendRequest,
+  useAcceptRoomInvite,
+  useDeclineRoomInvite,
   getGetNotificationsQueryKey,
   getGetUserProfileQueryKey,
   getGetFriendsQueryKey,
+  getGetRoomQueryKey,
+  getGetMyRoomsQueryKey,
   getComment,
   ApiError,
 } from "@workspace/api-client-react";
@@ -66,8 +70,9 @@ function NotificationCard({
   const isReply = item.type === "reply";
   const isFriendRequest = item.type === "friend_request";
   const isFriendAccept = item.type === "friend_accept";
+  const isRoomInvite = item.type === "room_invite";
   const showViewInBook =
-    !!onViewInBook && !isFriendRequest && !isFriendAccept && !!item.quoteId;
+    !!onViewInBook && !isFriendRequest && !isFriendAccept && !isRoomInvite && !!item.quoteId;
 
   const title = isReply
     ? " replied to your comment"
@@ -75,11 +80,13 @@ function NotificationCard({
       ? " sent you a friend request"
       : isFriendAccept
         ? " accepted your friend request"
-        : item.type === "highlight_like"
-          ? " liked your highlight"
-          : item.type === "comment_like"
-            ? " liked your comment"
-            : " mentioned you";
+        : isRoomInvite
+          ? " invited you to a reading room"
+          : item.type === "highlight_like"
+            ? " liked your highlight"
+            : item.type === "comment_like"
+              ? " liked your comment"
+              : " mentioned you";
 
   return (
     <Pressable
@@ -146,6 +153,17 @@ function NotificationCard({
             </Text>
           ) : null}
 
+          {isRoomInvite && item.roomName ? (
+            <View style={[styles.preview, { borderLeftColor: colors.primary }]}>
+              <Text
+                style={[styles.previewText, { color: colors.mutedForeground }]}
+                numberOfLines={1}
+              >
+                {item.roomName}
+              </Text>
+            </View>
+          ) : null}
+
           {showViewInBook ? (
             <Pressable
               onPress={() => onViewInBook!(item)}
@@ -162,7 +180,7 @@ function NotificationCard({
             </Pressable>
           ) : null}
 
-          {isFriendRequest && !item.read ? (
+          {(isFriendRequest || isRoomInvite) && !item.read ? (
             <View style={styles.friendActions}>
               <Pressable
                 onPress={() => onAccept(item)}
@@ -231,6 +249,8 @@ export default function NotificationsScreen() {
   const markOneRead = useMarkNotificationRead();
   const acceptFriendRequest = useAcceptFriendRequest();
   const declineFriendRequest = useDeclineFriendRequest();
+  const acceptRoomInvite = useAcceptRoomInvite();
+  const declineRoomInvite = useDeclineRoomInvite();
 
   const [sheetVisible, setSheetVisible] = useState(false);
   const [sheetQuote, setSheetQuote] = useState<{ id: number; text: string } | null>(null);
@@ -284,6 +304,15 @@ export default function NotificationsScreen() {
 
   const handleNotificationPress = useCallback(
     async (item: NotificationItem) => {
+      // Room invites navigate to the room page WITHOUT marking the
+      // notification read — the card stays actionable until the invite is
+      // actually accepted/declined (the server resolves it then). The room
+      // page itself also offers accept/decline as a fallback.
+      if (item.type === "room_invite") {
+        if (item.roomId) router.push(`/room/${item.roomId}`);
+        return;
+      }
+
       // Mark this notification as read (best-effort).
       markItemRead(item);
 
@@ -339,6 +368,63 @@ export default function NotificationsScreen() {
       }
     },
     [invalidateNotifications, queryClient, userId],
+  );
+
+  // Accept/decline a room invite; refresh room caches on top of notifications.
+  const invalidateRoomState = useCallback(
+    (roomId: number) => {
+      invalidateNotifications();
+      queryClient.invalidateQueries({ queryKey: getGetRoomQueryKey(roomId) });
+      queryClient.invalidateQueries({ queryKey: getGetMyRoomsQueryKey() });
+    },
+    [invalidateNotifications, queryClient],
+  );
+
+  const handleAcceptRoomInvite = useCallback(
+    (item: NotificationItem) => {
+      if (!item.roomId) return;
+      const roomId = item.roomId;
+      acceptRoomInvite.mutate(
+        { roomId },
+        {
+          onSuccess: () => {
+            invalidateRoomState(roomId);
+            router.push(`/room/${roomId}`);
+          },
+          onError: (err) => {
+            if (err instanceof ApiError && err.status === 404) {
+              Alert.alert("Invite unavailable", "This invite was withdrawn or the room no longer exists.");
+            } else {
+              Alert.alert("Error", "Couldn't accept the invite. Please try again in a moment.");
+            }
+            invalidateRoomState(roomId);
+          },
+        },
+      );
+    },
+    [acceptRoomInvite, invalidateRoomState],
+  );
+
+  const handleDeclineRoomInvite = useCallback(
+    (item: NotificationItem) => {
+      if (!item.roomId) return;
+      const roomId = item.roomId;
+      declineRoomInvite.mutate(
+        { roomId },
+        {
+          onSuccess: () => invalidateRoomState(roomId),
+          onError: (err) => {
+            if (err instanceof ApiError && err.status === 404) {
+              Alert.alert("Invite unavailable", "This invite was withdrawn or the room no longer exists.");
+            } else {
+              Alert.alert("Error", "Couldn't decline the invite. Please try again in a moment.");
+            }
+            invalidateRoomState(roomId);
+          },
+        },
+      );
+    },
+    [declineRoomInvite, invalidateRoomState],
   );
 
   const handleAcceptFriendRequest = useCallback(
@@ -446,11 +532,18 @@ export default function NotificationsScreen() {
             <NotificationCard
               item={item}
               onPress={handleNotificationPress}
-              onAccept={handleAcceptFriendRequest}
-              onDecline={handleDeclineFriendRequest}
+              onAccept={
+                item.type === "room_invite" ? handleAcceptRoomInvite : handleAcceptFriendRequest
+              }
+              onDecline={
+                item.type === "room_invite" ? handleDeclineRoomInvite : handleDeclineFriendRequest
+              }
               onViewInBook={canUseNativeReader() ? handleViewInBook : undefined}
               friendActionPending={
-                acceptFriendRequest.isPending || declineFriendRequest.isPending
+                acceptFriendRequest.isPending ||
+                declineFriendRequest.isPending ||
+                acceptRoomInvite.isPending ||
+                declineRoomInvite.isPending
               }
             />
           )}

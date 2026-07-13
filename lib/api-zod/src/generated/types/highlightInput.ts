@@ -11,4 +11,12 @@ export interface HighlightInput {
   userLibraryId?: number;
   cfiRange?: string;
   visibility?: Visibility;
+  /** Scope this highlight to a reading room (author must be a member) */
+  roomId?: number;
+  /**
+     * Author's reading progress when highlighting (room spoiler guard)
+     * @minimum 0
+     * @maximum 100
+     */
+  authorProgress?: number;
 }

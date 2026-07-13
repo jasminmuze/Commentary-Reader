@@ -24,6 +24,7 @@ export interface NotificationPrefs {
   notifyReplies: boolean;
   notifyMentions: boolean;
   notifyFriends: boolean;
+  notifyRooms: boolean;
 }
 
 /**
@@ -39,6 +40,7 @@ export async function getNotificationPrefs(
       notifyReplies: usersTable.notifyReplies,
       notifyMentions: usersTable.notifyMentions,
       notifyFriends: usersTable.notifyFriends,
+      notifyRooms: usersTable.notifyRooms,
     })
     .from(usersTable)
     .where(eq(usersTable.id, userId));
@@ -48,8 +50,45 @@ export async function getNotificationPrefs(
       notifyReplies: true,
       notifyMentions: true,
       notifyFriends: true,
+      notifyRooms: true,
     }
   );
+}
+
+/**
+ * Creates a room_invite notification for the invitee and fires a best-effort
+ * push. Skips entirely (in-app AND push) when the invitee disabled room
+ * notifications — the pending invite itself still shows on the room screen.
+ * Best-effort: callers should treat failures as non-fatal.
+ */
+export async function createRoomInviteNotification(options: {
+  inviteeId: number;
+  inviterId: number;
+  roomId: number;
+  roomName: string;
+}): Promise<void> {
+  const { inviteeId, inviterId, roomId, roomName } = options;
+  if (inviteeId === inviterId) return;
+
+  const prefs = await getNotificationPrefs(inviteeId);
+  if (!prefs.notifyRooms) return;
+
+  await db.insert(notificationsTable).values({
+    userId: inviteeId,
+    type: "room_invite",
+    actorId: inviterId,
+    roomId,
+  });
+
+  // Push delivery is fire-and-forget: never delays or fails the request.
+  void (async () => {
+    const actorUsername = await getActorUsername(inviterId);
+    await sendPushToUsers([inviteeId], {
+      title: `@${actorUsername}님이 리딩룸에 초대했어요`,
+      body: roomName,
+      data: { type: "room_invite", roomId },
+    });
+  })();
 }
 
 /**

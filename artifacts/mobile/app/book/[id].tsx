@@ -14,11 +14,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetBook,
+  useGetBookRooms,
   useLikeComment,
   useSaveComment,
   getGetBookQueryKey,
+  getGetBookRoomsQueryKey,
 } from "@workspace/api-client-react";
-import type { Quote } from "@workspace/api-client-react";
+import type { Quote, Room } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { CommentSheet } from "@/components/CommentSheet";
@@ -67,6 +69,10 @@ export default function BookDetailScreen() {
 
   const { data: book, isLoading } = useGetBook(bookId, {
     query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) },
+  });
+
+  const { data: rooms } = useGetBookRooms(bookId, {
+    query: { enabled: !!bookId, queryKey: getGetBookRoomsQueryKey(bookId) },
   });
 
   const likeComment = useLikeComment();
@@ -139,6 +145,66 @@ export default function BookDetailScreen() {
               </View>
             </View>
           </View>
+
+          {/* Reading rooms */}
+          <View style={styles.roomsHead}>
+            <Text style={[styles.sectionTitle, { color: colors.mutedForeground, marginHorizontal: 0, marginTop: 0, marginBottom: 0 }]}>
+              Reading rooms
+            </Text>
+            <Pressable
+              onPress={() =>
+                router.push(
+                  `/room/create?bookId=${bookId}&bookTitle=${encodeURIComponent(book.title)}`,
+                )
+              }
+              hitSlop={8}
+              style={styles.roomsCreate}
+            >
+              <Feather name="plus" size={13} color={colors.primary} />
+              <Text style={[styles.roomsCreateText, { color: colors.primary }]}>Create</Text>
+            </Pressable>
+          </View>
+          {(rooms ?? []).length === 0 ? (
+            <Text style={[styles.emptyLine, { color: colors.mutedForeground }]}>
+              No rooms yet — start one and read together.
+            </Text>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.roomsScroll}
+            >
+              {(rooms ?? []).map((room: Room) => (
+                <Pressable
+                  key={room.id}
+                  onPress={() => router.push(`/room/${room.id}`)}
+                  style={[
+                    styles.roomCard,
+                    { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius },
+                  ]}
+                >
+                  <View style={styles.roomCardHead}>
+                    <Feather
+                      name={room.isPublic ? "users" : "lock"}
+                      size={13}
+                      color={colors.primary}
+                    />
+                    {room.isMember ? (
+                      <View style={[styles.roomJoinedBadge, { backgroundColor: colors.muted, borderRadius: colors.radius }]}>
+                        <Text style={[styles.roomJoinedText, { color: colors.mutedForeground }]}>JOINED</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.roomCardName, { color: colors.foreground }]} numberOfLines={2}>
+                    {room.name}
+                  </Text>
+                  <Text style={[styles.roomCardMeta, { color: colors.mutedForeground }]}>
+                    {room.memberCount} {room.memberCount === 1 ? "member" : "members"}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
 
           {/* Top quotes */}
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Most highlighted passages</Text>
@@ -231,6 +297,32 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   emptyLine: { fontSize: 13, marginHorizontal: 20 },
+  roomsHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginHorizontal: 20,
+    marginTop: 28,
+    marginBottom: 10,
+  },
+  roomsCreate: { flexDirection: "row", alignItems: "center", gap: 4 },
+  roomsCreateText: { fontSize: 12, fontWeight: "700" },
+  roomsScroll: { paddingHorizontal: 16, gap: 10 },
+  roomCard: {
+    width: 170,
+    padding: 12,
+    borderWidth: 1,
+    gap: 6,
+  },
+  roomCardHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  roomJoinedBadge: { paddingHorizontal: 6, paddingVertical: 2 },
+  roomJoinedText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
+  roomCardName: { fontSize: 13, fontWeight: "700", lineHeight: 18 },
+  roomCardMeta: { fontSize: 11 },
   quoteRow: {
     marginHorizontal: 16,
     marginVertical: 4,
