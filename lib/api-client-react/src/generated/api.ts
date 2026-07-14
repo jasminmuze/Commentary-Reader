@@ -4853,6 +4853,83 @@ export function useGetRoomFeed<TData = Awaited<ReturnType<typeof getRoomFeed>>, 
 
 
 
+export const getGetUserRoomsUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/rooms`
+}
+
+/**
+ * @summary Public rooms the given user is a member of
+ */
+export const getUserRooms = async (userId: number, options?: RequestInit): Promise<Room[]> => {
+
+  return customFetch<Room[]>(getGetUserRoomsUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUserRoomsQueryKey = (userId: number,) => {
+    return [
+    `/api/users/${userId}/rooms`
+    ] as const;
+    }
+
+
+export const getGetUserRoomsQueryOptions = <TData = Awaited<ReturnType<typeof getUserRooms>>, TError = ErrorType<unknown>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserRooms>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUserRoomsQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserRooms>>> = ({ signal }) => getUserRooms(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUserRooms>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUserRoomsQueryResult = NonNullable<Awaited<ReturnType<typeof getUserRooms>>>
+export type GetUserRoomsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Public rooms the given user is a member of
+ */
+
+export function useGetUserRooms<TData = Awaited<ReturnType<typeof getUserRooms>>, TError = ErrorType<unknown>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserRooms>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUserRoomsQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getGetBookRoomsUrl = (bookId: number,) => {
 
 

@@ -53,18 +53,31 @@ function completeMentionText(text: string, username: string): string {
   return text.replace(/(^|\s)@\S*$/, `$1@${username} `);
 }
 
-/** Candidates whose username starts with the partial query (case-insensitive). */
+type MentionCandidate = { username: string; nickname?: string | null };
+
+/** Candidates whose username or display name starts with the partial query (case-insensitive). */
 function mentionSuggestions(
-  candidates: (string | null | undefined)[],
+  candidates: MentionCandidate[],
   text: string,
   selfUsername?: string,
-): string[] {
+): MentionCandidate[] {
   const query = activeMentionQuery(text);
   if (query === null) return [];
   const lower = query.toLowerCase();
-  return Array.from(
-    new Set(candidates.filter((u): u is string => !!u && u !== selfUsername)),
-  ).filter((u) => u.toLowerCase().startsWith(lower) && u.toLowerCase() !== lower);
+  const seen = new Set<string>();
+  const result: MentionCandidate[] = [];
+  for (const c of candidates) {
+    if (!c.username || c.username === selfUsername || seen.has(c.username)) continue;
+    const display = (c.nickname?.trim() || c.username).toLowerCase();
+    if (
+      (c.username.toLowerCase().startsWith(lower) || display.startsWith(lower)) &&
+      c.username.toLowerCase() !== lower
+    ) {
+      seen.add(c.username);
+      result.push(c);
+    }
+  }
+  return result;
 }
 
 // "Contains spoilers" checkbox shown on its own row below the visibility
@@ -233,7 +246,10 @@ function ReplyThread({ parentComment, onBack, bottomPad, roomId, myProgress }: R
   // @mention autocomplete: suggest thread participants matching the partial
   // "@..." the user is typing (shown only while a mention is being typed).
   const suggestions = mentionSuggestions(
-    [parentComment.username, ...(replies ?? []).map((r) => r.username)],
+    [
+      { username: parentComment.username, nickname: parentComment.nickname },
+      ...(replies ?? []).map((r) => ({ username: r.username, nickname: r.nickname })),
+    ],
     replyText,
     user?.username,
   );
@@ -388,10 +404,10 @@ function ReplyThread({ parentComment, onBack, bottomPad, roomId, myProgress }: R
           contentContainerStyle={styles.chipsContent}
           keyboardShouldPersistTaps="handled"
         >
-          {suggestions.map((username) => (
+          {suggestions.map((s) => (
             <Pressable
-              key={username}
-              onPress={() => handleMentionChip(username)}
+              key={s.username}
+              onPress={() => handleMentionChip(s.username)}
               style={({ pressed }) => [
                 styles.mentionChip,
                 {
@@ -403,8 +419,13 @@ function ReplyThread({ parentComment, onBack, bottomPad, roomId, myProgress }: R
               ]}
             >
               <Text style={[styles.mentionChipText, { color: colors.primary }]}>
-                @{username}
+                {s.nickname?.trim() ? s.nickname.trim() : `@${s.username}`}
               </Text>
+              {s.nickname?.trim() ? (
+                <Text style={[styles.mentionChipSub, { color: colors.mutedForeground }]}>
+                  @{s.username}
+                </Text>
+              ) : null}
             </Pressable>
           ))}
         </ScrollView>
@@ -611,7 +632,7 @@ export function CommentSheet({
   // @mention autocomplete: suggest quote commenters matching the partial
   // "@..." the user is typing (shown only while a mention is being typed).
   const suggestions = mentionSuggestions(
-    (comments ?? []).map((c) => c.username),
+    (comments ?? []).map((c) => ({ username: c.username, nickname: c.nickname })),
     commentText,
     user?.username,
   );
@@ -789,10 +810,10 @@ export function CommentSheet({
                   contentContainerStyle={styles.chipsContent}
                   keyboardShouldPersistTaps="handled"
                 >
-                  {suggestions.map((username) => (
+                  {suggestions.map((s) => (
                     <Pressable
-                      key={username}
-                      onPress={() => handleMentionChip(username)}
+                      key={s.username}
+                      onPress={() => handleMentionChip(s.username)}
                       style={({ pressed }) => [
                         styles.mentionChip,
                         {
@@ -804,8 +825,13 @@ export function CommentSheet({
                       ]}
                     >
                       <Text style={[styles.mentionChipText, { color: colors.primary }]}>
-                        @{username}
+                        {s.nickname?.trim() ? s.nickname.trim() : `@${s.username}`}
                       </Text>
+                      {s.nickname?.trim() ? (
+                        <Text style={[styles.mentionChipSub, { color: colors.mutedForeground }]}>
+                          @{s.username}
+                        </Text>
+                      ) : null}
                     </Pressable>
                   ))}
                 </ScrollView>
@@ -1086,6 +1112,10 @@ const styles = StyleSheet.create({
   mentionChipText: {
     fontSize: 12,
     fontWeight: "600",
+  },
+  mentionChipSub: {
+    fontSize: 10,
+    marginTop: 1,
   },
   parentUserRow: {
     flexDirection: "row",

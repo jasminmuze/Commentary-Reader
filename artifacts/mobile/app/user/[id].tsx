@@ -15,11 +15,13 @@ import * as Haptics from "expo-haptics";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetUserProfile,
+  useGetUserRooms,
   useAddFriend,
   useRemoveFriend,
   useSendFriendRequest,
   useAcceptFriendRequest,
   getGetUserProfileQueryKey,
+  getGetUserRoomsQueryKey,
   getGetFriendsQueryKey,
   getGetNotificationsQueryKey,
 } from "@workspace/api-client-react";
@@ -40,6 +42,13 @@ export default function UserProfileScreen() {
     query: {
       enabled: validId,
       queryKey: getGetUserProfileQueryKey(profileId),
+    },
+  });
+
+  const { data: userRooms } = useGetUserRooms(profileId, {
+    query: {
+      enabled: validId,
+      queryKey: getGetUserRoomsQueryKey(profileId),
     },
   });
 
@@ -274,6 +283,44 @@ export default function UserProfileScreen() {
             </Pressable>
           </View>
         ) : null}
+
+        {/* Rooms section — only show if the user belongs to any public rooms */}
+        {userRooms && userRooms.length > 0 ? (
+          <View style={styles.roomsSection}>
+            <Text style={[styles.roomsSectionTitle, { color: colors.mutedForeground }]}>
+              READING ROOMS
+            </Text>
+            {userRooms.map((room) => (
+              <Pressable
+                key={room.id}
+                onPress={() => router.push(`/room/${room.id}`)}
+                style={({ pressed }) => [
+                  styles.roomRow,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    borderRadius: colors.radius,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <View style={[styles.roomDot, { backgroundColor: room.coverColor }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.roomName, { color: colors.foreground }]} numberOfLines={1}>
+                    {room.name}
+                  </Text>
+                  <Text style={[styles.roomBook, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    {room.bookTitle}
+                  </Text>
+                </View>
+                <Text style={[styles.roomCount, { color: colors.mutedForeground }]}>
+                  {room.memberCount} {room.memberCount === 1 ? "member" : "members"}
+                </Text>
+                <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -369,5 +416,41 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: 15,
     fontWeight: "700",
+  },
+  roomsSection: {
+    marginHorizontal: 16,
+    marginTop: 28,
+    gap: 8,
+  },
+  roomsSectionTitle: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  roomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+  },
+  roomDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  roomName: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  roomBook: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  roomCount: {
+    fontSize: 12,
   },
 });

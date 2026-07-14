@@ -1441,6 +1441,27 @@ paths:
         "404":
           description: Room not found
 
+  /users/{userId}/rooms:
+    get:
+      operationId: getUserRooms
+      tags: [users]
+      summary: Public rooms the given user is a member of
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rooms the user belongs to
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Room"
+
   /books/{bookId}/rooms:
     get:
       operationId: getBookRooms

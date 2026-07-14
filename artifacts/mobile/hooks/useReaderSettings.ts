@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export type ReaderTheme = "paper" | "sepia" | "gray" | "dark" | "oled" | "forest";
+export type ReaderTheme = "paper" | "sepia" | "gray" | "dark" | "oled";
 export type ReaderFont = "serif" | "sans" | "georgia";
 export type LineSpacing = "compact" | "normal" | "wide";
 export type MarginSize = "narrow" | "normal" | "wide";
@@ -40,7 +40,6 @@ export const THEME_CONFIGS: Record<
   gray:   { bg: "#EBEBEB", fg: "#222222", label: "Gray" },
   dark:   { bg: "#1E1E1E", fg: "#E0E0E0", label: "Dark" },
   oled:   { bg: "#000000", fg: "#FFFFFF", label: "OLED" },
-  forest: { bg: "#1A2E1A", fg: "#C8E6C9", label: "Forest" },
 };
 
 export const FONT_CONFIGS: Record<ReaderFont, { css: string; label: string }> = {
@@ -163,6 +162,10 @@ export function useReaderSettings() {
           try {
             const saved = JSON.parse(raw) as Partial<ReaderSettings>;
             const merged = { ...DEFAULT_SETTINGS, ...saved };
+            // Migrate removed themes to a similar supported alternative.
+            if (merged.theme && !(merged.theme in THEME_CONFIGS)) {
+              merged.theme = "dark";
+            }
             setSettings(merged);
             settingsRef.current = merged;
           } catch {

@@ -10,6 +10,8 @@ import {
   quotesTable,
   userHighlightsTable,
   booksTable,
+  readingRoomsTable,
+  roomMembersTable,
 } from "@workspace/db";
 import {
   CreateUserBody,
@@ -36,6 +38,7 @@ import {
   GetUserRecordsParams,
   GetUserBookRecordsParams,
   GetUserHighlightsParams,
+  GetUserRoomsParams,
 } from "@workspace/api-zod";
 import type { UserRecordsBook, UserHighlightItem } from "@workspace/api-zod";
 import bcrypt from "bcryptjs";
@@ -1111,6 +1114,73 @@ router.get("/users/:userId/highlights", authenticate, async (req, res): Promise<
   }));
 
   res.json(result);
+});
+
+// Public rooms a user belongs to (public rooms only — no private room leakage).
+router.get("/users/:userId/rooms", authenticate, async (req, res): Promise<void> => {
+  const params = GetUserRoomsParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: "Invalid userId" }); return; }
+
+  // Subquery: member count per room
+  const memberCountSq = db
+    .select({ roomId: roomMembersTable.roomId, n: count().as("n") })
+    .from(roomMembersTable)
+    .groupBy(roomMembersTable.roomId)
+    .as("mc");
+
+  const rows = await db
+    .select({
+      id: readingRoomsTable.id,
+      canonicalBookId: readingRoomsTable.canonicalBookId,
+      name: readingRoomsTable.name,
+      description: readingRoomsTable.description,
+      isPublic: readingRoomsTable.isPublic,
+      ownerId: readingRoomsTable.ownerId,
+      memberCount: memberCountSq.n,
+      bookTitle: booksTable.title,
+      bookAuthor: booksTable.author,
+      coverColor: booksTable.coverColor,
+      createdAt: readingRoomsTable.createdAt,
+    })
+    .from(roomMembersTable)
+    .innerJoin(readingRoomsTable, eq(roomMembersTable.roomId, readingRoomsTable.id))
+    .innerJoin(booksTable, eq(readingRoomsTable.canonicalBookId, booksTable.id))
+    .leftJoin(memberCountSq, eq(memberCountSq.roomId, readingRoomsTable.id))
+    .where(
+      and(
+        eq(roomMembersTable.userId, params.data.userId),
+        eq(readingRoomsTable.isPublic, true),
+      ),
+    )
+    .orderBy(desc(readingRoomsTable.createdAt));
+
+  const viewerId = req.userId;
+  const roomIds = rows.map((r) => r.id);
+  const memberRoomIds =
+    roomIds.length > 0
+      ? new Set(
+          (
+            await db
+              .select({ roomId: roomMembersTable.roomId })
+              .from(roomMembersTable)
+              .where(
+                and(
+                  inArray(roomMembersTable.roomId, roomIds),
+                  eq(roomMembersTable.userId, viewerId),
+                ),
+              )
+          ).map((r) => r.roomId),
+        )
+      : new Set<number>();
+
+  res.json(
+    rows.map((r) => ({
+      ...r,
+      memberCount: r.memberCount ?? 0,
+      isMember: memberRoomIds.has(r.id),
+      createdAt: r.createdAt.toISOString(),
+    })),
+  );
 });
 
 export default router;

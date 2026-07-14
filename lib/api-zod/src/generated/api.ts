@@ -1494,6 +1494,30 @@ export const GetRoomFeedResponse = zod.array(GetRoomFeedResponseItem)
 
 
 /**
+ * @summary Public rooms the given user is a member of
+ */
+export const GetUserRoomsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetUserRoomsResponseItem = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number(),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+export const GetUserRoomsResponse = zod.array(GetUserRoomsResponseItem)
+
+
+/**
  * @summary Public rooms for a book (plus the viewer's own rooms for it)
  */
 export const GetBookRoomsParams = zod.object({
