@@ -20,6 +20,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useCreateUser,
   useLoginUser,
+  useSendVerificationEmail,
+  useConfirmEmailVerification,
   setAuthTokenGetter,
   ApiError,
 } from "@workspace/api-client-react";
@@ -78,11 +80,18 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
   const [error, setError] = useState("");
   const createUser = useCreateUser();
   const loginUser = useLoginUser();
+  const sendVerification = useSendVerificationEmail();
+  const confirmVerification = useConfirmEmailVerification();
+
+  // After signup we pause on a verification step before entering the app.
+  const [pendingUser, setPendingUser] = useState<CurrentUser | null>(null);
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verifyMessage, setVerifyMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   const isPending = createUser.isPending || loginUser.isPending;
 
-  const persistAndComplete = useCallback(
-    async (user: {
+  const toCurrentUser = useCallback(
+    (user: {
       id: number;
       username: string;
       nickname?: string | null;
@@ -92,26 +101,107 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
       avatarColor: string;
       defaultVisibility?: Visibility;
       createdAt?: string | Date;
-      token?: string;
-    }) => {
-      await AsyncStorage.setItem(USER_ID_KEY, String(user.id));
-      if (user.token) {
-        await AsyncStorage.setItem(TOKEN_KEY, user.token);
-      }
-      onComplete({
-        id: user.id,
-        username: user.username,
-        nickname: user.nickname ?? null,
-        avatarUrl: user.avatarUrl ?? null,
-        email: user.email ?? null,
-        emailVerified: user.emailVerified ?? false,
-        avatarColor: user.avatarColor,
-        defaultVisibility: user.defaultVisibility ?? "public",
-        createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
-      });
-    },
-    [onComplete],
+    }): CurrentUser => ({
+      id: user.id,
+      username: user.username,
+      nickname: user.nickname ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+      email: user.email ?? null,
+      emailVerified: user.emailVerified ?? false,
+      avatarColor: user.avatarColor,
+      defaultVisibility: user.defaultVisibility ?? "public",
+      createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
+    }),
+    [],
   );
+
+  const persistCredentials = useCallback(async (id: number, token?: string) => {
+    await AsyncStorage.setItem(USER_ID_KEY, String(id));
+    if (token) {
+      await AsyncStorage.setItem(TOKEN_KEY, token);
+    }
+  }, []);
+
+  const persistAndComplete = useCallback(
+    async (user: Parameters<typeof toCurrentUser>[0] & { token?: string }) => {
+      await persistCredentials(user.id, user.token);
+      onComplete(toCurrentUser(user));
+    },
+    [onComplete, toCurrentUser, persistCredentials],
+  );
+
+  // Signup path: persist credentials, then pause on the email verification
+  // step (auto-sending the code) instead of entering the app immediately.
+  const startVerificationStep = useCallback(
+    async (user: Parameters<typeof toCurrentUser>[0] & { token?: string }) => {
+      await persistCredentials(user.id, user.token);
+      const current = toCurrentUser(user);
+      setPendingUser(current);
+      sendVerification.mutate(
+        { userId: current.id },
+        {
+          onSuccess: () =>
+            setVerifyMessage({ text: "We emailed you a 6-digit code.", error: false }),
+          onError: () =>
+            setVerifyMessage({
+              text: "Could not send the email right now. You can resend it or skip for now.",
+              error: true,
+            }),
+        },
+      );
+    },
+    [persistCredentials, toCurrentUser, sendVerification],
+  );
+
+  const handleVerifyCode = useCallback(() => {
+    if (!pendingUser) return;
+    const code = verifyCode.trim();
+    if (code.length !== 6) {
+      setVerifyMessage({ text: "Enter the 6-digit code from the email.", error: true });
+      return;
+    }
+    setVerifyMessage(null);
+    confirmVerification.mutate(
+      { userId: pendingUser.id, data: { code } },
+      {
+        onSuccess: () => {
+          onComplete({ ...pendingUser, emailVerified: true });
+        },
+        onError: (err) => {
+          if (err instanceof ApiError && err.status === 400) {
+            setVerifyMessage({
+              text: "That code is incorrect or expired. Try resending the email.",
+              error: true,
+            });
+          } else {
+            setVerifyMessage({ text: "Something went wrong. Please try again.", error: true });
+          }
+        },
+      },
+    );
+  }, [pendingUser, verifyCode, confirmVerification, onComplete]);
+
+  const handleResend = useCallback(() => {
+    if (!pendingUser) return;
+    setVerifyMessage(null);
+    sendVerification.mutate(
+      { userId: pendingUser.id },
+      {
+        onSuccess: () =>
+          setVerifyMessage({ text: "Verification email sent. Check your inbox.", error: false }),
+        onError: (err) => {
+          if (err instanceof ApiError && err.status === 429) {
+            setVerifyMessage({ text: "Email sent recently — try again in a minute.", error: true });
+          } else {
+            setVerifyMessage({
+              text: "Could not send the email right now. Try again later.",
+              error: true,
+            });
+          }
+        },
+      },
+    );
+  }, [pendingUser, sendVerification]);
 
   const handleSubmit = useCallback(async () => {
     const trimmed = username.trim();
@@ -181,7 +271,12 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
             password,
           },
         },
-        { onSuccess, onError },
+        {
+          onSuccess: (user) => {
+            void startVerificationStep(user);
+          },
+          onError,
+        },
       );
     } else {
       loginUser.mutate(
@@ -189,9 +284,112 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
         { onSuccess, onError },
       );
     }
-  }, [username, email, nickname, password, mode, createUser, loginUser, persistAndComplete]);
+  }, [username, email, nickname, password, mode, createUser, loginUser, persistAndComplete, startVerificationStep]);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
+
+  if (pendingUser) {
+    return (
+      <KeyboardAvoidingView
+        style={[styles.onboardingContainer, { backgroundColor: colors.background }]}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={[styles.onboardingContent, { paddingTop: topInset + 40 }]}>
+          <View style={[styles.onboardingIcon, { backgroundColor: colors.primary }]}>
+            <Text style={styles.onboardingIconText}>S</Text>
+          </View>
+          <Text style={[styles.onboardingTitle, { color: colors.foreground }]}>
+            Check your email
+          </Text>
+          <Text style={[styles.onboardingSubtitle, { color: colors.mutedForeground }]}>
+            We sent a 6-digit verification code to{"\n"}
+            {pendingUser.email ?? "your email"}
+          </Text>
+
+          <View style={styles.onboardingForm}>
+            <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
+              Verification code
+            </Text>
+            <TextInput
+              style={[
+                styles.onboardingInput,
+                styles.codeInput,
+                {
+                  backgroundColor: colors.card,
+                  color: colors.foreground,
+                  borderColor: verifyMessage?.error ? colors.destructive : colors.border,
+                  borderRadius: colors.radius,
+                },
+              ]}
+              placeholder="123456"
+              placeholderTextColor={colors.mutedForeground}
+              value={verifyCode}
+              onChangeText={(t) => {
+                setVerifyCode(t.replace(/[^0-9]/g, "").slice(0, 6));
+                setVerifyMessage(null);
+              }}
+              keyboardType="number-pad"
+              maxLength={6}
+              returnKeyType="done"
+              onSubmitEditing={handleVerifyCode}
+            />
+            {verifyMessage ? (
+              <Text
+                style={[
+                  styles.onboardingError,
+                  { color: verifyMessage.error ? colors.destructive : colors.primary },
+                ]}
+              >
+                {verifyMessage.text}
+              </Text>
+            ) : null}
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.onboardingButton,
+                {
+                  backgroundColor: colors.primary,
+                  borderRadius: colors.radius,
+                  opacity: pressed || confirmVerification.isPending ? 0.8 : 1,
+                },
+              ]}
+              onPress={handleVerifyCode}
+              disabled={confirmVerification.isPending}
+            >
+              {confirmVerification.isPending ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <Text style={[styles.onboardingButtonText, { color: colors.primaryForeground }]}>
+                  Verify email
+                </Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={styles.modeToggle}
+              onPress={handleResend}
+              disabled={sendVerification.isPending}
+            >
+              <Text
+                style={[
+                  styles.modeToggleText,
+                  { color: colors.primary, opacity: sendVerification.isPending ? 0.5 : 1 },
+                ]}
+              >
+                {sendVerification.isPending ? "Sending..." : "Resend code"}
+              </Text>
+            </Pressable>
+
+            <Pressable style={styles.modeToggle} onPress={() => onComplete(pendingUser)}>
+              <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
+                Skip for now — verify later in Profile
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -478,6 +676,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 16,
     borderWidth: 1,
+  },
+  codeInput: {
+    textAlign: "center",
+    fontSize: 22,
+    letterSpacing: 8,
+    fontWeight: "700",
   },
   onboardingError: {
     fontSize: 13,

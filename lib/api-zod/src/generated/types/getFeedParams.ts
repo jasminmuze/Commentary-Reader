@@ -8,6 +8,10 @@
 
 export type GetFeedParams = {
 /**
+ * Restrict the feed to activity in this reading room (viewer must be a member).
+ */
+roomId?: number;
+/**
  * Opaque cursor from a previous page's nextCursor. Omit for the first page.
  */
 cursor?: string;

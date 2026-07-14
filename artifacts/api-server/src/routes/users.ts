@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, or, isNull, lt, like, inArray, count, desc, max } from "drizzle-orm";
+import { eq, and, or, isNull, lt, like, ilike, inArray, count, desc, max } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -400,30 +400,69 @@ router.get("/users/search", authenticate, async (req, res): Promise<void> => {
   const { q } = params.data;
   const userId = req.userId;
 
+  // Match either username or display nickname, case-insensitively.
+  const pattern = `%${q}%`;
   const users = await db
     .select()
     .from(usersTable)
-    .where(like(usersTable.username, `%${q}%`))
+    .where(or(ilike(usersTable.username, pattern), ilike(usersTable.nickname, pattern)))
     .limit(20);
 
-  const results = await Promise.all(
-    users
-      .filter((u) => u.id !== userId)
-      .map(async (u) => {
-        const isFriend = userId
-          ? (await db.select().from(friendshipsTable).where(and(eq(friendshipsTable.userId, userId), eq(friendshipsTable.friendId, u.id)))).length > 0
-          : false;
-        return {
-          id: u.id,
-          username: u.username,
-          nickname: u.nickname ?? null,
-          avatarUrl: u.avatarUrl ?? null,
-          avatarColor: u.avatarColor,
-          createdAt: u.createdAt.toISOString(),
-          isFriend,
-        };
-      })
-  );
+  const candidates = users.filter((u) => u.id !== userId);
+  const candidateIds = candidates.map((u) => u.id);
+
+  // Batch relationship lookups: follows in both directions + pending requests.
+  const followingSet = new Set<number>();
+  const followsMeSet = new Set<number>();
+  const requestedSet = new Set<number>();
+  const incomingSet = new Set<number>();
+  if (candidateIds.length > 0) {
+    const [outEdges, inEdges, outReqs, inReqs] = await Promise.all([
+      db
+        .select({ friendId: friendshipsTable.friendId })
+        .from(friendshipsTable)
+        .where(and(eq(friendshipsTable.userId, userId), inArray(friendshipsTable.friendId, candidateIds))),
+      db
+        .select({ userId: friendshipsTable.userId })
+        .from(friendshipsTable)
+        .where(and(eq(friendshipsTable.friendId, userId), inArray(friendshipsTable.userId, candidateIds))),
+      db
+        .select({ recipientId: friendRequestsTable.recipientId })
+        .from(friendRequestsTable)
+        .where(and(eq(friendRequestsTable.requesterId, userId), inArray(friendRequestsTable.recipientId, candidateIds))),
+      db
+        .select({ requesterId: friendRequestsTable.requesterId })
+        .from(friendRequestsTable)
+        .where(and(eq(friendRequestsTable.recipientId, userId), inArray(friendRequestsTable.requesterId, candidateIds))),
+    ]);
+    for (const e of outEdges) followingSet.add(e.friendId);
+    for (const e of inEdges) followsMeSet.add(e.userId);
+    for (const r of outReqs) requestedSet.add(r.recipientId);
+    for (const r of inReqs) incomingSet.add(r.requesterId);
+  }
+
+  const results = candidates.map((u) => {
+    const isFollowing = followingSet.has(u.id);
+    const mutual = isFollowing && followsMeSet.has(u.id);
+    const friendStatus: "none" | "requested" | "incoming" | "friends" = mutual
+      ? "friends"
+      : requestedSet.has(u.id)
+        ? "requested"
+        : incomingSet.has(u.id)
+          ? "incoming"
+          : "none";
+    return {
+      id: u.id,
+      username: u.username,
+      nickname: u.nickname ?? null,
+      avatarUrl: u.avatarUrl ?? null,
+      avatarColor: u.avatarColor,
+      createdAt: u.createdAt.toISOString(),
+      isFriend: isFollowing,
+      isFollowing,
+      friendStatus,
+    };
+  });
 
   res.json(results);
 });

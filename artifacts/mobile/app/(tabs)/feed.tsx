@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +19,7 @@ import type { InfiniteData } from "@tanstack/react-query";
 import {
   getFeed,
   getGetFeedQueryKey,
+  useGetMyRooms,
   useLikeComment,
   useLikeHighlight,
 } from "@workspace/api-client-react";
@@ -213,12 +214,21 @@ export default function FeedScreen() {
   const { user } = useUser();
   const queryClient = useQueryClient();
 
-  // Must match the infinite query key below (scoped by user id).
-  const feedQueryKey = [
-    ...getGetFeedQueryKey({ limit: PAGE_SIZE }),
-    "infinite",
-    user?.id ?? 0,
-  ];
+  // Per-room filter: null = everyone I follow, a number = that room only.
+  const [roomFilter, setRoomFilter] = useState<number | null>(null);
+  const { data: myRooms } = useGetMyRooms();
+
+  const feedParams =
+    roomFilter === null
+      ? { limit: PAGE_SIZE }
+      : { limit: PAGE_SIZE, roomId: roomFilter };
+
+  // Must match the infinite query key below (scoped by user id + room filter).
+  const feedQueryKey = useMemo(
+    () => [...getGetFeedQueryKey(feedParams), "infinite", user?.id ?? 0],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [roomFilter, user?.id],
+  );
 
   const {
     data,
@@ -231,15 +241,13 @@ export default function FeedScreen() {
   } = useInfiniteQuery({
     // Scoped by user id so a different account never sees a cached feed.
     queryKey: [
-      ...getGetFeedQueryKey({ limit: PAGE_SIZE }),
+      ...getGetFeedQueryKey(feedParams),
       "infinite",
       user?.id ?? 0,
     ],
     queryFn: ({ pageParam, signal }) =>
       getFeed(
-        pageParam
-          ? { limit: PAGE_SIZE, cursor: pageParam }
-          : { limit: PAGE_SIZE },
+        pageParam ? { ...feedParams, cursor: pageParam } : feedParams,
         { signal },
       ),
     initialPageParam: undefined as string | undefined,
@@ -270,8 +278,7 @@ export default function FeedScreen() {
           },
       );
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [queryClient, user?.id],
+    [queryClient, feedQueryKey],
   );
 
   const likeHighlight = useLikeHighlight();
@@ -342,6 +349,42 @@ export default function FeedScreen() {
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
           Highlights and comments from people you follow
         </Text>
+        {myRooms && myRooms.length > 0 ? (
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            data={[{ id: null as number | null, name: "All" }, ...myRooms.map((r) => ({ id: r.id as number | null, name: r.name }))]}
+            keyExtractor={(chip) => String(chip.id ?? "all")}
+            style={styles.chipRow}
+            contentContainerStyle={styles.chipRowContent}
+            renderItem={({ item: chip }) => {
+              const active = roomFilter === chip.id;
+              return (
+                <Pressable
+                  onPress={() => setRoomFilter(chip.id)}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    {
+                      backgroundColor: active ? colors.primary : colors.card,
+                      borderColor: active ? colors.primary : colors.border,
+                      opacity: pressed ? 0.8 : 1,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: active ? colors.primaryForeground : colors.mutedForeground },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {chip.name}
+                  </Text>
+                </Pressable>
+              );
+            }}
+          />
+        ) : null}
       </View>
 
       <FlatList<FeedItem>
@@ -361,6 +404,12 @@ export default function FeedScreen() {
                 </View>
               ))}
             </View>
+          ) : roomFilter !== null ? (
+            <EmptyState
+              icon="users"
+              title="No activity in this room yet"
+              subtitle="Highlights and comments shared in this room will appear here"
+            />
           ) : (
             <EmptyState
               icon="users"
@@ -402,6 +451,16 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.5 },
   subtitle: { fontSize: 13, marginTop: 2 },
+  chipRow: { marginTop: 12, marginHorizontal: -20 },
+  chipRowContent: { paddingHorizontal: 20, gap: 8 },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    maxWidth: 180,
+  },
+  chipText: { fontSize: 13, fontWeight: "600" },
   list: { paddingTop: 12, flexGrow: 1 },
   card: {
     marginHorizontal: 16,

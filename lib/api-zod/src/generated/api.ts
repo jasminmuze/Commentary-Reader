@@ -620,7 +620,7 @@ export const GetUserResponse = zod.object({
 
 
 /**
- * @summary Search users by username (viewer taken from bearer token)
+ * @summary Search users by username or nickname (viewer taken from bearer token)
  */
 export const SearchUsersQueryParams = zod.object({
   "q": zod.coerce.string()
@@ -633,7 +633,9 @@ export const SearchUsersResponseItem = zod.object({
   "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "createdAt": zod.coerce.date(),
-  "isFriend": zod.boolean()
+  "isFriend": zod.boolean().describe('Deprecated alias of isFollowing (kept for older clients).'),
+  "isFollowing": zod.boolean().describe('True when the viewer already follows this user.'),
+  "friendStatus": zod.enum(['none', 'requested', 'incoming', 'friends']).describe('Friend relationship between the viewer and this user (friends = mutual follow).')
 })
 export const SearchUsersResponse = zod.array(SearchUsersResponseItem)
 
@@ -1198,6 +1200,7 @@ export const getFeedQueryLimitMax = 50;
 
 
 export const GetFeedQueryParams = zod.object({
+  "roomId": zod.coerce.number().optional().describe('Restrict the feed to activity in this reading room (viewer must be a member).'),
   "cursor": zod.coerce.string().optional().describe('Opaque cursor from a previous page\'s nextCursor. Omit for the first page.'),
   "limit": zod.coerce.number().min(1).max(getFeedQueryLimitMax).default(getFeedQueryLimitDefault)
 })

@@ -529,7 +529,7 @@ paths:
     get:
       operationId: searchUsers
       tags: [users]
-      summary: Search users by username (viewer taken from bearer token)
+      summary: Search users by username or nickname (viewer taken from bearer token)
       parameters:
         - name: q
           in: query
@@ -1118,6 +1118,12 @@ paths:
       tags: [users]
       summary: Activity feed of users I follow (highlights + comments, newest first, viewer taken from bearer token)
       parameters:
+        - name: roomId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Restrict the feed to activity in this reading room (viewer must be a member).
         - name: cursor
           in: query
           required: false
@@ -1950,7 +1956,18 @@ components:
 
     UserWithFriendStatus:
       type: object
-      required: [id, username, nickname, avatarUrl, avatarColor, createdAt, isFriend]
+      required:
+        [
+          id,
+          username,
+          nickname,
+          avatarUrl,
+          avatarColor,
+          createdAt,
+          isFriend,
+          isFollowing,
+          friendStatus,
+        ]
       properties:
         id:
           type: integer
@@ -1967,6 +1984,14 @@ components:
           format: date-time
         isFriend:
           type: boolean
+          description: Deprecated alias of isFollowing (kept for older clients).
+        isFollowing:
+          type: boolean
+          description: True when the viewer already follows this user.
+        friendStatus:
+          type: string
+          enum: [none, requested, incoming, friends]
+          description: Friend relationship between the viewer and this user (friends = mutual follow).
 
     UserInput:
       type: object

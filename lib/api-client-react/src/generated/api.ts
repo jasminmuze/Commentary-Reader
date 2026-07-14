@@ -1836,7 +1836,7 @@ export const getSearchUsersUrl = (params: SearchUsersParams,) => {
 }
 
 /**
- * @summary Search users by username (viewer taken from bearer token)
+ * @summary Search users by username or nickname (viewer taken from bearer token)
  */
 export const searchUsers = async (params: SearchUsersParams, options?: RequestInit): Promise<UserWithFriendStatus[]> => {
 
@@ -1883,7 +1883,7 @@ export type SearchUsersQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Search users by username (viewer taken from bearer token)
+ * @summary Search users by username or nickname (viewer taken from bearer token)
  */
 
 export function useSearchUsers<TData = Awaited<ReturnType<typeof searchUsers>>, TError = ErrorType<unknown>>(

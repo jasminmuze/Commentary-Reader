@@ -72,5 +72,6 @@ export * from './userProfileFriendStatus';
 export * from './userRecordsBook';
 export * from './userRef';
 export * from './userWithFriendStatus';
+export * from './userWithFriendStatusFriendStatus';
 export * from './verifyEmailInput';
 export * from './visibility';

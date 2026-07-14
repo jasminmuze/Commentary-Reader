@@ -33,6 +33,8 @@ import {
   getGetMyRoomsQueryKey,
   getGetBookRoomsQueryKey,
   getGetNotificationsQueryKey,
+  useLikeComment,
+  useLikeHighlight,
   ApiError,
 } from "@workspace/api-client-react";
 import type { RoomDetail, RoomFeedItem, RoomMemberInfo, User } from "@workspace/api-client-react";
@@ -40,6 +42,8 @@ import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "@/components/UserAvatar";
 import { EmptyState } from "@/components/EmptyState";
+import { CommentSheet } from "@/components/CommentSheet";
+import { navigateToQuote } from "@/lib/quoteNavigation";
 
 function timeAgo(dateStr: string): string {
   const date = new Date(dateStr);
@@ -59,10 +63,16 @@ function FeedRow({
   item,
   myProgress,
   colors,
+  onPress,
+  onToggleLike,
+  onOpenComments,
 }: {
   item: RoomFeedItem;
   myProgress: number | null;
   colors: ReturnType<typeof useColors>;
+  onPress: (item: RoomFeedItem) => void;
+  onToggleLike: (item: RoomFeedItem) => void;
+  onOpenComments: (item: RoomFeedItem) => void;
 }) {
   const [revealed, setRevealed] = useState(false);
   const guarded =
@@ -73,10 +83,16 @@ function FeedRow({
       item.containsSpoilers);
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={() => onPress(item)}
+      style={({ pressed }) => [
         styles.feedRow,
-        { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius },
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          borderRadius: colors.radius,
+          opacity: pressed ? 0.7 : 1,
+        },
       ]}
     >
       <View style={styles.feedHead}>
@@ -131,7 +147,46 @@ function FeedRow({
           ) : null}
         </>
       )}
-    </View>
+
+      <View style={styles.feedActions}>
+        <Pressable
+          onPress={() => onToggleLike(item)}
+          hitSlop={10}
+          style={({ pressed }) => [styles.feedActionBtn, { opacity: pressed ? 0.6 : 1 }]}
+          accessibilityRole="button"
+          accessibilityLabel={item.likedByMe ? "Unlike" : "Like"}
+        >
+          <Feather
+            name="heart"
+            size={15}
+            color={item.likedByMe ? colors.primary : colors.mutedForeground}
+          />
+          {item.likeCount > 0 ? (
+            <Text
+              style={[
+                styles.feedActionText,
+                {
+                  color: item.likedByMe ? colors.primary : colors.mutedForeground,
+                  fontWeight: item.likedByMe ? "700" : "500",
+                },
+              ]}
+            >
+              {item.likeCount}
+            </Text>
+          ) : null}
+        </Pressable>
+        <Pressable
+          onPress={() => onOpenComments(item)}
+          hitSlop={10}
+          style={({ pressed }) => [styles.feedActionBtn, { opacity: pressed ? 0.6 : 1 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Comments"
+        >
+          <Feather name="message-circle" size={15} color={colors.mutedForeground} />
+          <Text style={[styles.feedActionText, { color: colors.mutedForeground }]}>Comment</Text>
+        </Pressable>
+      </View>
+    </Pressable>
   );
 }
 
@@ -215,6 +270,64 @@ export default function RoomScreen() {
   const { data: feed } = useGetRoomFeed(roomId, {
     query: { enabled: !!roomId && isMember, queryKey: getGetRoomFeedQueryKey(roomId) },
   });
+
+  // ── Feed row interactions: like, open comments, jump to the passage ──────
+  const likeHighlight = useLikeHighlight();
+  const likeComment = useLikeComment();
+  const [commentTarget, setCommentTarget] = useState<RoomFeedItem | null>(null);
+
+  // Patches one room-feed item in the cache (optimistic like toggle).
+  const patchFeedItem = useCallback(
+    (type: RoomFeedItem["type"], itemId: number, patch: (it: RoomFeedItem) => RoomFeedItem) => {
+      queryClient.setQueryData<RoomFeedItem[]>(
+        getGetRoomFeedQueryKey(roomId),
+        (old) => old?.map((it) => (it.type === type && it.id === itemId ? patch(it) : it)),
+      );
+    },
+    [queryClient, roomId],
+  );
+
+  const handleToggleLike = useCallback(
+    (item: RoomFeedItem) => {
+      const wasLiked = item.likedByMe;
+      patchFeedItem(item.type, item.id, (it) => ({
+        ...it,
+        likedByMe: !wasLiked,
+        likeCount: Math.max(0, it.likeCount + (wasLiked ? -1 : 1)),
+      }));
+      const revert = () =>
+        patchFeedItem(item.type, item.id, (it) => ({
+          ...it,
+          likedByMe: wasLiked,
+          likeCount: Math.max(0, it.likeCount + (wasLiked ? 1 : -1)),
+        }));
+      const reconcile = (result: { liked: boolean; likeCount: number }) =>
+        patchFeedItem(item.type, item.id, (it) => ({
+          ...it,
+          likedByMe: result.liked,
+          likeCount: result.likeCount,
+        }));
+      if (item.type === "highlight") {
+        likeHighlight.mutate({ highlightId: item.id }, { onSuccess: reconcile, onError: revert });
+      } else {
+        likeComment.mutate({ commentId: item.id }, { onSuccess: reconcile, onError: revert });
+      }
+    },
+    [patchFeedItem, likeHighlight, likeComment],
+  );
+
+  const handleOpenFeedItem = useCallback(
+    (item: RoomFeedItem) => {
+      navigateToQuote(item.quoteId, {
+        onFallback: () => {
+          if (room?.canonicalBookId) router.push(`/book/${room.canonicalBookId}`);
+        },
+      }).catch(() => {
+        Alert.alert("Can't open this", "Couldn't load the passage. Please try again in a moment.");
+      });
+    },
+    [room?.canonicalBookId],
+  );
 
   const { data: friends } = useGetFriends(user?.id ?? 0, {
     query: {
@@ -603,6 +716,9 @@ export default function RoomScreen() {
                     item={item}
                     myProgress={room.myReadingProgress}
                     colors={colors}
+                    onPress={handleOpenFeedItem}
+                    onToggleLike={handleToggleLike}
+                    onOpenComments={setCommentTarget}
                   />
                 ))
               )}
@@ -680,6 +796,19 @@ export default function RoomScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Room-scoped comments for a tapped feed item */}
+      <CommentSheet
+        visible={commentTarget !== null}
+        quoteId={commentTarget?.quoteId ?? null}
+        quoteText={commentTarget?.quoteText ?? ""}
+        onClose={() => setCommentTarget(null)}
+        roomId={roomId}
+        myProgress={room?.myReadingProgress ?? null}
+        onCommentSaved={() => {
+          void queryClient.invalidateQueries({ queryKey: getGetRoomFeedQueryKey(roomId) });
+        }}
+      />
 
       {/* Owner edit modal */}
       <Modal visible={editVisible} transparent animationType="fade" onRequestClose={() => setEditVisible(false)}>
@@ -874,6 +1003,14 @@ const styles = StyleSheet.create({
   feedQuote: { borderLeftWidth: 2, paddingLeft: 10 },
   feedQuoteText: { fontSize: 12, fontStyle: "italic", lineHeight: 17 },
   feedComment: { fontSize: 14, lineHeight: 20 },
+  feedActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 18,
+    marginTop: 10,
+  },
+  feedActionBtn: { flexDirection: "row", alignItems: "center", gap: 5 },
+  feedActionText: { fontSize: 12, fontWeight: "500" },
   spoilerCover: {
     flexDirection: "row",
     alignItems: "center",

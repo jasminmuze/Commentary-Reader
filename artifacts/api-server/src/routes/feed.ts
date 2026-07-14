@@ -8,6 +8,7 @@ import {
   commentsTable,
   highlightLikesTable,
   quotesTable,
+  roomMembersTable,
   userHighlightsTable,
   usersTable,
 } from "@workspace/db";
@@ -93,23 +94,44 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
   }
 
   const userId = req.userId;
-  const followingIds = await getFollowingIds(userId);
-  if (followingIds.length === 0) {
+  const roomId = qp.data.roomId;
+
+  // Room-scoped feed: show ALL activity in the room (not just followed users),
+  // restricted to members. Room rows are visible to every member regardless
+  // of the row's visibility setting, matching the room feed screen.
+  if (roomId !== undefined) {
+    const [membership] = await db
+      .select({ id: roomMembersTable.id })
+      .from(roomMembersTable)
+      .where(
+        and(eq(roomMembersTable.roomId, roomId), eq(roomMembersTable.userId, userId)),
+      );
+    if (!membership) {
+      res.status(403).json({ error: "Members only" });
+      return;
+    }
+  }
+
+  const followingIds = roomId === undefined ? await getFollowingIds(userId) : [];
+  if (roomId === undefined && followingIds.length === 0) {
     const empty: FeedPage = { items: [], nextCursor: null };
     res.json(empty);
     return;
   }
   const viewer = await getViewer(userId);
 
-  const highlightFilters: SQL[] = [
-    inArray(userHighlightsTable.userId, followingIds),
-    visibilityPredicate(
-      userHighlightsTable.visibility,
-      userHighlightsTable.userId,
-      viewer,
-      userHighlightsTable.roomId,
-    ),
-  ];
+  const highlightFilters: SQL[] =
+    roomId !== undefined
+      ? [eq(userHighlightsTable.roomId, roomId)]
+      : [
+          inArray(userHighlightsTable.userId, followingIds),
+          visibilityPredicate(
+            userHighlightsTable.visibility,
+            userHighlightsTable.userId,
+            viewer,
+            userHighlightsTable.roomId,
+          ),
+        ];
   if (cursor) {
     highlightFilters.push(
       cursorPredicate(
@@ -146,10 +168,13 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
     .orderBy(desc(userHighlightsTable.createdAt), desc(userHighlightsTable.id))
     .limit(limit + 1);
 
-  const commentFilters: SQL[] = [
-    inArray(commentsTable.userId, followingIds),
-    visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId),
-  ];
+  const commentFilters: SQL[] =
+    roomId !== undefined
+      ? [eq(commentsTable.roomId, roomId)]
+      : [
+          inArray(commentsTable.userId, followingIds),
+          visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId),
+        ];
   if (cursor) {
     commentFilters.push(
       cursorPredicate(

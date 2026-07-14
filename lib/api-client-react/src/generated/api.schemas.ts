@@ -366,6 +366,19 @@ export interface NotificationSettings {
   friends: boolean;
 }
 
+/**
+ * Friend relationship between the viewer and this user (friends = mutual follow).
+ */
+export type UserWithFriendStatusFriendStatus = typeof UserWithFriendStatusFriendStatus[keyof typeof UserWithFriendStatusFriendStatus];
+
+
+export const UserWithFriendStatusFriendStatus = {
+  none: 'none',
+  requested: 'requested',
+  incoming: 'incoming',
+  friends: 'friends',
+} as const;
+
 export interface UserWithFriendStatus {
   id: number;
   username: string;
@@ -375,7 +388,12 @@ export interface UserWithFriendStatus {
   avatarUrl: string | null;
   avatarColor: string;
   createdAt: string;
+  /** Deprecated alias of isFollowing (kept for older clients). */
   isFriend: boolean;
+  /** True when the viewer already follows this user. */
+  isFollowing: boolean;
+  /** Friend relationship between the viewer and this user (friends = mutual follow). */
+  friendStatus: UserWithFriendStatusFriendStatus;
 }
 
 export interface UserInput {
@@ -772,6 +790,10 @@ q: string;
 };
 
 export type GetFeedParams = {
+/**
+ * Restrict the feed to activity in this reading room (viewer must be a member).
+ */
+roomId?: number;
 /**
  * Opaque cursor from a previous page's nextCursor. Omit for the first page.
  */
