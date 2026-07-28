@@ -23,7 +23,8 @@
       }
     },
     "android": {
-      "package": "com.shelfmates.app"
+      "package": "com.shelfmates.app",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/images/favicon.png"

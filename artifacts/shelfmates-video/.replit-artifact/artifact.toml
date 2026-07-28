@@ -1,0 +1,27 @@
+kind = "video"
+previewPath = "/shelfmates-video/"
+title = "Shelfmates Promo Video"
+version = "1.0.0"
+id = "artifacts/shelfmates-video"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/shelfmates-video/" ]
+localPort = 22443
+
+[services.development]
+run = "pnpm --filter @workspace/shelfmates-video run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/shelfmates-video", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/shelfmates-video/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22443"
+BASE_PATH = "/shelfmates-video/"
