@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   DeviceEventEmitter,
+  NativeEventEmitter,
   NativeModules,
   Platform,
   Pressable,
@@ -95,19 +96,35 @@ function isExpoGo(): boolean {
 }
 
 function getNativeReadiumHost(): NativeReadiumHostModule | null {
-  if (Platform.OS !== "android" || isExpoGo()) return null;
+  if ((Platform.OS !== "android" && Platform.OS !== "ios") || isExpoGo()) return null;
   const host = NativeModules.NativeReadiumHost as NativeReadiumHostModule | undefined;
   if (!host || typeof host.findQuoteLocators !== "function") return null;
   return host;
 }
 
 let NativeReadiumView: React.ComponentType<NativeReadiumViewProps> | null = null;
-if (Platform.OS === "android" && !isExpoGo()) {
+if ((Platform.OS === "android" || Platform.OS === "ios") && !isExpoGo()) {
   try {
     NativeReadiumView = requireNativeComponent<NativeReadiumViewProps>("NativeReadiumView");
   } catch {
     NativeReadiumView = null;
   }
+}
+
+// Android emits through DeviceEventEmitter; iOS through the module's
+// RCTEventEmitter (which requires subscribing via NativeEventEmitter so the
+// native side sees the listener count and starts sending).
+type ReadiumEventEmitter = Pick<typeof DeviceEventEmitter, "addListener">;
+
+function getReadiumEventEmitter(): ReadiumEventEmitter {
+  if (Platform.OS === "ios" && !isExpoGo() && NativeModules.NativeReadiumHost) {
+    try {
+      return new NativeEventEmitter(NativeModules.NativeReadiumHost);
+    } catch {
+      return DeviceEventEmitter;
+    }
+  }
+  return DeviceEventEmitter;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,11 +200,11 @@ function NativeReadiumUnavailableScreen() {
     <View style={[styles.center, { backgroundColor: colors.background, padding: 28 }]}>
       <Feather name="book-open" size={34} color={colors.primary} />
       <Text style={[styles.title, { color: colors.foreground, marginTop: 16 }]}>
-        An Android development build is required
+        A development build is required
       </Text>
       <Text style={[styles.body, { color: colors.mutedForeground }]}>
-        The native Readium reader only runs inside an Android build. In Expo Go and the web preview you can
-        only see the app shell; the EPUB reader opens once you install the development APK.
+        The native Readium reader only runs inside an Android or iOS build. In Expo Go and the web preview
+        you can only see the app shell; the EPUB reader opens once you install the development build.
       </Text>
       <Pressable
         style={[styles.button, { borderColor: colors.border, marginTop: 20 }]}
@@ -677,8 +694,9 @@ function EmbeddedReader({
   // -------------------------------------------------------------------
 
   useEffect(() => {
+    const emitter = getReadiumEventEmitter();
     const subs = [
-      DeviceEventEmitter.addListener("NativeReadiumHost.opened", (event: OpenedEvent) => {
+      emitter.addListener("NativeReadiumHost.opened", (event: OpenedEvent) => {
         if (event.libraryId !== libraryId) return;
         setOpened(true);
         setSearchable(event.searchable === true);
@@ -688,7 +706,7 @@ function EmbeddedReader({
           setToc([]);
         }
       }),
-      DeviceEventEmitter.addListener(
+      emitter.addListener(
         "NativeReadiumHost.locationChanged",
         (event: LocationEvent) => {
           if (event.libraryId !== libraryId || !event.location) return;
@@ -719,11 +737,11 @@ function EmbeddedReader({
           }, 1200);
         },
       ),
-      DeviceEventEmitter.addListener("NativeReadiumHost.centerTapped", (event: { libraryId: number }) => {
+      emitter.addListener("NativeReadiumHost.centerTapped", (event: { libraryId: number }) => {
         if (event.libraryId !== libraryId) return;
         setChromeVisible((visible) => !visible);
       }),
-      DeviceEventEmitter.addListener(
+      emitter.addListener(
         "NativeReadiumHost.highlightTapped",
         (event: HighlightTappedEvent) => {
           if (event.libraryId !== libraryId) return;
@@ -738,14 +756,14 @@ function EmbeddedReader({
           setSheetVisible(true);
         },
       ),
-      DeviceEventEmitter.addListener(
+      emitter.addListener(
         "NativeReadiumHost.textSelected",
         (event: TextSelectedEvent) => {
           if (event.libraryId !== libraryId) return;
           handleTextSelectedRef.current(event);
         },
       ),
-      DeviceEventEmitter.addListener(
+      emitter.addListener(
         "NativeReadiumHost.quoteLocated",
         (event: QuoteLocatedEvent) => {
           if (event.libraryId !== libraryId) return;
@@ -753,7 +771,7 @@ function EmbeddedReader({
           setLocatedVersion((v) => v + 1);
         },
       ),
-      DeviceEventEmitter.addListener(
+      emitter.addListener(
         "NativeReadiumHost.chapterPull",
         (event: ChapterPullEvent) => {
           if (event.libraryId !== libraryId) return;
@@ -777,7 +795,7 @@ function EmbeddedReader({
           }
         },
       ),
-      DeviceEventEmitter.addListener(
+      emitter.addListener(
         "NativeReadiumHost.error",
         (event: { libraryId: number; message?: string }) => {
           if (event.libraryId !== libraryId) return;
@@ -786,7 +804,7 @@ function EmbeddedReader({
           );
         },
       ),
-      DeviceEventEmitter.addListener(
+      emitter.addListener(
         "NativeReadiumHost.debug",
         (event: { libraryId: number; message: string }) => {
           if (event.libraryId === libraryId) {
@@ -794,7 +812,7 @@ function EmbeddedReader({
           }
         },
       ),
-      DeviceEventEmitter.addListener(
+      emitter.addListener(
         "NativeReadiumHost.resourceLoadFailed",
         (event: { libraryId: number; href?: string; message?: string }) => {
           if (event.libraryId === libraryId) {

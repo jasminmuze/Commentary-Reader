@@ -30,6 +30,48 @@ const NATIVE_READIUM_DEPS = [
   'implementation "androidx.appcompat:appcompat:1.7.0"',
 ];
 
+const READIUM_IOS_VERSION = "3.1.0";
+const READIUM_PODS_MARKER = "# readium: pods + post_install helpers";
+// Defines the `readium_pods` / `readium_post_install` helpers referenced from
+// inside the target block. Expo links pods as static libraries, so every pod
+// with Objective-C headers (GCDWebServer fork, Minizip) and the Swift pods
+// imported from Swift code need modular headers.
+const READIUM_PODS_DEFS = `${READIUM_PODS_MARKER}
+def readium_pods
+  pod 'ReadiumShared', '~> ${READIUM_IOS_VERSION}', :modular_headers => true
+  pod 'ReadiumStreamer', '~> ${READIUM_IOS_VERSION}', :modular_headers => true
+  pod 'ReadiumNavigator', '~> ${READIUM_IOS_VERSION}', :modular_headers => true
+  pod 'ReadiumInternal', '~> ${READIUM_IOS_VERSION}', :modular_headers => true
+  pod 'ReadiumAdapterGCDWebServer', '~> ${READIUM_IOS_VERSION}', :modular_headers => true
+  pod 'ReadiumGCDWebServer', :modular_headers => true
+  pod 'ReadiumFuzi', :modular_headers => true
+  pod 'ReadiumZIPFoundation', :modular_headers => true
+  pod 'Minizip', :modular_headers => true
+  pod 'SwiftSoup', :modular_headers => true
+  pod 'DifferenceKit', :modular_headers => true
+  pod 'NativeReadiumHost', :path => File.join(__dir__, '..', 'native', 'readium-host', 'ios')
+end
+
+def readium_post_install(installer)
+  installer.pods_project.targets.each do |target|
+    next unless target.name.start_with?('Readium') ||
+                ['NativeReadiumHost', 'Minizip', 'SwiftSoup', 'DifferenceKit'].include?(target.name)
+    target.build_configurations.each do |config|
+      # Readium pods declare older deployment targets; align them with the app
+      # so Xcode 15+ doesn't fail the build.
+      if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.1
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+      end
+    end
+  end
+end
+`;
+
+function ensureReadiumPodDefs(contents) {
+  if (contents.includes(READIUM_PODS_MARKER)) return contents;
+  return `${READIUM_PODS_DEFS}\n${contents}`;
+}
+
 function ensurePodSources(contents) {
   if (contents.includes(READIUM_SOURCE)) return contents;
   if (contents.includes(COCOAPODS_SOURCE)) {
@@ -39,7 +81,8 @@ function ensurePodSources(contents) {
 }
 
 function ensureReadiumPods(contents) {
-  if (contents.includes("readium_pods")) return contents;
+  // Match only a bare `readium_pods` call line, not the `def readium_pods` helper.
+  if (/^\s*readium_pods\s*$/m.test(contents)) return contents;
   const postInstallIndex = contents.indexOf("post_install do |installer|");
   if (postInstallIndex >= 0) {
     return `${contents.slice(0, postInstallIndex)}  readium_pods\n\n${contents.slice(postInstallIndex)}`;
@@ -62,7 +105,8 @@ function parenDelta(line) {
 }
 
 function ensureReadiumPostInstall(contents) {
-  if (contents.includes("readium_post_install(installer)")) return contents;
+  // Match only a bare call line, not the `def readium_post_install(installer)` helper.
+  if (/^\s*readium_post_install\(installer\)\s*$/m.test(contents)) return contents;
 
   const lines = contents.split("\n");
   const start = lines.findIndex((line) => line.includes("react_native_post_install("));
@@ -128,6 +172,7 @@ function withReadiumIos(config) {
 
       let contents = fs.readFileSync(podfilePath, "utf8");
       contents = ensurePodSources(contents);
+      contents = ensureReadiumPodDefs(contents);
       contents = ensureReadiumPods(contents);
       contents = ensureReadiumPostInstall(contents);
       fs.writeFileSync(podfilePath, contents);
