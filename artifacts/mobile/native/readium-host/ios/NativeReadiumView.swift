@@ -79,7 +79,9 @@ class NativeReadiumView: UIView {
     // MARK: - Lifecycle
 
     /// Called by React Native after a batch of prop updates was applied.
-    @objc func didSetProps(_ changedProps: [String]) {
+    /// (`didSetProps:` comes from RN's `UIView (React)` category, so this
+    /// must be declared as an override.)
+    @objc override func didSetProps(_ changedProps: [String]!) {
         maybeOpen()
     }
 
@@ -172,14 +174,14 @@ class NativeReadiumView: UIView {
         case let .success(retrieved):
             asset = retrieved
         case let .failure(error):
-            throw OpenError.message("Readium could not read the EPUB asset:\n\(describeReadiumError(error))")
+            throw OpenError.message("Readium could not read the EPUB asset:\n\(describe(error))")
         }
 
         switch await readium.publicationOpener.open(asset: asset, allowUserInteraction: false) {
         case let .success(publication):
             return publication
         case let .failure(error):
-            throw OpenError.message("Readium could not open this EPUB:\n\(describeReadiumError(error))")
+            throw OpenError.message("Readium could not open this EPUB:\n\(describe(error))")
         }
     }
 
@@ -569,18 +571,6 @@ class NativeReadiumView: UIView {
         while let e = current, parts.count < 10 {
             parts.append(String(describing: e))
             current = (e as NSError).userInfo[NSUnderlyingErrorKey] as? Error
-        }
-        return parts.joined(separator: "\n← ")
-    }
-
-    /// Readium errors bury the useful cause deep in the chain — walk it fully
-    /// (the top-level message alone is too generic to diagnose anything).
-    private static func describeReadiumError(_ error: ReadiumShared.Error) -> String {
-        var parts: [String] = []
-        var current: ReadiumShared.Error? = error
-        while let e = current, parts.count < 10 {
-            parts.append(e.message)
-            current = e.cause
         }
         return parts.joined(separator: "\n← ")
     }
