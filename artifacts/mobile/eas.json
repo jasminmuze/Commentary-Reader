@@ -6,10 +6,7 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "ios": {
-        "resourceClass": "large"
-      }
+      "distribution": "internal"
     },
     "development-simulator": {
       "extends": "development",
@@ -18,16 +15,10 @@
       }
     },
     "preview": {
-      "distribution": "internal",
-      "ios": {
-        "resourceClass": "large"
-      }
+      "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "ios": {
-        "resourceClass": "large"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {
