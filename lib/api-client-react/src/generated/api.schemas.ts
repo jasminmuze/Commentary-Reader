@@ -396,6 +396,30 @@ export interface UserWithFriendStatus {
   friendStatus: UserWithFriendStatusFriendStatus;
 }
 
+export interface PasswordResetRequestInput {
+  /**
+     * The email address associated with the account
+     * @maxLength 254
+     */
+  email: string;
+}
+
+export interface PasswordResetConfirmInput {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * The 6-digit code from the reset email
+     * @minLength 6
+     * @maxLength 6
+     */
+  code: string;
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  newPassword: string;
+}
+
 export interface UserInput {
   /** @minLength 2 */
   username: string;

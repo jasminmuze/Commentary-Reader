@@ -577,10 +577,10 @@ export const CreateUserResponse = zod.object({
 
 
 /**
- * @summary Log in with username and password
+ * @summary Log in with username or email and password
  */
 export const LoginUserBody = zod.object({
-  "identifier": zod.string(),
+  "identifier": zod.string().describe('Username or email address (email matched case-insensitively)'),
   "password": zod.string()
 })
 
@@ -917,6 +917,55 @@ export const UpdateUserSettingsBody = zod.object({
 })
 
 export const UpdateUserSettingsResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
+  "avatarColor": zod.string(),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
+})
+
+
+/**
+ * @summary Request a password reset code by email (unauthenticated)
+ */
+export const requestPasswordResetBodyEmailMax = 254;
+
+
+
+export const RequestPasswordResetBody = zod.object({
+  "email": zod.string().email().max(requestPasswordResetBodyEmailMax).describe('The email address associated with the account')
+})
+
+export const RequestPasswordResetResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Reset the password using the emailed code (unauthenticated)
+ */
+export const confirmPasswordResetBodyEmailMax = 254;
+
+export const confirmPasswordResetBodyCodeMin = 6;
+export const confirmPasswordResetBodyCodeMax = 6;
+
+export const confirmPasswordResetBodyNewPasswordMin = 8;
+export const confirmPasswordResetBodyNewPasswordMax = 100;
+
+
+
+export const ConfirmPasswordResetBody = zod.object({
+  "email": zod.string().email().max(confirmPasswordResetBodyEmailMax),
+  "code": zod.string().min(confirmPasswordResetBodyCodeMin).max(confirmPasswordResetBodyCodeMax).describe('The 6-digit code from the reset email'),
+  "newPassword": zod.string().min(confirmPasswordResetBodyNewPasswordMin).max(confirmPasswordResetBodyNewPasswordMax)
+})
+
+export const ConfirmPasswordResetResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),

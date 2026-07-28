@@ -39,13 +39,15 @@ import {
   GetUserBookRecordsParams,
   GetUserHighlightsParams,
   GetUserRoomsParams,
+  RequestPasswordResetBody,
+  ConfirmPasswordResetBody,
 } from "@workspace/api-zod";
 import type { UserRecordsBook, UserHighlightItem } from "@workspace/api-zod";
 import bcrypt from "bcryptjs";
 import { createHash, randomInt } from "crypto";
 import { LoginUserBody } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
-import { sendVerificationEmail } from "../lib/email";
+import { sendVerificationEmail, sendPasswordResetEmail } from "../lib/email";
 import { ObjectStorageService } from "../lib/objectStorage";
 import {
   getViewer,
@@ -70,6 +72,9 @@ const DUMMY_BCRYPT_HASH = bcrypt.hashSync("timing-equalizer-dummy", 10);
 
 const VERIFICATION_CODE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const VERIFICATION_RESEND_INTERVAL_MS = 60 * 1000; // 60s between sends
+
+const RESET_CODE_TTL_MS = 60 * 60 * 1000; // 1h
+const RESET_RESEND_INTERVAL_MS = 60 * 1000; // 60s between sends
 
 function hashVerificationCode(code: string): string {
   return createHash("sha256").update(code).digest("hex");
@@ -225,6 +230,127 @@ router.post("/users/login", async (req, res): Promise<void> => {
   }
 
   res.json(formatUser(user, { self: true, token: createToken(user.id) }));
+});
+
+// Request a password reset code. Unauthenticated — the user forgot their password.
+// For security we always return 200 (whether or not the email exists/is verified)
+// so callers cannot enumerate accounts. Rate-limiting is per-email.
+router.post("/users/password-reset/request", async (req, res): Promise<void> => {
+  const body = RequestPasswordResetBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const email = body.data.email.trim().toLowerCase();
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, email));
+
+  // If the user doesn't exist or hasn't verified their email, silently succeed
+  // — never reveal whether an account exists.
+  if (!user || !user.emailVerifiedAt) {
+    res.json({ ok: true });
+    return;
+  }
+
+  // Rate-limit: enforce minimum interval between sends.
+  if (
+    user.passwordResetSentAt &&
+    Date.now() - user.passwordResetSentAt.getTime() < RESET_RESEND_INTERVAL_MS
+  ) {
+    res.status(429).json({ error: "Reset email sent recently — try again in a minute" });
+    return;
+  }
+
+  const code = generateVerificationCode();
+  const cooldownCutoff = new Date(Date.now() - RESET_RESEND_INTERVAL_MS);
+  const claimed = await db
+    .update(usersTable)
+    .set({
+      passwordResetCodeHash: hashVerificationCode(code),
+      passwordResetExpiresAt: new Date(Date.now() + RESET_CODE_TTL_MS),
+      passwordResetSentAt: new Date(),
+    })
+    .where(
+      and(
+        eq(usersTable.id, user.id),
+        or(
+          isNull(usersTable.passwordResetSentAt),
+          lt(usersTable.passwordResetSentAt, cooldownCutoff),
+        ),
+      ),
+    )
+    .returning({ id: usersTable.id });
+
+  if (claimed.length === 0) {
+    res.status(429).json({ error: "Reset email sent recently — try again in a minute" });
+    return;
+  }
+
+  try {
+    await sendPasswordResetEmail(user.email!, code);
+  } catch (err) {
+    // Roll back the cooldown on delivery failure so the user can retry immediately.
+    try {
+      await db
+        .update(usersTable)
+        .set({ passwordResetSentAt: null })
+        .where(eq(usersTable.id, user.id));
+    } catch {
+      // Best-effort rollback.
+    }
+    req.log.error({ err }, "Password reset email send failed");
+    res.status(502).json({ error: "Failed to send reset email" });
+    return;
+  }
+
+  res.json({ ok: true });
+});
+
+// Confirm the reset code and set the new password. Unauthenticated.
+router.post("/users/password-reset/confirm", async (req, res): Promise<void> => {
+  const body = ConfirmPasswordResetBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const email = body.data.email.trim().toLowerCase();
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, email));
+
+  if (
+    !user ||
+    !user.passwordResetCodeHash ||
+    !user.passwordResetExpiresAt ||
+    user.passwordResetExpiresAt.getTime() < Date.now()
+  ) {
+    res.status(400).json({ error: "Reset code is invalid or has expired" });
+    return;
+  }
+
+  if (hashVerificationCode(body.data.code) !== user.passwordResetCodeHash) {
+    res.status(400).json({ error: "Incorrect reset code" });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(body.data.newPassword, 10);
+  const [updated] = await db
+    .update(usersTable)
+    .set({
+      passwordHash,
+      passwordResetCodeHash: null,
+      passwordResetExpiresAt: null,
+      passwordResetSentAt: null,
+    })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+
+  res.json(formatUser(updated!, { self: true, token: createToken(updated!.id) }));
 });
 
 // Send (or resend) the email verification code. Self only, rate-limited.

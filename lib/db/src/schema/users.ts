@@ -27,6 +27,12 @@ export const usersTable = pgTable("users", {
   emailVerificationExpiresAt: timestamp("email_verification_expires_at", { withTimezone: true }),
   // Last send time — used to rate-limit resends.
   emailVerificationSentAt: timestamp("email_verification_sent_at", { withTimezone: true }),
+  // Password reset — same pattern as email verification.
+  // sha256 hash of the pending 6-digit reset code (never the raw code).
+  passwordResetCodeHash: text("password_reset_code_hash"),
+  passwordResetExpiresAt: timestamp("password_reset_expires_at", { withTimezone: true }),
+  // Last reset-email send time — used to rate-limit resends.
+  passwordResetSentAt: timestamp("password_reset_sent_at", { withTimezone: true }),
   avatarColor: text("avatar_color").notNull(),
   // Default visibility applied to new comments/highlights unless overridden.
   defaultVisibility: text("default_visibility")

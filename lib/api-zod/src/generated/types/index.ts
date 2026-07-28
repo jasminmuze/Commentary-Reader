@@ -45,6 +45,8 @@ export * from './notificationItemType';
 export * from './notificationList';
 export * from './notificationSettings';
 export * from './okResult';
+export * from './passwordResetConfirmInput';
+export * from './passwordResetRequestInput';
 export * from './pushTokenInput';
 export * from './quote';
 export * from './quoteReaderContext';

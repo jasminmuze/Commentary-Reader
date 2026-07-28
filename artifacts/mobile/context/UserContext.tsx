@@ -22,6 +22,8 @@ import {
   useLoginUser,
   useSendVerificationEmail,
   useConfirmEmailVerification,
+  useRequestPasswordReset,
+  useConfirmPasswordReset,
   setAuthTokenGetter,
   ApiError,
 } from "@workspace/api-client-react";
@@ -87,6 +89,17 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
   const [pendingUser, setPendingUser] = useState<CurrentUser | null>(null);
   const [verifyCode, setVerifyCode] = useState("");
   const [verifyMessage, setVerifyMessage] = useState<{ text: string; error: boolean } | null>(null);
+
+  const requestReset = useRequestPasswordReset();
+  const confirmReset = useConfirmPasswordReset();
+
+  // Forgot password flow: null = not active; "request" = enter email;
+  // "confirm" = enter code + new password.
+  const [resetStep, setResetStep] = useState<null | "request" | "confirm">(null);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetMessage, setResetMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   const isPending = createUser.isPending || loginUser.isPending;
 
@@ -203,6 +216,65 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
     );
   }, [pendingUser, sendVerification]);
 
+  const handleRequestReset = useCallback(() => {
+    const trimmedEmail = resetEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setResetMessage({ text: "Please enter a valid email address.", error: true });
+      return;
+    }
+    setResetMessage(null);
+    requestReset.mutate(
+      { data: { email: trimmedEmail } },
+      {
+        onSuccess: () => {
+          setResetStep("confirm");
+          setResetMessage({
+            text: "If that email is registered and verified, we've sent a 6-digit code.",
+            error: false,
+          });
+        },
+        onError: (err) => {
+          if (err instanceof ApiError && err.status === 429) {
+            setResetMessage({ text: "Reset email sent recently — try again in a minute.", error: true });
+          } else if (err instanceof ApiError && err.status === 502) {
+            setResetMessage({ text: "Couldn't send the email right now. Please try again.", error: true });
+          } else {
+            setResetMessage({ text: "Something went wrong. Please try again.", error: true });
+          }
+        },
+      },
+    );
+  }, [resetEmail, requestReset]);
+
+  const handleConfirmReset = useCallback(() => {
+    const trimmedEmail = resetEmail.trim().toLowerCase();
+    const code = resetCode.trim();
+    if (code.length !== 6) {
+      setResetMessage({ text: "Enter the 6-digit code from the email.", error: true });
+      return;
+    }
+    if (resetNewPassword.length < 8) {
+      setResetMessage({ text: "New password must be at least 8 characters.", error: true });
+      return;
+    }
+    setResetMessage(null);
+    confirmReset.mutate(
+      { data: { email: trimmedEmail, code, newPassword: resetNewPassword } },
+      {
+        onSuccess: (user) => {
+          void persistAndComplete(user as Parameters<typeof persistAndComplete>[0]);
+        },
+        onError: (err) => {
+          if (err instanceof ApiError && err.status === 400) {
+            setResetMessage({ text: "That code is incorrect or has expired. Request a new one.", error: true });
+          } else {
+            setResetMessage({ text: "Something went wrong. Please try again.", error: true });
+          }
+        },
+      },
+    );
+  }, [resetEmail, resetCode, resetNewPassword, confirmReset, persistAndComplete]);
+
   const handleSubmit = useCallback(async () => {
     const trimmed = username.trim();
     if (mode === "signup") {
@@ -294,6 +366,214 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
   }, [username, email, nickname, password, mode, createUser, loginUser, persistAndComplete, startVerificationStep]);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
+
+  if (resetStep === "request") {
+    return (
+      <KeyboardAvoidingView
+        style={[styles.onboardingContainer, { backgroundColor: colors.background }]}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={[styles.onboardingContent, { paddingTop: topInset + 40 }]}>
+          <View style={[styles.onboardingIcon, { backgroundColor: colors.primary }]}>
+            <Text style={styles.onboardingIconText}>S</Text>
+          </View>
+          <Text style={[styles.onboardingTitle, { color: colors.foreground }]}>
+            Reset password
+          </Text>
+          <Text style={[styles.onboardingSubtitle, { color: colors.mutedForeground }]}>
+            Enter your account email and we'll send you a reset code.
+          </Text>
+
+          <View style={styles.onboardingForm}>
+            <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>Email</Text>
+            <TextInput
+              style={[
+                styles.onboardingInput,
+                {
+                  backgroundColor: colors.card,
+                  color: colors.foreground,
+                  borderColor: resetMessage?.error ? colors.destructive : colors.border,
+                  borderRadius: colors.radius,
+                },
+              ]}
+              placeholder="you@example.com"
+              placeholderTextColor={colors.mutedForeground}
+              value={resetEmail}
+              onChangeText={(t) => { setResetEmail(t); setResetMessage(null); }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              returnKeyType="done"
+              onSubmitEditing={handleRequestReset}
+            />
+            {resetMessage ? (
+              <Text
+                style={[
+                  styles.onboardingError,
+                  { color: resetMessage.error ? colors.destructive : colors.primary },
+                ]}
+              >
+                {resetMessage.text}
+              </Text>
+            ) : null}
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.onboardingButton,
+                {
+                  backgroundColor: colors.primary,
+                  borderRadius: colors.radius,
+                  opacity: pressed || requestReset.isPending ? 0.8 : 1,
+                },
+              ]}
+              onPress={handleRequestReset}
+              disabled={requestReset.isPending}
+            >
+              {requestReset.isPending ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <Text style={[styles.onboardingButtonText, { color: colors.primaryForeground }]}>
+                  Send reset code
+                </Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={styles.modeToggle}
+              onPress={() => { setResetStep(null); setResetMessage(null); }}
+            >
+              <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
+                Back to log in
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  if (resetStep === "confirm") {
+    return (
+      <KeyboardAvoidingView
+        style={[styles.onboardingContainer, { backgroundColor: colors.background }]}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={[styles.onboardingContent, { paddingTop: topInset + 40 }]}>
+          <View style={[styles.onboardingIcon, { backgroundColor: colors.primary }]}>
+            <Text style={styles.onboardingIconText}>S</Text>
+          </View>
+          <Text style={[styles.onboardingTitle, { color: colors.foreground }]}>
+            Check your email
+          </Text>
+          <Text style={[styles.onboardingSubtitle, { color: colors.mutedForeground }]}>
+            Enter the 6-digit code we sent to{"\n"}
+            {resetEmail || "your email"}, then choose a new password.
+          </Text>
+
+          <View style={styles.onboardingForm}>
+            <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
+              Reset code
+            </Text>
+            <TextInput
+              style={[
+                styles.onboardingInput,
+                styles.codeInput,
+                {
+                  backgroundColor: colors.card,
+                  color: colors.foreground,
+                  borderColor: resetMessage?.error ? colors.destructive : colors.border,
+                  borderRadius: colors.radius,
+                },
+              ]}
+              placeholder="123456"
+              placeholderTextColor={colors.mutedForeground}
+              value={resetCode}
+              onChangeText={(t) => {
+                setResetCode(t.replace(/[^0-9]/g, "").slice(0, 6));
+                setResetMessage(null);
+              }}
+              keyboardType="number-pad"
+              maxLength={6}
+              returnKeyType="next"
+            />
+
+            <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
+              New password
+            </Text>
+            <TextInput
+              style={[
+                styles.onboardingInput,
+                {
+                  backgroundColor: colors.card,
+                  color: colors.foreground,
+                  borderColor: resetMessage?.error ? colors.destructive : colors.border,
+                  borderRadius: colors.radius,
+                },
+              ]}
+              placeholder="At least 8 characters"
+              placeholderTextColor={colors.mutedForeground}
+              value={resetNewPassword}
+              onChangeText={(t) => { setResetNewPassword(t); setResetMessage(null); }}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={handleConfirmReset}
+            />
+            {resetMessage ? (
+              <Text
+                style={[
+                  styles.onboardingError,
+                  { color: resetMessage.error ? colors.destructive : colors.primary },
+                ]}
+              >
+                {resetMessage.text}
+              </Text>
+            ) : null}
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.onboardingButton,
+                {
+                  backgroundColor: colors.primary,
+                  borderRadius: colors.radius,
+                  opacity: pressed || confirmReset.isPending ? 0.8 : 1,
+                },
+              ]}
+              onPress={handleConfirmReset}
+              disabled={confirmReset.isPending}
+            >
+              {confirmReset.isPending ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <Text style={[styles.onboardingButtonText, { color: colors.primaryForeground }]}>
+                  Reset password
+                </Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={styles.modeToggle}
+              onPress={() => { setResetStep("request"); setResetMessage(null); setResetCode(""); setResetNewPassword(""); }}
+            >
+              <Text style={[styles.modeToggleText, { color: colors.primary }]}>
+                Resend code
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.modeToggle}
+              onPress={() => { setResetStep(null); setResetMessage(null); }}
+            >
+              <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
+                Back to log in
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
 
   if (pendingUser) {
     return (
@@ -547,6 +827,23 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
                 : "Don't have an account? Sign up"}
             </Text>
           </Pressable>
+
+          {mode === "login" ? (
+            <Pressable
+              style={styles.modeToggle}
+              onPress={() => {
+                setResetStep("request");
+                setResetMessage(null);
+                setResetEmail("");
+                setResetCode("");
+                setResetNewPassword("");
+              }}
+            >
+              <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
+                Forgot password?
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </KeyboardAvoidingView>

@@ -810,6 +810,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/User"
 
+  /users/password-reset/request:
+    post:
+      operationId: requestPasswordReset
+      tags: [users]
+      summary: Request a password reset code by email (unauthenticated)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequestInput"
+      responses:
+        "200":
+          description: If the email is registered and verified, a reset code has been sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "429":
+          description: Reset email sent too recently — wait before retrying
+        "502":
+          description: Email delivery failed
+
+  /users/password-reset/confirm:
+    post:
+      operationId: confirmPasswordReset
+      tags: [users]
+      summary: Reset the password using the emailed code (unauthenticated)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetConfirmInput"
+      responses:
+        "200":
+          description: Password reset — returns the authenticated user with a new bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid or expired reset code
+
   /users/{userId}/verify-email/send:
     post:
       operationId: sendVerificationEmail
@@ -2013,6 +2057,34 @@ components:
           type: string
           enum: [none, requested, incoming, friends]
           description: Friend relationship between the viewer and this user (friends = mutual follow).
+
+    PasswordResetRequestInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: The email address associated with the account
+
+    PasswordResetConfirmInput:
+      type: object
+      required: [email, code, newPassword]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+          description: The 6-digit code from the reset email
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 100
 
     UserInput:
       type: object
