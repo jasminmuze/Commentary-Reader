@@ -202,13 +202,20 @@ router.post("/users/login", async (req, res): Promise<void> => {
     return;
   }
 
+  // Accept either username (exact) or email (case-insensitive).
+  const identifier = body.data.identifier;
   const [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.username, body.data.username));
+    .where(
+      or(
+        eq(usersTable.username, identifier),
+        eq(usersTable.email, identifier.toLowerCase()),
+      ),
+    );
   // Accounts without a password hash (legacy/seeded demo users) cannot log in.
   // Always run a bcrypt compare (against a dummy hash on miss) so response
-  // timing doesn't reveal whether the username exists.
+  // timing doesn't reveal whether the username/email exists.
   const hashToCheck = user?.passwordHash ?? DUMMY_BCRYPT_HASH;
   const compared = await bcrypt.compare(body.data.password, hashToCheck);
   const valid = user?.passwordHash != null && compared;

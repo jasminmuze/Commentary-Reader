@@ -487,7 +487,7 @@ paths:
     post:
       operationId: loginUser
       tags: [users]
-      summary: Log in with username and password
+      summary: Log in with username or email and password
       requestBody:
         required: true
         content:
@@ -2037,10 +2037,11 @@ components:
 
     LoginInput:
       type: object
-      required: [username, password]
+      required: [identifier, password]
       properties:
-        username:
+        identifier:
           type: string
+          description: Username or email address (email matched case-insensitively)
         password:
           type: string
 

@@ -205,17 +205,24 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
 
   const handleSubmit = useCallback(async () => {
     const trimmed = username.trim();
-    if (trimmed.length < 2) {
-      setError("Username must be at least 2 characters");
-      return;
-    }
-    if (trimmed.length > 30) {
-      setError("Username must be 30 characters or fewer");
-      return;
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-      setError("Only letters, numbers, and underscores (_) are allowed");
-      return;
+    if (mode === "signup") {
+      if (trimmed.length < 2) {
+        setError("Username must be at least 2 characters");
+        return;
+      }
+      if (trimmed.length > 30) {
+        setError("Username must be 30 characters or fewer");
+        return;
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
+        setError("Only letters, numbers, and underscores (_) are allowed");
+        return;
+      }
+    } else {
+      if (trimmed.length === 0) {
+        setError("Please enter your username or email");
+        return;
+      }
     }
     const trimmedEmail = email.trim().toLowerCase();
     if (mode === "signup") {
@@ -280,7 +287,7 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
       );
     } else {
       loginUser.mutate(
-        { data: { username: trimmed, password } },
+        { data: { identifier: trimmed, password } },
         { onSuccess, onError },
       );
     }
@@ -409,7 +416,7 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
 
         <View style={styles.onboardingForm}>
           <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
-            Username
+            {mode === "login" ? "Username or email" : "Username"}
           </Text>
           <TextInput
             style={[
@@ -421,12 +428,13 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
                 borderRadius: colors.radius,
               },
             ]}
-            placeholder="e.g. bookworm42"
+            placeholder={mode === "login" ? "Username or email" : "e.g. bookworm42"}
             placeholderTextColor={colors.mutedForeground}
             value={username}
             onChangeText={(t) => { setUsername(t); setError(""); }}
             autoCapitalize="none"
             autoCorrect={false}
+            keyboardType={mode === "login" ? "email-address" : "default"}
             returnKeyType="next"
           />
 

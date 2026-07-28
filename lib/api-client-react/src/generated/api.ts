@@ -1681,7 +1681,7 @@ export const getLoginUserUrl = () => {
 }
 
 /**
- * @summary Log in with username and password
+ * @summary Log in with username or email and password
  */
 export const loginUser = async (loginInput: LoginInput, options?: RequestInit): Promise<User> => {
 
@@ -1730,7 +1730,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type LoginUserMutationError = ErrorType<void>
 
     /**
- * @summary Log in with username and password
+ * @summary Log in with username or email and password
  */
 export const useLoginUser = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginUser>>, TError,{data: BodyType<LoginInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
