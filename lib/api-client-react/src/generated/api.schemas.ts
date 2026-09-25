@@ -136,6 +136,16 @@ export interface CommentInput {
   authorProgress?: number;
 }
 
+export interface UpdateCommentInput {
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  text: string;
+  visibility: ContentVisibility;
+  containsSpoilers: boolean;
+}
+
 export interface CreateQuoteInput {
   /**
      * @minLength 8

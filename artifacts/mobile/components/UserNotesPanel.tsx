@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -8,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import {
   useGetQuoteComments,
@@ -21,6 +23,8 @@ interface Props {
   userId: number;
   cfiByQuoteId: Map<number, string>;
   onNavigate: (cfi: string) => void;
+  onEditNote: (quote: Quote, comment: Comment) => void;
+  onDeleteHighlight: (quote: Quote) => void;
   onClose: () => void;
 }
 
@@ -29,12 +33,16 @@ function QuoteNoteRow({
   userId,
   cfi,
   onNavigate,
+  onEditNote,
+  onDeleteHighlight,
   onClose,
 }: {
   quote: Quote;
   userId: number;
   cfi: string | undefined;
   onNavigate: (cfi: string) => void;
+  onEditNote: (quote: Quote, comment: Comment) => void;
+  onDeleteHighlight: (quote: Quote) => void;
   onClose: () => void;
 }) {
   const colors = useColors();
@@ -69,9 +77,22 @@ function QuoteNoteRow({
         </Text>
         {myComment ? (
           <View style={styles.commentBox}>
-            <Text style={[styles.commentLabel, { color: colors.primary }]}>
-              My comment
-            </Text>
+            <View style={styles.commentHeading}>
+              <Text style={[styles.commentLabel, { color: colors.primary }]}>
+                My note
+              </Text>
+              <Pressable
+                onPress={(event) => {
+                  event.stopPropagation();
+                  onEditNote(quote, myComment);
+                }}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Edit note"
+              >
+                <Feather name="edit-2" size={15} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
             <Text
               style={[styles.commentText, { color: colors.mutedForeground }]}
               numberOfLines={3}
@@ -83,6 +104,29 @@ function QuoteNoteRow({
             </Text>
           </View>
         ) : null}
+        <Pressable
+          onPress={(event) => {
+            event.stopPropagation();
+            Alert.alert(
+              "Delete this highlight?",
+              "The highlighted passage will be removed. Your comments will stay unless you delete them separately.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: () => onDeleteHighlight(quote),
+                },
+              ],
+            );
+          }}
+          style={styles.deleteHighlight}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Delete highlight"
+        >
+          <Feather name="trash-2" size={15} color={colors.destructive} />
+        </Pressable>
         {!cfi ? (
           <Text style={[styles.noNav, { color: colors.mutedForeground + "80" }]}>
             No location info
@@ -99,6 +143,8 @@ export function UserNotesPanel({
   userId,
   cfiByQuoteId,
   onNavigate,
+  onEditNote,
+  onDeleteHighlight,
   onClose,
 }: Props) {
   const colors = useColors();
@@ -149,6 +195,8 @@ export function UserNotesPanel({
                 userId={userId}
                 cfi={cfiByQuoteId.get(item.id)}
                 onNavigate={onNavigate}
+                onEditNote={onEditNote}
+                onDeleteHighlight={onDeleteHighlight}
                 onClose={onClose}
               />
             )}
@@ -204,10 +252,21 @@ const styles = StyleSheet.create({
   content: { flex: 1 },
   quoteText: { fontSize: 14, lineHeight: 21 },
   commentBox: { marginTop: 8 },
+  commentHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 3,
+  },
   commentLabel: { fontSize: 11, fontWeight: "600", marginBottom: 3 },
   commentText: { fontSize: 13, lineHeight: 19 },
   date: { fontSize: 11, marginTop: 4 },
   noNav: { fontSize: 11, marginTop: 6 },
+  deleteHighlight: {
+    alignSelf: "flex-start",
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+  },
   empty: {
     textAlign: "center",
     paddingVertical: 48,

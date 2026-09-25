@@ -4,6 +4,7 @@ import {
   db,
   booksTable,
   highlightLikesTable,
+  notificationsTable,
   quotesTable,
   userHighlightsTable,
   userLibraryTable,
@@ -18,6 +19,7 @@ import {
   LikeHighlightParams,
   ToggleHighlightParams,
   ToggleHighlightBody,
+  DeleteHighlightParams,
 } from "@workspace/api-zod";
 import type { Quote, HighlightResult, QuoteReaderContext } from "@workspace/api-zod";
 import {
@@ -260,6 +262,46 @@ router.post("/quotes/:quoteId/highlight", authenticate, async (req, res): Promis
     highlightCount: counts.highlightCount,
   };
   res.json(result);
+});
+
+// DELETE /quotes/:quoteId/highlight — explicit, idempotency-safe removal for
+// the current user's own highlight.
+router.delete("/quotes/:quoteId/highlight", authenticate, async (req, res): Promise<void> => {
+  const params = DeleteHighlightParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const { quoteId } = params.data;
+  const [existing] = await db
+    .select({ id: userHighlightsTable.id })
+    .from(userHighlightsTable)
+    .where(
+      and(
+        eq(userHighlightsTable.userId, req.userId),
+        eq(userHighlightsTable.quoteId, quoteId),
+      ),
+    )
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Highlight not found" });
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(highlightLikesTable)
+      .where(eq(highlightLikesTable.highlightId, existing.id));
+    await tx
+      .delete(notificationsTable)
+      .where(eq(notificationsTable.highlightId, existing.id));
+    await tx
+      .delete(userHighlightsTable)
+      .where(eq(userHighlightsTable.id, existing.id));
+  });
+  const viewer = await getViewer(req.userId);
+  const counts = (await getQuoteCountsMap([quoteId], viewer)).get(quoteId)!;
+  res.json({ highlighted: false, highlightCount: counts.highlightCount });
 });
 
 // POST /highlights/:highlightId/like — toggle a like on another user's highlight.

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
@@ -14,6 +14,8 @@ interface Props {
   onSave: (commentId: number) => void;
   onReply?: (comment: Comment) => void;
   onPress?: (comment: Comment) => void;
+  onEdit?: (comment: Comment) => void;
+  onDelete?: (comment: Comment) => void;
   compact?: boolean;
   isReply?: boolean;
 }
@@ -32,7 +34,17 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(diffDays / 30)}mo`;
 }
 
-export function CommentCard({ comment, onLike, onSave, onReply, onPress, compact = false, isReply = false }: Props) {
+export function CommentCard({
+  comment,
+  onLike,
+  onSave,
+  onReply,
+  onPress,
+  onEdit,
+  onDelete,
+  compact = false,
+  isReply = false,
+}: Props) {
   const colors = useColors();
   const { user } = useUser();
   const [spoilerRevealed, setSpoilerRevealed] = useState(false);
@@ -60,6 +72,15 @@ export function CommentCard({ comment, onLike, onSave, onReply, onPress, compact
   const handleReply = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onReply?.(comment);
+  };
+
+  const handleOwnerMenu = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert("Comment options", undefined, [
+      { text: "Edit", onPress: () => onEdit?.(comment) },
+      { text: "Delete", style: "destructive", onPress: () => onDelete?.(comment) },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   return (
@@ -122,6 +143,18 @@ export function CommentCard({ comment, onLike, onSave, onReply, onPress, compact
             size={12}
             color={colors.mutedForeground}
           />
+        ) : null}
+        {isAuthor && (onEdit || onDelete) ? (
+          <Pressable
+            onPress={handleOwnerMenu}
+            hitSlop={10}
+            style={styles.ownerMenu}
+            accessibilityRole="button"
+            accessibilityLabel="Comment options"
+            testID={`comment-options-${comment.id}`}
+          >
+            <Feather name="more-horizontal" size={18} color={colors.mutedForeground} />
+          </Pressable>
         ) : null}
       </Pressable>
 
@@ -232,6 +265,10 @@ const styles = StyleSheet.create({
   actionCount: {
     fontSize: 13,
     fontWeight: "600",
+  },
+  ownerMenu: {
+    padding: 4,
+    marginLeft: 2,
   },
   spoilerBadge: {
     flexDirection: "row",

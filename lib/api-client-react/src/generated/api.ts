@@ -63,6 +63,7 @@ import type {
   SearchUsersParams,
   SetAvatarInput,
   UnreadCount,
+  UpdateCommentInput,
   UpdateReadingLocationInput,
   UpdateRoomInput,
   UpdateUserSettings,
@@ -791,6 +792,76 @@ export const useToggleHighlight = <TError = ErrorType<unknown>,
       return useMutation(getToggleHighlightMutationOptions(options));
     }
 
+export const getDeleteHighlightUrl = (quoteId: number,) => {
+
+
+
+
+  return `/api/quotes/${quoteId}/highlight`
+}
+
+/**
+ * @summary Delete the current user's highlight on a quote
+ */
+export const deleteHighlight = async (quoteId: number, options?: RequestInit): Promise<HighlightResult> => {
+
+  return customFetch<HighlightResult>(getDeleteHighlightUrl(quoteId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteHighlightMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteHighlight>>, TError,{quoteId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteHighlight>>, TError,{quoteId: number}, TContext> => {
+
+const mutationKey = ['deleteHighlight'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteHighlight>>, {quoteId: number}> = (props) => {
+          const {quoteId} = props ?? {};
+
+          return  deleteHighlight(quoteId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteHighlightMutationResult = NonNullable<Awaited<ReturnType<typeof deleteHighlight>>>
+
+    export type DeleteHighlightMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete the current user's highlight on a quote
+ */
+export const useDeleteHighlight = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteHighlight>>, TError,{quoteId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteHighlight>>,
+        TError,
+        {quoteId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteHighlightMutationOptions(options));
+    }
+
 export const getGetQuoteReaderContextUrl = (quoteId: number,) => {
 
 
@@ -1084,6 +1155,148 @@ export function useGetComment<TData = Awaited<ReturnType<typeof getComment>>, TE
 
 
 
+
+export const getUpdateCommentUrl = (commentId: number,) => {
+
+
+
+
+  return `/api/comments/${commentId}`
+}
+
+/**
+ * @summary Update the current user's comment or reply
+ */
+export const updateComment = async (commentId: number,
+    updateCommentInput: UpdateCommentInput, options?: RequestInit): Promise<Comment> => {
+
+  return customFetch<Comment>(getUpdateCommentUrl(commentId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateCommentInput,)
+  }
+);}
+
+
+
+
+export const getUpdateCommentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateComment>>, TError,{commentId: number;data: BodyType<UpdateCommentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateComment>>, TError,{commentId: number;data: BodyType<UpdateCommentInput>}, TContext> => {
+
+const mutationKey = ['updateComment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateComment>>, {commentId: number;data: BodyType<UpdateCommentInput>}> = (props) => {
+          const {commentId,data} = props ?? {};
+
+          return  updateComment(commentId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCommentMutationResult = NonNullable<Awaited<ReturnType<typeof updateComment>>>
+    export type UpdateCommentMutationBody = BodyType<UpdateCommentInput>
+    export type UpdateCommentMutationError = ErrorType<void>
+
+    /**
+ * @summary Update the current user's comment or reply
+ */
+export const useUpdateComment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateComment>>, TError,{commentId: number;data: BodyType<UpdateCommentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateComment>>,
+        TError,
+        {commentId: number;data: BodyType<UpdateCommentInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCommentMutationOptions(options));
+    }
+
+export const getDeleteCommentUrl = (commentId: number,) => {
+
+
+
+
+  return `/api/comments/${commentId}`
+}
+
+/**
+ * @summary Delete the current user's comment or reply
+ */
+export const deleteComment = async (commentId: number, options?: RequestInit): Promise<OkResult> => {
+
+  return customFetch<OkResult>(getDeleteCommentUrl(commentId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteCommentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteComment>>, TError,{commentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteComment>>, TError,{commentId: number}, TContext> => {
+
+const mutationKey = ['deleteComment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteComment>>, {commentId: number}> = (props) => {
+          const {commentId} = props ?? {};
+
+          return  deleteComment(commentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCommentMutationResult = NonNullable<Awaited<ReturnType<typeof deleteComment>>>
+
+    export type DeleteCommentMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete the current user's comment or reply
+ */
+export const useDeleteComment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteComment>>, TError,{commentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteComment>>,
+        TError,
+        {commentId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteCommentMutationOptions(options));
+    }
 
 export const getGetCommentRepliesUrl = (commentId: number,) => {
 

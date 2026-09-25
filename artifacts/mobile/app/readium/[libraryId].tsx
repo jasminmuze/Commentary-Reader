@@ -28,9 +28,10 @@ import {
   useGetLibraryEntry,
   useGetMyRooms,
   useToggleHighlight,
+  useDeleteHighlight,
   useUpdateReadingLocation,
 } from "@workspace/api-client-react";
-import type { ContentVisibility, LibraryEntry, Quote, Room } from "@workspace/api-client-react";
+import type { Comment, ContentVisibility, LibraryEntry, Quote, Room } from "@workspace/api-client-react";
 import { ScrollView } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
@@ -252,6 +253,7 @@ function EmbeddedReader({
   const { user } = useUser();
   const createQuote = useCreateQuote();
   const toggleHighlight = useToggleHighlight();
+  const deleteHighlight = useDeleteHighlight();
   const updateLocation = useUpdateReadingLocation();
   const {
     settings,
@@ -283,6 +285,7 @@ function EmbeddedReader({
     cfiRange?: string;
   } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [initialEditingComment, setInitialEditingComment] = useState<Comment | null>(null);
   // Scroll-mode chapter pull indicator (driven by the native chapterPull event)
   const [chapterPull, setChapterPull] = useState<ChapterPullState | null>(null);
   const pullArmedRef = useRef(false);
@@ -1064,6 +1067,33 @@ function EmbeddedReader({
             console.warn("[NativeReadium] Failed to navigate from note:", error);
           });
         }}
+        onEditNote={(quote, comment) => {
+          setNotesVisible(false);
+          setSelectedQuote({
+            id: quote.id,
+            text: quote.text,
+            cfiRange: locatorByQuoteIdRef.current.get(quote.id),
+          });
+          setInitialEditingComment(comment);
+          setSheetVisible(true);
+        }}
+        onDeleteHighlight={(quote) => {
+          deleteHighlight.mutate(
+            { quoteId: quote.id },
+            {
+              onSuccess: () => {
+                const bookId = canonicalBookIdRef.current;
+                if (bookId) {
+                  queryClient.invalidateQueries({
+                    queryKey: getGetBookQuotesQueryKey(bookId),
+                  });
+                }
+              },
+              onError: () =>
+                Alert.alert("Couldn't delete", "Please try again in a moment."),
+            },
+          );
+        }}
         onClose={() => setNotesVisible(false)}
       />
 
@@ -1073,7 +1103,11 @@ function EmbeddedReader({
         quoteText={selectedQuote?.text ?? ""}
         roomId={selectedRoomId}
         myProgress={readProgress}
-        onClose={() => setSheetVisible(false)}
+        initialEditingComment={initialEditingComment}
+        onClose={() => {
+          setSheetVisible(false);
+          setInitialEditingComment(null);
+        }}
         onCommentSaved={(visibility) => {
           const locatorJson = selectedQuote?.cfiRange;
           const qId = selectedQuote?.id;

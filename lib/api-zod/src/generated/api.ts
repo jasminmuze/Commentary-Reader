@@ -242,6 +242,19 @@ export const ToggleHighlightResponse = zod.object({
 
 
 /**
+ * @summary Delete the current user's highlight on a quote
+ */
+export const DeleteHighlightParams = zod.object({
+  "quoteId": zod.coerce.number()
+})
+
+export const DeleteHighlightResponse = zod.object({
+  "highlighted": zod.boolean(),
+  "highlightCount": zod.number()
+})
+
+
+/**
  * @summary Where to read this quote — its canonical book and my library entry (if any)
  */
 export const GetQuoteReaderContextParams = zod.object({
@@ -309,6 +322,58 @@ export const GetCommentResponse = zod.object({
   "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
   "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update the current user's comment or reply
+ */
+export const UpdateCommentParams = zod.object({
+  "commentId": zod.coerce.number()
+})
+
+export const updateCommentBodyTextMax = 500;
+
+
+
+export const UpdateCommentBody = zod.object({
+  "text": zod.string().min(1).max(updateCommentBodyTextMax),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
+  "containsSpoilers": zod.boolean()
+})
+
+export const UpdateCommentResponse = zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
+  "avatarColor": zod.string(),
+  "text": zod.string(),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
+  "quoteText": zod.string().optional(),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete the current user's comment or reply
+ */
+export const DeleteCommentParams = zod.object({
+  "commentId": zod.coerce.number()
+})
+
+export const DeleteCommentResponse = zod.object({
+  "ok": zod.boolean()
 })
 
 

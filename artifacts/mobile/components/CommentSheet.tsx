@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Alert,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
@@ -25,6 +26,8 @@ import {
   useSaveComment,
   useGetCommentReplies,
   useCreateReply,
+  useUpdateComment,
+  useDeleteComment,
   getGetQuoteCommentsQueryKey,
   getGetCommentRepliesQueryKey,
 } from "@workspace/api-client-react";
@@ -151,6 +154,8 @@ interface Props {
   onCommentSaved?: (visibility: ContentVisibility) => void;
   /** When set, the sheet opens directly on this comment's reply thread. */
   initialReplyThread?: Comment | null;
+  /** When set, the sheet opens its author editor for this comment. */
+  initialEditingComment?: Comment | null;
   /** When set, the sheet shows only this reading room's comments and posts into it. */
   roomId?: number | null;
   /** Viewer's reading progress (0-100) — used for the room spoiler guard. */
@@ -210,9 +215,19 @@ interface ReplyThreadProps {
   bottomPad: number;
   roomId?: number | null;
   myProgress?: number | null;
+  onEditComment: (comment: Comment) => void;
+  onDeleteComment: (comment: Comment) => void;
 }
 
-function ReplyThread({ parentComment, onBack, bottomPad, roomId, myProgress }: ReplyThreadProps) {
+function ReplyThread({
+  parentComment,
+  onBack,
+  bottomPad,
+  roomId,
+  myProgress,
+  onEditComment,
+  onDeleteComment,
+}: ReplyThreadProps) {
   const colors = useColors();
   const { user } = useUser();
   const queryClient = useQueryClient();
@@ -380,6 +395,8 @@ function ReplyThread({ parentComment, onBack, bottomPad, roomId, myProgress }: R
               comment={item}
               onLike={() => {}}
               onSave={() => {}}
+              onEdit={onEditComment}
+              onDelete={onDeleteComment}
               isReply
             />
           )}
@@ -522,6 +539,127 @@ function ReplyThread({ parentComment, onBack, bottomPad, roomId, myProgress }: R
   );
 }
 
+function EditCommentModal({
+  comment,
+  saving,
+  onClose,
+  onSave,
+}: {
+  comment: Comment | null;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (text: string, visibility: ContentVisibility, containsSpoilers: boolean) => void;
+}) {
+  const colors = useColors();
+  const [text, setText] = useState("");
+  const [visibility, setVisibility] = useState<ContentVisibility>("public");
+  const [containsSpoilers, setContainsSpoilers] = useState(false);
+
+  useEffect(() => {
+    if (!comment) return;
+    setText(comment.text);
+    setVisibility(comment.visibility);
+    setContainsSpoilers(comment.containsSpoilers);
+  }, [comment]);
+
+  const visibilityOptions = comment?.roomId ? ROOM_VISIBILITY_OPTIONS : VISIBILITY_OPTIONS;
+
+  return (
+    <Modal visible={!!comment} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.editOverlay} onPress={onClose}>
+        <Pressable
+          style={[
+            styles.editCard,
+            { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius },
+          ]}
+          onPress={(event) => event.stopPropagation()}
+        >
+          <View style={styles.editHeader}>
+            <Text style={[styles.editTitle, { color: colors.foreground }]}>Edit comment</Text>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Feather name="x" size={20} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            multiline
+            maxLength={500}
+            autoFocus
+            style={[
+              styles.editInput,
+              {
+                color: colors.foreground,
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                borderRadius: colors.radius,
+              },
+            ]}
+          />
+          <View style={styles.visibilityRow}>
+            {visibilityOptions.map((option) => {
+              const active = visibility === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setVisibility(option.value)}
+                  style={[
+                    styles.visChip,
+                    {
+                      backgroundColor: active ? colors.primary : colors.background,
+                      borderColor: active ? colors.primary : colors.border,
+                      borderRadius: colors.radius,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name={option.icon}
+                    size={12}
+                    color={active ? colors.primaryForeground : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.visChipText,
+                      { color: active ? colors.primaryForeground : colors.mutedForeground },
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <SpoilerCheckbox
+            active={containsSpoilers}
+            onToggle={() => setContainsSpoilers((value) => !value)}
+          />
+          <Pressable
+            onPress={() => onSave(text.trim(), visibility, containsSpoilers)}
+            disabled={!text.trim() || saving}
+            style={({ pressed }) => [
+              styles.editSave,
+              {
+                backgroundColor: text.trim() ? colors.primary : colors.muted,
+                borderRadius: colors.radius,
+                opacity: pressed || saving ? 0.75 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.editSaveText,
+                { color: text.trim() ? colors.primaryForeground : colors.mutedForeground },
+              ]}
+            >
+              Save changes
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ── Main CommentSheet ────────────────────────────────────────────────────────
 
 export function CommentSheet({
@@ -531,6 +669,7 @@ export function CommentSheet({
   onClose,
   onCommentSaved,
   initialReplyThread,
+  initialEditingComment,
   roomId,
   myProgress,
 }: Props) {
@@ -545,6 +684,7 @@ export function CommentSheet({
   );
   const [containsSpoilers, setContainsSpoilers] = useState(false);
   const [replyThread, setReplyThread] = useState<Comment | null>(null);
+  const [editingComment, setEditingComment] = useState<Comment | null>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   // Reset reply thread when sheet closes; jump straight into the requested
@@ -552,10 +692,14 @@ export function CommentSheet({
   useEffect(() => {
     if (!visible) {
       setReplyThread(null);
+      setEditingComment(null);
     } else if (initialReplyThread) {
       setReplyThread(initialReplyThread);
     }
-  }, [visible, initialReplyThread]);
+    if (visible && initialEditingComment) {
+      setEditingComment(initialEditingComment);
+    }
+  }, [visible, initialReplyThread, initialEditingComment]);
 
   useEffect(() => {
     if (visible) {
@@ -596,6 +740,70 @@ export function CommentSheet({
   const createComment = useCreateComment();
   const likeComment = useLikeComment();
   const saveComment = useSaveComment();
+  const updateComment = useUpdateComment();
+  const deleteComment = useDeleteComment();
+
+  const refreshSocialQueries = useCallback(() => {
+    // A comment appears in quote threads, feeds, room activity, notifications,
+    // and records. Refetch every active server view so edited/deleted content
+    // cannot remain stale in another screen.
+    queryClient.invalidateQueries();
+  }, [queryClient]);
+
+  const handleSaveEdit = useCallback(
+    (text: string, nextVisibility: ContentVisibility, nextContainsSpoilers: boolean) => {
+      if (!editingComment) return;
+      updateComment.mutate(
+        {
+          commentId: editingComment.id,
+          data: {
+            text,
+            visibility: nextVisibility,
+            containsSpoilers: nextContainsSpoilers,
+          },
+        },
+        {
+          onSuccess: (updated) => {
+            if (replyThread?.id === updated.id) setReplyThread(updated);
+            setEditingComment(null);
+            refreshSocialQueries();
+          },
+          onError: () => Alert.alert("Couldn't save", "Please try again in a moment."),
+        },
+      );
+    },
+    [editingComment, updateComment, replyThread?.id, refreshSocialQueries],
+  );
+
+  const handleDeleteComment = useCallback(
+    (comment: Comment) => {
+      Alert.alert(
+        comment.parentId ? "Delete this reply?" : "Delete this comment?",
+        comment.parentId
+          ? "This can't be undone."
+          : "Its replies will also be deleted. This can't be undone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () =>
+              deleteComment.mutate(
+                { commentId: comment.id },
+                {
+                  onSuccess: () => {
+                    if (replyThread?.id === comment.id) setReplyThread(null);
+                    refreshSocialQueries();
+                  },
+                  onError: () => Alert.alert("Couldn't delete", "Please try again in a moment."),
+                },
+              ),
+          },
+        ],
+      );
+    },
+    [deleteComment, replyThread?.id, refreshSocialQueries],
+  );
 
   const handleLike = useCallback(
     (commentId: number) => {
@@ -709,6 +917,8 @@ export function CommentSheet({
               bottomPad={bottomPad}
               roomId={roomId}
               myProgress={myProgress}
+              onEditComment={setEditingComment}
+              onDeleteComment={handleDeleteComment}
             />
           ) : (
             /* ── Main comment list view ── */
@@ -770,6 +980,8 @@ export function CommentSheet({
                       onLike={handleLike}
                       onSave={handleSave}
                       onReply={setReplyThread}
+                      onEdit={setEditingComment}
+                      onDelete={handleDeleteComment}
                     />
                   </ProgressGuard>
                 )}
@@ -935,6 +1147,12 @@ export function CommentSheet({
           )}
         </Animated.View>
       </KeyboardAvoidingView>
+      <EditCommentModal
+        comment={editingComment}
+        saving={updateComment.isPending}
+        onClose={() => setEditingComment(null)}
+        onSave={handleSaveEdit}
+      />
     </Modal>
   );
 }
@@ -944,6 +1162,38 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.6)",
   },
+  editOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.62)",
+    justifyContent: "center",
+    padding: 24,
+  },
+  editCard: {
+    borderWidth: 1,
+    padding: 18,
+    gap: 14,
+  },
+  editHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  editTitle: { fontSize: 17, fontWeight: "700" },
+  editInput: {
+    minHeight: 120,
+    maxHeight: 220,
+    borderWidth: 1,
+    padding: 12,
+    fontSize: 15,
+    lineHeight: 21,
+    textAlignVertical: "top",
+  },
+  editSave: {
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editSaveText: { fontSize: 14, fontWeight: "700" },
   kvWrapper: {
     flex: 1,
     justifyContent: "flex-end",

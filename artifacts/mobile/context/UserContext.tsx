@@ -7,7 +7,6 @@ import React, {
   useState,
 } from "react";
 import {
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
@@ -29,6 +28,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Visibility } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { apiUrl } from "@/lib/api";
 import { PUSH_TOKEN_KEY, takeRememberedPushToken } from "@/lib/pushNotifications";
 
@@ -369,9 +369,10 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
 
   if (resetStep === "request") {
     return (
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollViewCompat
         style={[styles.onboardingContainer, { backgroundColor: colors.background }]}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 24 }}
+        bottomOffset={72}
       >
         <View style={[styles.onboardingContent, { paddingTop: topInset + 40 }]}>
           <View style={[styles.onboardingIcon, { backgroundColor: colors.primary }]}>
@@ -448,15 +449,16 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollViewCompat>
     );
   }
 
   if (resetStep === "confirm") {
     return (
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollViewCompat
         style={[styles.onboardingContainer, { backgroundColor: colors.background }]}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 24 }}
+        bottomOffset={72}
       >
         <View style={[styles.onboardingContent, { paddingTop: topInset + 40 }]}>
           <View style={[styles.onboardingIcon, { backgroundColor: colors.primary }]}>
@@ -571,15 +573,16 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollViewCompat>
     );
   }
 
   if (pendingUser) {
     return (
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollViewCompat
         style={[styles.onboardingContainer, { backgroundColor: colors.background }]}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 24 }}
+        bottomOffset={72}
       >
         <View style={[styles.onboardingContent, { paddingTop: topInset + 40 }]}>
           <View style={[styles.onboardingIcon, { backgroundColor: colors.primary }]}>
@@ -674,14 +677,15 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollViewCompat>
     );
   }
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAwareScrollViewCompat
       style={[styles.onboardingContainer, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 24 }}
+      bottomOffset={72}
     >
       <View style={[styles.onboardingContent, { paddingTop: topInset + 40 }]}>
         <View style={[styles.onboardingIcon, { backgroundColor: colors.primary }]}>
@@ -846,7 +850,7 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
           ) : null}
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollViewCompat>
   );
 }
 

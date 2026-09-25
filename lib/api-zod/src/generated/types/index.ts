@@ -62,6 +62,7 @@ export * from './saveResult';
 export * from './searchUsersParams';
 export * from './setAvatarInput';
 export * from './unreadCount';
+export * from './updateCommentInput';
 export * from './updateReadingLocationInput';
 export * from './updateRoomInput';
 export * from './updateUserSettings';

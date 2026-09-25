@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
 import {
+  Alert,
   ActivityIndicator,
   Image,
   Platform,
@@ -16,12 +17,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetBook,
   useGetBookRooms,
+  useDeleteComment,
   useLikeComment,
   useSaveComment,
   getGetBookQueryKey,
   getGetBookRoomsQueryKey,
 } from "@workspace/api-client-react";
-import type { Quote, Room } from "@workspace/api-client-react";
+import type { Comment, Quote, Room } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { CommentSheet } from "@/components/CommentSheet";
@@ -68,6 +70,7 @@ export default function BookDetailScreen() {
 
   const [selectedQuote, setSelectedQuote] = useState<{ id: number; text: string } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [editingComment, setEditingComment] = useState<Comment | null>(null);
 
   const { data: book, isLoading } = useGetBook(bookId, {
     query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) },
@@ -79,6 +82,7 @@ export default function BookDetailScreen() {
 
   const likeComment = useLikeComment();
   const saveComment = useSaveComment();
+  const deleteComment = useDeleteComment();
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: getGetBookQueryKey(bookId) });
@@ -93,9 +97,40 @@ export default function BookDetailScreen() {
   }, [saveComment, invalidate]);
 
   const openQuote = useCallback((quoteId: number, text: string) => {
+    setEditingComment(null);
     setSelectedQuote({ id: quoteId, text });
     setSheetVisible(true);
   }, []);
+
+  const handleEdit = useCallback((comment: Comment) => {
+    setSelectedQuote({ id: comment.quoteId, text: comment.quoteText ?? "" });
+    setEditingComment(comment);
+    setSheetVisible(true);
+  }, []);
+
+  const handleDelete = useCallback((comment: Comment) => {
+    Alert.alert(
+      comment.parentId ? "Delete this reply?" : "Delete this comment?",
+      comment.parentId
+        ? "This can't be undone."
+        : "Its replies will also be deleted. This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () =>
+            deleteComment.mutate(
+              { commentId: comment.id },
+              {
+                onSuccess: () => queryClient.invalidateQueries(),
+                onError: () => Alert.alert("Couldn't delete", "Please try again in a moment."),
+              },
+            ),
+        },
+      ],
+    );
+  }, [deleteComment, queryClient]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -240,7 +275,13 @@ export default function BookDetailScreen() {
                     </Text>
                   </View>
                 ) : null}
-                <CommentCard comment={c} onLike={handleLike} onSave={handleSave} />
+                <CommentCard
+                  comment={c}
+                  onLike={handleLike}
+                  onSave={handleSave}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
               </Pressable>
             ))
           )}
@@ -252,6 +293,7 @@ export default function BookDetailScreen() {
         quoteId={selectedQuote?.id ?? null}
         quoteText={selectedQuote?.text ?? ""}
         onClose={() => setSheetVisible(false)}
+        initialEditingComment={editingComment}
       />
     </View>
   );

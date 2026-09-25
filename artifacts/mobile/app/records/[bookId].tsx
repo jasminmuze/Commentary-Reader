@@ -16,6 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetUserBookRecords,
   getGetUserBookRecordsQueryKey,
+  useDeleteComment,
   useLikeComment,
   useSaveComment,
 } from "@workspace/api-client-react";
@@ -26,6 +27,7 @@ import type {
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { CommentCard } from "@/components/CommentCard";
+import { CommentSheet } from "@/components/CommentSheet";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingShimmer } from "@/components/LoadingShimmer";
 import { navigateToQuote } from "@/lib/quoteNavigation";
@@ -44,6 +46,8 @@ export default function BookRecordsScreen() {
   const params = useLocalSearchParams<{ bookId: string }>();
   const bookId = Number(params.bookId);
   const [section, setSection] = useState<Section>("highlights");
+  const [editingComment, setEditingComment] = useState<Comment | null>(null);
+  const [sheetVisible, setSheetVisible] = useState(false);
 
   const userId = user?.id ?? 0;
   const enabled = !!user && Number.isFinite(bookId);
@@ -61,6 +65,7 @@ export default function BookRecordsScreen() {
 
   const likeComment = useLikeComment();
   const saveComment = useSaveComment();
+  const deleteComment = useDeleteComment();
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({
@@ -84,6 +89,35 @@ export default function BookRecordsScreen() {
       );
     });
   }, []);
+
+  const handleEdit = useCallback((comment: Comment) => {
+    setEditingComment(comment);
+    setSheetVisible(true);
+  }, []);
+
+  const handleDelete = useCallback((comment: Comment) => {
+    Alert.alert(
+      comment.parentId ? "Delete this reply?" : "Delete this comment?",
+      comment.parentId
+        ? "This can't be undone."
+        : "Its replies will also be deleted. This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () =>
+            deleteComment.mutate(
+              { commentId: comment.id },
+              {
+                onSuccess: () => queryClient.invalidateQueries(),
+                onError: () => Alert.alert("Couldn't delete", "Please try again in a moment."),
+              },
+            ),
+        },
+      ],
+    );
+  }, [deleteComment, queryClient]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -212,6 +246,8 @@ export default function BookRecordsScreen() {
               onLike={handleLike}
               onSave={handleSave}
               onPress={(c) => handleOpenQuote(c.quoteId)}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
             />
           )
         }
@@ -239,6 +275,16 @@ export default function BookRecordsScreen() {
           <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />
         }
         showsVerticalScrollIndicator={false}
+      />
+      <CommentSheet
+        visible={sheetVisible}
+        quoteId={editingComment?.quoteId ?? null}
+        quoteText={editingComment?.quoteText ?? ""}
+        initialEditingComment={editingComment}
+        onClose={() => {
+          setSheetVisible(false);
+          setEditingComment(null);
+        }}
       />
     </View>
   );

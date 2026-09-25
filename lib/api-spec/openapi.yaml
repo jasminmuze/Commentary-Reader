@@ -226,6 +226,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HighlightResult"
+    delete:
+      operationId: deleteHighlight
+      tags: [quotes]
+      summary: Delete the current user's highlight on a quote
+      parameters:
+        - name: quoteId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Highlight deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HighlightResult"
+        "404":
+          description: Highlight not found
 
   /quotes/{quoteId}/reader-context:
     get:
@@ -306,6 +325,54 @@ paths:
                 $ref: "#/components/schemas/Comment"
         "404":
           description: Comment not found or not visible
+    patch:
+      operationId: updateComment
+      tags: [comments]
+      summary: Update the current user's comment or reply
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCommentInput"
+      responses:
+        "200":
+          description: Comment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "403":
+          description: Only the author can update this comment
+        "404":
+          description: Comment not found
+    delete:
+      operationId: deleteComment
+      tags: [comments]
+      summary: Delete the current user's comment or reply
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Comment deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "403":
+          description: Only the author can delete this comment
+        "404":
+          description: Comment not found
 
   /comments/{commentId}/replies:
     get:
@@ -1702,6 +1769,19 @@ components:
           minimum: 0
           maximum: 100
           description: Author's reading progress when writing (room spoiler guard)
+
+    UpdateCommentInput:
+      type: object
+      required: [text, visibility, containsSpoilers]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+        visibility:
+          $ref: "#/components/schemas/ContentVisibility"
+        containsSpoilers:
+          type: boolean
 
     CreateQuoteInput:
       type: object

@@ -665,6 +665,29 @@ export default function RoomScreen() {
             </Text>
           )}
 
+          {isMember && !isOwner ? (
+            <Pressable
+              onPress={handleLeave}
+              disabled={leaveRoom.isPending}
+              style={({ pressed }) => [
+                styles.leaveBtn,
+                {
+                  borderColor: colors.destructive,
+                  borderRadius: colors.radius,
+                  opacity: pressed || leaveRoom.isPending ? 0.65 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Leave reading room"
+              testID="leave-reading-room"
+            >
+              <Feather name="log-out" size={15} color={colors.destructive} />
+              <Text style={[styles.leaveBtnText, { color: colors.destructive }]}>
+                Leave reading room
+              </Text>
+            </Pressable>
+          ) : null}
+
           {/* Members */}
           <View style={styles.sectionHead}>
             <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>MEMBERS</Text>
@@ -948,6 +971,17 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   joinBtnText: { fontSize: 14, fontWeight: "700" },
+  leaveBtn: {
+    height: 42,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  leaveBtnText: { fontSize: 13, fontWeight: "700" },
   inviteActionsWrap: { gap: 12 },
   inviteActionsRow: { flexDirection: "row", gap: 10, marginHorizontal: 16 },
   inviteActionBtn: { flex: 1, marginHorizontal: 0 },

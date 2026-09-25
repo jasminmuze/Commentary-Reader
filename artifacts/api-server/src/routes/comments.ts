@@ -19,6 +19,9 @@ import {
   GetQuoteCommentsParams,
   GetQuoteCommentsQueryParams,
   GetCommentParams,
+  UpdateCommentParams,
+  UpdateCommentBody,
+  DeleteCommentParams,
   CreateCommentParams,
   CreateCommentBody,
   LikeCommentParams,
@@ -234,6 +237,89 @@ router.get("/comments/:commentId", authenticate, async (req, res): Promise<void>
 
   const formatted = await formatComment(comment, userId);
   res.json(formatted);
+});
+
+// PATCH /comments/:commentId — update an authored comment or reply.
+router.patch("/comments/:commentId", authenticate, async (req, res): Promise<void> => {
+  const params = UpdateCommentParams.safeParse(req.params);
+  const body = UpdateCommentBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({
+      error: !params.success ? params.error.message : body.success ? "" : body.error.message,
+    });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(commentsTable)
+    .where(eq(commentsTable.id, params.data.commentId))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Comment not found" });
+    return;
+  }
+  if (existing.userId !== req.userId) {
+    res.status(403).json({ error: "Only the author can update this comment" });
+    return;
+  }
+  if (body.data.visibility === "room" && existing.roomId == null) {
+    res.status(400).json({ error: "visibility 'room' requires roomId" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(commentsTable)
+    .set({
+      text: body.data.text.trim(),
+      visibility: body.data.visibility,
+      containsSpoilers: body.data.containsSpoilers,
+    })
+    .where(eq(commentsTable.id, existing.id))
+    .returning();
+  if (!updated) {
+    res.status(500).json({ error: "Failed to update comment" });
+    return;
+  }
+  res.json(await formatComment(updated, req.userId));
+});
+
+// DELETE /comments/:commentId — delete an authored comment. Deleting a
+// top-level comment also removes its replies and all dependent social rows.
+router.delete("/comments/:commentId", authenticate, async (req, res): Promise<void> => {
+  const params = DeleteCommentParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(commentsTable)
+    .where(eq(commentsTable.id, params.data.commentId))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Comment not found" });
+    return;
+  }
+  if (existing.userId !== req.userId) {
+    res.status(403).json({ error: "Only the author can delete this comment" });
+    return;
+  }
+
+  const childRows = await db
+    .select({ id: commentsTable.id })
+    .from(commentsTable)
+    .where(eq(commentsTable.parentId, existing.id));
+  const ids = [existing.id, ...childRows.map((row) => row.id)];
+
+  await db.transaction(async (tx) => {
+    await tx.delete(commentLikesTable).where(inArray(commentLikesTable.commentId, ids));
+    await tx.delete(commentSavesTable).where(inArray(commentSavesTable.commentId, ids));
+    await tx.delete(notificationsTable).where(inArray(notificationsTable.commentId, ids));
+    await tx.delete(commentsTable).where(inArray(commentsTable.id, ids));
+  });
+  res.json({ ok: true });
 });
 
 // GET /comments/:commentId/replies — flat chronological replies (visibility-gated).
