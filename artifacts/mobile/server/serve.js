@@ -20,6 +20,11 @@ const ACCOUNT_DELETION_TEMPLATE_PATH = path.resolve(
   "templates",
   "account-deletion.html",
 );
+const PRIVACY_POLICY_TEMPLATE_PATH = path.resolve(
+  __dirname,
+  "templates",
+  "privacy-policy.html",
+);
 const basePath = (process.env.BASE_PATH || "/").replace(/\/+$/, "");
 
 const MIME_TYPES = {
@@ -134,6 +139,10 @@ const accountDeletionTemplate = fs.readFileSync(
   ACCOUNT_DELETION_TEMPLATE_PATH,
   "utf-8",
 );
+const privacyPolicyTemplate = fs.readFileSync(
+  PRIVACY_POLICY_TEMPLATE_PATH,
+  "utf-8",
+);
 const appName = getAppName();
 
 const server = http.createServer((req, res) => {
@@ -146,6 +155,9 @@ const server = http.createServer((req, res) => {
 
   if (pathname.replace(/\/+$/, "") === "/account-deletion") {
     return serveAccountDeletionPage(req, res, accountDeletionTemplate);
+  }
+  if (pathname.replace(/\/+$/, "") === "/privacy-policy") {
+    return serveAccountDeletionPage(req, res, privacyPolicyTemplate);
   }
 
   if (pathname === "/" || pathname === "/manifest") {

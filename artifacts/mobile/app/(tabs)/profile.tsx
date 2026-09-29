@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -855,6 +856,26 @@ export default function ProfileScreen() {
       {/* Account */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>ACCOUNT</Text>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel="Privacy policy"
+          onPress={() => void Linking.openURL(`https://${process.env.EXPO_PUBLIC_DOMAIN}/privacy-policy`)}
+          style={({ pressed }) => [
+            styles.card,
+            styles.logoutButton,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+              opacity: pressed ? 0.6 : 1,
+              marginBottom: 12,
+            },
+          ]}
+        >
+          <Feather name="shield" size={18} color={colors.foreground} />
+          <Text style={[styles.logoutText, { color: colors.foreground }]}>Privacy policy</Text>
+          <Feather name="external-link" size={16} color={colors.mutedForeground} />
+        </Pressable>
         <Pressable
           onPress={handleLogout}
           disabled={loggingOut}
