@@ -255,7 +255,7 @@ export default function FeedScreen() {
     enabled: !!user,
   });
 
-  const items: FeedItem[] = data?.pages.flatMap((p) => p.items) ?? [];
+  const items: FeedItem[] = data?.pages.flatMap((p) => p.items).filter((item) => item.type === "comment") ?? [];
 
   // Patches one feed item across all cached pages.
   const patchFeedItem = useCallback(
@@ -347,7 +347,7 @@ export default function FeedScreen() {
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>Feed</Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          Highlights and comments from people you follow
+          Comments from people you follow
         </Text>
         {myRooms && myRooms.length > 0 ? (
           <FlatList
@@ -408,13 +408,13 @@ export default function FeedScreen() {
             <EmptyState
               icon="users"
               title="No activity in this room yet"
-              subtitle="Highlights and comments shared in this room will appear here"
+              subtitle="Comments shared in this room will appear here"
             />
           ) : (
             <EmptyState
               icon="users"
               title="Your feed is empty"
-              subtitle="Follow friends to see their highlights and comments here"
+              subtitle="Follow friends to see their comments here"
             />
           )
         }

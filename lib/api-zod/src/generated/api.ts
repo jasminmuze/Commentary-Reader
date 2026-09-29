@@ -1334,7 +1334,7 @@ export const UpdateNotificationSettingsResponse = zod.object({
 
 
 /**
- * @summary Activity feed of users I follow (highlights + comments, newest first, viewer taken from bearer token)
+ * @summary Comment feed of users I follow (newest first, viewer taken from bearer token)
  */
 export const getFeedQueryLimitDefault = 20;
 export const getFeedQueryLimitMax = 50;
@@ -1608,7 +1608,7 @@ export const DeclineRoomInviteResponse = zod.object({
 
 
 /**
- * @summary Latest room-scoped highlights and comments (members only)
+ * @summary Latest room-scoped comments (members only)
  */
 export const GetRoomFeedParams = zod.object({
   "roomId": zod.coerce.number()

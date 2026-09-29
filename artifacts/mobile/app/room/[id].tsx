@@ -728,12 +728,12 @@ export default function RoomScreen() {
               <Text style={[styles.sectionTitle, { color: colors.mutedForeground, marginHorizontal: 20, marginTop: 24, marginBottom: 10 }]}>
                 ROOM ACTIVITY
               </Text>
-              {(feed ?? []).length === 0 ? (
+              {(feed ?? []).filter((item) => item.type === "comment").length === 0 ? (
                 <Text style={[styles.emptyLine, { color: colors.mutedForeground }]}>
-                  No activity yet. Highlight or comment in room scope while reading to share it here.
+                  No comments yet. Comment in room scope while reading to share it here.
                 </Text>
               ) : (
-                (feed ?? []).map((item) => (
+                (feed ?? []).filter((item) => item.type === "comment").map((item) => (
                   <FeedRow
                     key={`${item.type}-${item.id}`}
                     item={item}
@@ -748,7 +748,7 @@ export default function RoomScreen() {
             </>
           ) : (
             <Text style={[styles.emptyLine, { color: colors.mutedForeground, marginTop: 24 }]}>
-              Join this room to see members' highlights and discussion.
+              Join this room to see members' discussion.
             </Text>
           )}
         </ScrollView>

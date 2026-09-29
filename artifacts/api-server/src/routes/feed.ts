@@ -6,10 +6,8 @@ import {
   booksTable,
   commentLikesTable,
   commentsTable,
-  highlightLikesTable,
   quotesTable,
   roomMembersTable,
-  userHighlightsTable,
   usersTable,
 } from "@workspace/db";
 import { GetFeedQueryParams } from "@workspace/api-zod";
@@ -25,12 +23,10 @@ import { authenticate } from "../middlewares/authenticate.js";
 const router: IRouter = Router();
 
 /**
- * Feed items are totally ordered by (createdAt, typeRank, id) descending so
- * pagination can resume exactly after the last item even when timestamps
- * collide. The opaque cursor encodes all three components; timestamps are
- * compared at millisecond precision (JS Date resolution) via date_trunc.
+ * Cursors retain the old type rank for compatibility with already-issued
+ * cursors, even though this feed now includes comments only.
  */
-const TYPE_RANK = { highlight: 0, comment: 1 } as const;
+const COMMENT_RANK = 1;
 
 interface FeedCursor {
   t: string; // createdAt ISO (ms precision)
@@ -75,7 +71,7 @@ function cursorPredicate(
   return sql`(date_trunc('milliseconds', ${createdAtCol}), ${typeRank}, ${idCol}) < (${cursor.t}::timestamptz, ${cursor.r}, ${cursor.i})`;
 }
 
-// Activity feed: recent highlights and comments from users the viewer follows,
+// Activity feed: recent comments from users the viewer follows,
 // visibility-filtered (public always; friends-only when mutual), newest first.
 router.get("/feed", authenticate, async (req, res): Promise<void> => {
   const qp = GetFeedQueryParams.safeParse(req.query);
@@ -96,7 +92,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
   const userId = req.userId;
   const roomId = qp.data.roomId;
 
-  // Room-scoped feed: show ALL activity in the room (not just followed users),
+  // Room-scoped feed: show all comments in the room (not just followed users),
   // restricted to members. Room rows are visible to every member regardless
   // of the row's visibility setting, matching the room feed screen.
   if (roomId !== undefined) {
@@ -120,54 +116,6 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
   }
   const viewer = await getViewer(userId);
 
-  const highlightFilters: SQL[] =
-    roomId !== undefined
-      ? [eq(userHighlightsTable.roomId, roomId)]
-      : [
-          inArray(userHighlightsTable.userId, followingIds),
-          visibilityPredicate(
-            userHighlightsTable.visibility,
-            userHighlightsTable.userId,
-            viewer,
-            userHighlightsTable.roomId,
-          ),
-        ];
-  if (cursor) {
-    highlightFilters.push(
-      cursorPredicate(
-        userHighlightsTable.createdAt,
-        userHighlightsTable.id,
-        TYPE_RANK.highlight,
-        cursor,
-      ),
-    );
-  }
-
-  const highlightRows = await db
-    .select({
-      id: userHighlightsTable.id,
-      userId: userHighlightsTable.userId,
-      username: usersTable.username,
-      nickname: usersTable.nickname,
-      avatarUrl: usersTable.avatarUrl,
-      avatarColor: usersTable.avatarColor,
-      quoteId: quotesTable.id,
-      quoteText: quotesTable.text,
-      bookId: booksTable.id,
-      bookTitle: booksTable.title,
-      bookAuthor: booksTable.author,
-      coverColor: booksTable.coverColor,
-      coverUrl: booksTable.coverUrl,
-      createdAt: userHighlightsTable.createdAt,
-    })
-    .from(userHighlightsTable)
-    .innerJoin(usersTable, eq(userHighlightsTable.userId, usersTable.id))
-    .innerJoin(quotesTable, eq(userHighlightsTable.quoteId, quotesTable.id))
-    .innerJoin(booksTable, eq(quotesTable.canonicalBookId, booksTable.id))
-    .where(and(...highlightFilters))
-    .orderBy(desc(userHighlightsTable.createdAt), desc(userHighlightsTable.id))
-    .limit(limit + 1);
-
   const commentFilters: SQL[] =
     roomId !== undefined
       ? [eq(commentsTable.roomId, roomId)]
@@ -180,7 +128,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       cursorPredicate(
         commentsTable.createdAt,
         commentsTable.id,
-        TYPE_RANK.comment,
+        COMMENT_RANK,
         cursor,
       ),
     );
@@ -214,60 +162,16 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
     .orderBy(desc(commentsTable.createdAt), desc(commentsTable.id))
     .limit(limit + 1);
 
-  type MergedRow =
-    | ((typeof highlightRows)[number] & { type: "highlight" })
-    | ((typeof commentRows)[number] & { type: "comment" });
-
-  const merged: MergedRow[] = [
-    ...highlightRows.map((r) => ({ ...r, type: "highlight" as const })),
-    ...commentRows.map((r) => ({ ...r, type: "comment" as const })),
-  ].sort(
-    (a, b) =>
-      b.createdAt.getTime() - a.createdAt.getTime() ||
-      TYPE_RANK[b.type] - TYPE_RANK[a.type] ||
-      b.id - a.id,
-  );
-
-  const page = merged.slice(0, limit);
-  const hasMore = merged.length > limit;
+  const page = commentRows.slice(0, limit);
+  const hasMore = commentRows.length > limit;
 
   // Copyright guardrail: full quote text only for books the viewer owns.
   const ownedBookIds = await getOwnedBookIds(userId, [
     ...new Set(page.map((r) => r.bookId)),
   ]);
 
-  // Like state for the page. Highlight like counts are computed via GROUP BY
-  // (no denormalized counter); comment counts come from commentsTable.likeCount.
-  const highlightIds = page
-    .filter((r) => r.type === "highlight")
-    .map((r) => r.id);
-  const commentIds = page.filter((r) => r.type === "comment").map((r) => r.id);
-
-  const highlightLikeCounts = new Map<number, number>();
-  const likedHighlightIds = new Set<number>();
-  if (highlightIds.length > 0) {
-    const countRows = await db
-      .select({
-        highlightId: highlightLikesTable.highlightId,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(highlightLikesTable)
-      .where(inArray(highlightLikesTable.highlightId, highlightIds))
-      .groupBy(highlightLikesTable.highlightId);
-    for (const row of countRows) {
-      highlightLikeCounts.set(row.highlightId, row.count);
-    }
-    const myLikes = await db
-      .select({ highlightId: highlightLikesTable.highlightId })
-      .from(highlightLikesTable)
-      .where(
-        and(
-          inArray(highlightLikesTable.highlightId, highlightIds),
-          eq(highlightLikesTable.userId, userId),
-        ),
-      );
-    for (const row of myLikes) likedHighlightIds.add(row.highlightId);
-  }
+  // Like state for the comments on this page.
+  const commentIds = page.map((r) => r.id);
 
   const likedCommentIds = new Set<number>();
   if (commentIds.length > 0) {
@@ -289,7 +193,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       ? { text: r.quoteText, truncated: false }
       : truncateQuoteText(r.quoteText);
     return {
-      type: r.type,
+      type: "comment",
       id: r.id,
       userId: r.userId,
       username: r.username,
@@ -304,16 +208,10 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       quoteId: r.quoteId,
       quoteText: preview.text,
       quoteTextTruncated: preview.truncated,
-      ...(r.type === "comment" ? { commentText: r.commentText } : {}),
-      likeCount:
-        r.type === "highlight"
-          ? (highlightLikeCounts.get(r.id) ?? 0)
-          : r.likeCount,
-      likedByMe:
-        r.type === "highlight"
-          ? likedHighlightIds.has(r.id)
-          : likedCommentIds.has(r.id),
-      containsSpoilers: r.type === "comment" ? r.containsSpoilers : false,
+      commentText: r.commentText,
+      likeCount: r.likeCount,
+      likedByMe: likedCommentIds.has(r.id),
+      containsSpoilers: r.containsSpoilers,
       createdAt: r.createdAt,
     };
   });
@@ -325,7 +223,7 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
       hasMore && last
         ? encodeCursor({
             t: last.createdAt.toISOString(),
-            r: TYPE_RANK[last.type],
+            r: COMMENT_RANK,
             i: last.id,
           })
         : null,

@@ -838,7 +838,7 @@ router.post(
   },
 );
 
-// GET /rooms/:roomId/feed — latest room-scoped highlights + comments; archived
+// GET /rooms/:roomId/feed — latest room-scoped comments; archived
 // rooms remain readable to their former contributors.
 router.get("/rooms/:roomId/feed", authenticate, async (req, res): Promise<void> => {
   const params = GetRoomFeedParams.safeParse(req.params);
@@ -862,65 +862,30 @@ router.get("/rooms/:roomId/feed", authenticate, async (req, res): Promise<void> 
     return;
   }
 
-  const [highlights, comments] = await Promise.all([
-    db
-      .select({
-        id: userHighlightsTable.id,
-        userId: userHighlightsTable.userId,
-        username: usersTable.username,
-        nickname: usersTable.nickname,
-        avatarUrl: usersTable.avatarUrl,
-        avatarColor: usersTable.avatarColor,
-        quoteId: userHighlightsTable.quoteId,
-        quoteText: quotesTable.text,
-        authorProgress: userHighlightsTable.authorProgress,
-        createdAt: userHighlightsTable.createdAt,
-      })
-      .from(userHighlightsTable)
-      .innerJoin(usersTable, eq(userHighlightsTable.userId, usersTable.id))
-      .innerJoin(quotesTable, eq(userHighlightsTable.quoteId, quotesTable.id))
-      .where(eq(userHighlightsTable.roomId, room.id))
-      .orderBy(desc(userHighlightsTable.createdAt))
-      .limit(50),
-    db
-      .select({
-        id: commentsTable.id,
-        userId: commentsTable.userId,
-        username: usersTable.username,
-        nickname: usersTable.nickname,
-        avatarUrl: usersTable.avatarUrl,
-        avatarColor: usersTable.avatarColor,
-        quoteId: commentsTable.quoteId,
-        quoteText: quotesTable.text,
-        commentText: commentsTable.text,
-        likeCount: commentsTable.likeCount,
-        containsSpoilers: commentsTable.containsSpoilers,
-        authorProgress: commentsTable.authorProgress,
-        createdAt: commentsTable.createdAt,
-      })
-      .from(commentsTable)
-      .innerJoin(usersTable, eq(commentsTable.userId, usersTable.id))
-      .innerJoin(quotesTable, eq(commentsTable.quoteId, quotesTable.id))
-      .where(eq(commentsTable.roomId, room.id))
-      .orderBy(desc(commentsTable.createdAt))
-      .limit(50),
-  ]);
+  const comments = await db
+    .select({
+      id: commentsTable.id,
+      userId: commentsTable.userId,
+      username: usersTable.username,
+      nickname: usersTable.nickname,
+      avatarUrl: usersTable.avatarUrl,
+      avatarColor: usersTable.avatarColor,
+      quoteId: commentsTable.quoteId,
+      quoteText: quotesTable.text,
+      commentText: commentsTable.text,
+      likeCount: commentsTable.likeCount,
+      containsSpoilers: commentsTable.containsSpoilers,
+      authorProgress: commentsTable.authorProgress,
+      createdAt: commentsTable.createdAt,
+    })
+    .from(commentsTable)
+    .innerJoin(usersTable, eq(commentsTable.userId, usersTable.id))
+    .innerJoin(quotesTable, eq(commentsTable.quoteId, quotesTable.id))
+    .where(eq(commentsTable.roomId, room.id))
+    .orderBy(desc(commentsTable.createdAt))
+    .limit(50);
 
-  const [highlightLikes, commentLikes, ownsBook] = await Promise.all([
-    highlights.length
-      ? db
-          .select({
-            highlightId: highlightLikesTable.highlightId,
-            userId: highlightLikesTable.userId,
-          })
-          .from(highlightLikesTable)
-          .where(
-            inArray(
-              highlightLikesTable.highlightId,
-              highlights.map((h) => h.id),
-            ),
-          )
-      : Promise.resolve([]),
+  const [commentLikes, ownsBook] = await Promise.all([
     comments.length
       ? db
           .select({ commentId: commentLikesTable.commentId })
@@ -940,15 +905,6 @@ router.get("/rooms/:roomId/feed", authenticate, async (req, res): Promise<void> 
     ),
   ]);
 
-  const highlightLikeCounts = new Map<number, number>();
-  const highlightLikedByMe = new Set<number>();
-  for (const l of highlightLikes) {
-    highlightLikeCounts.set(
-      l.highlightId,
-      (highlightLikeCounts.get(l.highlightId) ?? 0) + 1,
-    );
-    if (l.userId === req.userId) highlightLikedByMe.add(l.highlightId);
-  }
   const commentLikedByMe = new Set(commentLikes.map((c) => c.commentId));
 
   const quoteTextFor = (text: string) => {
@@ -956,51 +912,27 @@ router.get("/rooms/:roomId/feed", authenticate, async (req, res): Promise<void> 
     return truncateQuoteText(text);
   };
 
-  const items: RoomFeedItem[] = [
-    ...highlights.map((h): RoomFeedItem => {
-      const qt = quoteTextFor(h.quoteText);
-      return {
-        type: "highlight",
-        id: h.id,
-        userId: h.userId,
-        username: h.username,
-        nickname: h.nickname ?? null,
-        avatarUrl: h.avatarUrl ?? null,
-        avatarColor: h.avatarColor,
-        quoteId: h.quoteId,
-        quoteText: qt.text,
-        quoteTextTruncated: qt.truncated,
-        likeCount: highlightLikeCounts.get(h.id) ?? 0,
-        likedByMe: highlightLikedByMe.has(h.id),
-        containsSpoilers: false,
-        authorProgress: h.authorProgress ?? null,
-        createdAt: h.createdAt,
-      };
-    }),
-    ...comments.map((c): RoomFeedItem => {
-      const qt = quoteTextFor(c.quoteText);
-      return {
-        type: "comment",
-        id: c.id,
-        userId: c.userId,
-        username: c.username,
-        nickname: c.nickname ?? null,
-        avatarUrl: c.avatarUrl ?? null,
-        avatarColor: c.avatarColor,
-        quoteId: c.quoteId,
-        quoteText: qt.text,
-        quoteTextTruncated: qt.truncated,
-        commentText: c.commentText,
-        likeCount: c.likeCount,
-        likedByMe: commentLikedByMe.has(c.id),
-        containsSpoilers: c.containsSpoilers,
-        authorProgress: c.authorProgress ?? null,
-        createdAt: c.createdAt,
-      };
-    }),
-  ]
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .slice(0, 50);
+  const items: RoomFeedItem[] = comments.map((c): RoomFeedItem => {
+    const qt = quoteTextFor(c.quoteText);
+    return {
+      type: "comment",
+      id: c.id,
+      userId: c.userId,
+      username: c.username,
+      nickname: c.nickname ?? null,
+      avatarUrl: c.avatarUrl ?? null,
+      avatarColor: c.avatarColor,
+      quoteId: c.quoteId,
+      quoteText: qt.text,
+      quoteTextTruncated: qt.truncated,
+      commentText: c.commentText,
+      likeCount: c.likeCount,
+      likedByMe: commentLikedByMe.has(c.id),
+      containsSpoilers: c.containsSpoilers,
+      authorProgress: c.authorProgress ?? null,
+      createdAt: c.createdAt,
+    };
+  });
 
   res.json(items);
 });

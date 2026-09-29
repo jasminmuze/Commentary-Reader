@@ -1272,7 +1272,7 @@ paths:
     get:
       operationId: getFeed
       tags: [users]
-      summary: Activity feed of users I follow (highlights + comments, newest first, viewer taken from bearer token)
+      summary: Comment feed of users I follow (newest first, viewer taken from bearer token)
       parameters:
         - name: roomId
           in: query
@@ -1576,7 +1576,7 @@ paths:
     get:
       operationId: getRoomFeed
       tags: [rooms]
-      summary: Latest room-scoped highlights and comments (members only)
+      summary: Latest room-scoped comments (members only)
       parameters:
         - name: roomId
           in: path
