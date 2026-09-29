@@ -11,3 +11,18 @@ id = "jZC-rH7VRzUtsJkxl-3HT"
 uri = "file://artifacts/shelfmates-video/public/audio/bg_music.mp3"
 type = "audio"
 title = "background music"
+logical_id = "60480829-7944-4871-a472-9cf3e2e5be34"
+
+[[outputs]]
+id = "bejOO3WKfvesuxx4pUKMi"
+uri = "file://outputs/shelfmates-upload-certificate.pem"
+type = "unspecified"
+title = "Shelfmates 업로드 키 공개 인증서 (.pem)"
+description = "Google Play 업로드 키 재설정 요청용 공개 인증서입니다. EAS versionCode 4·5 AAB 서명 지문 DD:8C:CD:AA:…와 일치합니다. 개인 키는 포함되지 않습니다."
+logical_id = "43f2abad-8931-453f-a631-f7ded70f4b4f"
+content_hash = "sha256:9f090a6eb322684a8ef12f02206542e9514ddae42c2122b1568cabbf857ffc15"
+size = 1158
+mtime_ms = 1790670926476
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:859e6eaf-a93c-4212-a1b5-975a030e3ef1/43f2abad-8931-453f-a631-f7ded70f4b4f/fe54c216-9b45-4627-a7ae-051dc58aa5ad"
+storage_version_token = "1790670944702885"
+content_type = "application/octet-stream"
