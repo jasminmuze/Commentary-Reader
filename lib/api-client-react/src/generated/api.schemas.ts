@@ -557,6 +557,26 @@ export interface OkResult {
   ok: boolean;
 }
 
+export interface DeleteAccountInput {
+  /**
+     * Current account password, required to confirm permanent deletion
+     * @minLength 1
+     */
+  password: string;
+}
+
+export interface DeleteAccountResult {
+  ok: true;
+  deleted: true;
+  /** True when account data was deleted but one or more owned storage objects could not be removed */
+  objectCleanupPending: boolean;
+  /**
+     * Number of upload objects retained because another account still references them
+     * @minimum 0
+     */
+  sharedObjectsRetained: number;
+}
+
 export interface UserRecordsBook {
   bookId: number;
   title: string;
@@ -670,7 +690,11 @@ export interface Room {
   name: string;
   description: string;
   isPublic: boolean;
-  ownerId: number;
+  /**
+     * Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members
+     * @nullable
+     */
+  ownerId: number | null;
   memberCount: number;
   bookTitle: string;
   bookAuthor: string;
@@ -722,7 +746,11 @@ export interface RoomDetail {
   name: string;
   description: string;
   isPublic: boolean;
-  ownerId: number;
+  /**
+     * Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members
+     * @nullable
+     */
+  ownerId: number | null;
   memberCount: number;
   bookTitle: string;
   bookAuthor: string;

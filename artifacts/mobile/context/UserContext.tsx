@@ -917,8 +917,18 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       // Best-effort: the server also prunes dead tokens on push failures,
       // and re-registration under another account reassigns the token.
     }
-    await AsyncStorage.multiRemove([USER_ID_KEY, TOKEN_KEY, PUSH_TOKEN_KEY]);
     setUserState(null);
+    try {
+      await AsyncStorage.multiRemove([USER_ID_KEY, TOKEN_KEY, PUSH_TOKEN_KEY]);
+    } catch {
+      // Try clearing each key independently if the batched operation fails.
+      const removalResults = await Promise.allSettled(
+        [USER_ID_KEY, TOKEN_KEY, PUSH_TOKEN_KEY].map((key) => AsyncStorage.removeItem(key)),
+      );
+      if (removalResults.some((result) => result.status === "rejected")) {
+        throw new Error("Could not clear all local sign-in data.");
+      }
+    }
   }, [user]);
 
   if (!isInitialized) {

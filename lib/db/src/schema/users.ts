@@ -46,6 +46,9 @@ export const usersTable = pgTable("users", {
   notifyMentions: boolean("notify_mentions").notNull().default(true),
   notifyFriends: boolean("notify_friends").notNull().default(true),
   notifyRooms: boolean("notify_rooms").notNull().default(true),
+  // Set before permanent deletion begins so new authenticated requests stop
+  // entering the account while its data is being removed.
+  deletionPending: boolean("deletion_pending").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

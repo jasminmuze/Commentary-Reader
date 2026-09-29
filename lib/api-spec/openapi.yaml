@@ -436,6 +436,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LibraryUploadResult"
+        "403":
+          description: EPUB must use an unused upload URL issued to the authenticated account
+        "409":
+          description: The EPUB object is already registered to another account, or account deletion is in progress
 
   /library/{libraryId}:
     get:
@@ -591,6 +595,42 @@ paths:
                 $ref: "#/components/schemas/User"
         "404":
           description: Not found
+    delete:
+      operationId: deleteUserAccount
+      tags: [users]
+      summary: Permanently delete the authenticated user's account and owned data
+      description: Requires confirmation with the current password. Only the authenticated user may delete their own account. Shared book covers and other users' content are preserved.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteAccountInput"
+      responses:
+        "200":
+          description: Account and account-owned data permanently deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteAccountResult"
+        "400":
+          description: Invalid request or account has no password credential
+        "401":
+          description: Unauthorized or current password is incorrect
+        "403":
+          description: Authenticated user may only delete their own account
+        "404":
+          description: User not found
+        "500":
+          description: Account data could not be deleted
+        "409":
+          description: Account deletion is already in progress
 
   /users/search:
     get:
@@ -991,12 +1031,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AvatarUploadUrl"
+        "409":
+          description: Account deletion is in progress
 
   /users/{userId}/avatar:
     put:
       operationId: setAvatar
       tags: [users]
       summary: Set the profile photo after uploading it (self only)
+      description: The image must use a presigned upload URL issued to this account; arbitrary public object paths are rejected.
       parameters:
         - name: userId
           in: path
@@ -1016,6 +1059,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+        "403":
+          description: Avatar upload was not issued to the authenticated account
     delete:
       operationId: removeAvatar
       tags: [users]
@@ -1386,7 +1431,7 @@ paths:
     post:
       operationId: joinRoom
       tags: [rooms]
-      summary: Join a public room (idempotent)
+      summary: Join a public room (idempotent; archived rooms cannot be joined)
       parameters:
         - name: roomId
           in: path
@@ -1403,7 +1448,7 @@ paths:
         "403":
           description: Private room — invite required
         "404":
-          description: Room not found
+          description: Room not found or archived and no longer joinable
 
   /rooms/{roomId}/leave:
     post:
@@ -1460,7 +1505,7 @@ paths:
     post:
       operationId: inviteToRoom
       tags: [rooms]
-      summary: Invite a friend to the room (any member; idempotent while pending)
+      summary: Invite a friend to the room (member or owner; idempotent while pending)
       parameters:
         - name: roomId
           in: path
@@ -1481,7 +1526,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkResult"
         "403":
-          description: Only room members can invite
+          description: Only room members or the owner can invite
         "404":
           description: Room or user not found
 
@@ -2308,6 +2353,33 @@ components:
         ok:
           type: boolean
 
+    DeleteAccountInput:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+          minLength: 1
+          description: Current account password, required to confirm permanent deletion
+
+    DeleteAccountResult:
+      type: object
+      required: [ok, deleted, objectCleanupPending, sharedObjectsRetained]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        deleted:
+          type: boolean
+          enum: [true]
+        objectCleanupPending:
+          type: boolean
+          description: True when account data was deleted but one or more owned storage objects could not be removed
+        sharedObjectsRetained:
+          type: integer
+          minimum: 0
+          description: Number of upload objects retained because another account still references them
+
     UserRecordsBook:
       type: object
       required: [bookId, title, author, coverColor, highlightCount, commentCount, savedCount]
@@ -2482,7 +2554,8 @@ components:
         isPublic:
           type: boolean
         ownerId:
-          type: integer
+          type: [integer, "null"]
+          description: Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members
         memberCount:
           type: integer
         bookTitle:
@@ -2534,7 +2607,8 @@ components:
         isPublic:
           type: boolean
         ownerId:
-          type: integer
+          type: [integer, "null"]
+          description: Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members
         memberCount:
           type: integer
         bookTitle:

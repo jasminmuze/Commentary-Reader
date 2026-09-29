@@ -15,6 +15,11 @@ const path = require("path");
 
 const STATIC_ROOT = path.resolve(__dirname, "..", "static-build");
 const TEMPLATE_PATH = path.resolve(__dirname, "templates", "landing-page.html");
+const ACCOUNT_DELETION_TEMPLATE_PATH = path.resolve(
+  __dirname,
+  "templates",
+  "account-deletion.html",
+);
 const basePath = (process.env.BASE_PATH || "/").replace(/\/+$/, "");
 
 const MIME_TYPES = {
@@ -81,6 +86,26 @@ function serveLandingPage(req, res, landingPageTemplate, appName) {
   res.end(html);
 }
 
+function serveAccountDeletionPage(req, res, accountDeletionTemplate) {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405, {
+      "content-type": "text/plain; charset=utf-8",
+      allow: "GET, HEAD",
+      "cache-control": "no-store",
+    });
+    res.end("Method Not Allowed");
+    return;
+  }
+
+  res.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+  });
+  res.end(req.method === "HEAD" ? undefined : accountDeletionTemplate);
+}
+
 function serveStaticFile(urlPath, res) {
   const safePath = path.normalize(urlPath).replace(/^(\.\.(\/|\\|$))+/, "");
   const filePath = path.join(STATIC_ROOT, safePath);
@@ -105,6 +130,10 @@ function serveStaticFile(urlPath, res) {
 }
 
 const landingPageTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
+const accountDeletionTemplate = fs.readFileSync(
+  ACCOUNT_DELETION_TEMPLATE_PATH,
+  "utf-8",
+);
 const appName = getAppName();
 
 const server = http.createServer((req, res) => {
@@ -113,6 +142,10 @@ const server = http.createServer((req, res) => {
 
   if (basePath && pathname.startsWith(basePath)) {
     pathname = pathname.slice(basePath.length) || "/";
+  }
+
+  if (pathname.replace(/\/+$/, "") === "/account-deletion") {
+    return serveAccountDeletionPage(req, res, accountDeletionTemplate);
   }
 
   if (pathname === "/" || pathname === "/manifest") {

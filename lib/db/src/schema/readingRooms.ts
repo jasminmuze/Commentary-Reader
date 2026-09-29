@@ -16,8 +16,9 @@ export const readingRoomsTable = pgTable("reading_rooms", {
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   isPublic: boolean("is_public").notNull().default(true),
-  // The room creator (host). Also present in room_members with role "owner".
-  ownerId: integer("owner_id").notNull(),
+  // The room creator (host). NULL means the room is archived after its owner
+  // account was deleted while preserving content from former members.
+  ownerId: integer("owner_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

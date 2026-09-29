@@ -1,20 +1,31 @@
 import { Router, type IRouter } from "express";
-import { eq, and, or, isNull, lt, like, ilike, inArray, count, desc, max } from "drizzle-orm";
+import { eq, and, or, isNull, lt, like, ilike, inArray, count, desc, max, asc, sql, gt } from "drizzle-orm";
 import {
   db,
   usersTable,
   friendshipsTable,
   friendRequestsTable,
   commentsTable,
+  commentLikesTable,
   commentSavesTable,
+  highlightLikesTable,
+  notificationsTable,
   quotesTable,
   userHighlightsTable,
+  userLibraryTable,
+  pushTokensTable,
+  feedbackTable,
   booksTable,
   readingRoomsTable,
   roomMembersTable,
+  roomInvitesTable,
+  userObjectUploadsTable,
+  accountObjectCleanupJobsTable,
 } from "@workspace/db";
 import {
   CreateUserBody,
+  DeleteUserAccountParams,
+  DeleteUserAccountBody,
   SendVerificationEmailParams,
   ConfirmEmailVerificationParams,
   ConfirmEmailVerificationBody,
@@ -48,7 +59,17 @@ import { createHash, randomInt } from "crypto";
 import { LoginUserBody } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../lib/email";
-import { ObjectStorageService } from "../lib/objectStorage";
+import {
+  isGeneratedAvatarObjectPath,
+  isGeneratedEpubObjectPath,
+  ObjectStorageService,
+} from "../lib/objectStorage";
+import { processAccountObjectCleanupJob } from "../lib/accountObjectCleanup.js";
+import { getRoomDeletionDisposition } from "../lib/roomDeletionPolicy.js";
+import {
+  acquireAccountRequestLocks,
+  releaseAccountRequestLocksOnResponse,
+} from "../lib/accountRequestLocks.js";
 import {
   getViewer,
   isFollowing,
@@ -109,44 +130,55 @@ function formatUser(user: DbUser, opts: { self: boolean; token?: string }) {
 // within the resend interval. Throws if the email send fails (caller decides
 // how to surface it); on send failure the cooldown is rolled back so the user
 // can retry immediately.
-async function issueVerificationCode(user: DbUser): Promise<"sent" | "cooldown"> {
+async function issueVerificationCode(
+  user: DbUser,
+  accountRequestLockHeld = false,
+): Promise<"sent" | "cooldown"> {
   if (!user.email) throw new Error("No email on account");
-  const code = generateVerificationCode();
-  const cooldownCutoff = new Date(Date.now() - VERIFICATION_RESEND_INTERVAL_MS);
-  const claimed = await db
-    .update(usersTable)
-    .set({
-      emailVerificationCodeHash: hashVerificationCode(code),
-      emailVerificationExpiresAt: new Date(Date.now() + VERIFICATION_CODE_TTL_MS),
-      emailVerificationSentAt: new Date(),
-    })
-    .where(
-      and(
-        eq(usersTable.id, user.id),
-        or(
-          isNull(usersTable.emailVerificationSentAt),
-          lt(usersTable.emailVerificationSentAt, cooldownCutoff),
-        ),
-      ),
-    )
-    .returning({ id: usersTable.id });
-  if (claimed.length === 0) return "cooldown";
+  const releaseLocks = accountRequestLockHeld
+    ? undefined
+    : await acquireAccountRequestLocks(user.id, "shared");
   try {
-    await sendVerificationEmail(user.email, code);
-  } catch (err) {
-    // Roll back the cooldown so a failed send doesn't lock the user out of
-    // retrying for the whole interval.
+    const code = generateVerificationCode();
+    const cooldownCutoff = new Date(Date.now() - VERIFICATION_RESEND_INTERVAL_MS);
+    const claimed = await db
+      .update(usersTable)
+      .set({
+        emailVerificationCodeHash: hashVerificationCode(code),
+        emailVerificationExpiresAt: new Date(Date.now() + VERIFICATION_CODE_TTL_MS),
+        emailVerificationSentAt: new Date(),
+      })
+      .where(
+        and(
+          eq(usersTable.id, user.id),
+          eq(usersTable.deletionPending, false),
+          or(
+            isNull(usersTable.emailVerificationSentAt),
+            lt(usersTable.emailVerificationSentAt, cooldownCutoff),
+          ),
+        ),
+      )
+      .returning({ id: usersTable.id });
+    if (claimed.length === 0) return "cooldown";
     try {
-      await db
-        .update(usersTable)
-        .set({ emailVerificationSentAt: null })
-        .where(eq(usersTable.id, user.id));
-    } catch {
-      // Best-effort rollback; the original send error is what matters.
+      await sendVerificationEmail(user.email, code);
+    } catch (err) {
+      // Roll back the cooldown so a failed send doesn't lock the user out of
+      // retrying for the whole interval.
+      try {
+        await db
+          .update(usersTable)
+          .set({ emailVerificationSentAt: null })
+          .where(eq(usersTable.id, user.id));
+      } catch {
+        // Best-effort rollback; the original send error is what matters.
+      }
+      throw err;
     }
-    throw err;
+    return "sent";
+  } finally {
+    await releaseLocks?.();
   }
-  return "sent";
 }
 
 const router: IRouter = Router();
@@ -223,13 +255,45 @@ router.post("/users/login", async (req, res): Promise<void> => {
   // timing doesn't reveal whether the username/email exists.
   const hashToCheck = user?.passwordHash ?? DUMMY_BCRYPT_HASH;
   const compared = await bcrypt.compare(body.data.password, hashToCheck);
-  const valid = user?.passwordHash != null && compared;
+  const valid = user?.passwordHash != null && !user.deletionPending && compared;
   if (!user || !valid) {
     res.status(401).json({ error: "Invalid username or password" });
     return;
   }
 
-  res.json(formatUser(user, { self: true, token: createToken(user.id) }));
+  let releaseLocks: (() => Promise<void>) | undefined;
+  try {
+    // Login is public rather than authenticated, so coordinate token issuance
+    // explicitly with account deletion and re-read the row under the lock.
+    releaseLocks = await acquireAccountRequestLocks(user.id, "shared");
+  } catch (err) {
+    req.log.error({ err, userId: user.id }, "Could not safely complete login");
+    res.status(503).json({ error: "Login could not be safely completed" });
+    return;
+  }
+  if (req.aborted) {
+    await releaseLocks();
+    return;
+  }
+  if (!releaseAccountRequestLocksOnResponse(res, releaseLocks, (err) => {
+    req.log.error({ err, userId: user!.id }, "Failed to release login account lock");
+  })) return;
+  const [currentUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, user.id))
+    .limit(1);
+  if (!currentUser || currentUser.deletionPending || !currentUser.passwordHash) {
+    res.status(401).json({ error: "Invalid username or password" });
+    return;
+  }
+  const passwordStillMatches = await bcrypt.compare(body.data.password, currentUser.passwordHash);
+  if (!passwordStillMatches) {
+    res.status(401).json({ error: "Invalid username or password" });
+    return;
+  }
+
+  res.json(formatUser(currentUser, { self: true, token: createToken(currentUser.id) }));
 });
 
 // Request a password reset code. Unauthenticated — the user forgot their password.
@@ -255,10 +319,35 @@ router.post("/users/password-reset/request", async (req, res): Promise<void> => 
     return;
   }
 
+  let releaseLocks: (() => Promise<void>) | undefined;
+  try {
+    releaseLocks = await acquireAccountRequestLocks(user.id, "shared");
+  } catch (err) {
+    req.log.error({ err, userId: user.id }, "Could not safely process password-reset request");
+    res.status(503).json({ error: "Password-reset request could not be safely processed" });
+    return;
+  }
+  if (req.aborted) {
+    await releaseLocks();
+    return;
+  }
+  if (!releaseAccountRequestLocksOnResponse(res, releaseLocks, (err) => {
+    req.log.error({ err, userId: user!.id }, "Failed to release password-reset request lock");
+  })) return;
+  const [currentUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, user.id))
+    .limit(1);
+  if (!currentUser || currentUser.deletionPending || !currentUser.emailVerifiedAt) {
+    res.json({ ok: true });
+    return;
+  }
+
   // Rate-limit: enforce minimum interval between sends.
   if (
-    user.passwordResetSentAt &&
-    Date.now() - user.passwordResetSentAt.getTime() < RESET_RESEND_INTERVAL_MS
+    currentUser.passwordResetSentAt &&
+    Date.now() - currentUser.passwordResetSentAt.getTime() < RESET_RESEND_INTERVAL_MS
   ) {
     res.status(429).json({ error: "Reset email sent recently — try again in a minute" });
     return;
@@ -275,7 +364,8 @@ router.post("/users/password-reset/request", async (req, res): Promise<void> => 
     })
     .where(
       and(
-        eq(usersTable.id, user.id),
+        eq(usersTable.id, currentUser.id),
+        eq(usersTable.deletionPending, false),
         or(
           isNull(usersTable.passwordResetSentAt),
           lt(usersTable.passwordResetSentAt, cooldownCutoff),
@@ -290,14 +380,14 @@ router.post("/users/password-reset/request", async (req, res): Promise<void> => 
   }
 
   try {
-    await sendPasswordResetEmail(user.email!, code);
+    await sendPasswordResetEmail(currentUser.email!, code);
   } catch (err) {
     // Roll back the cooldown on delivery failure so the user can retry immediately.
     try {
       await db
         .update(usersTable)
         .set({ passwordResetSentAt: null })
-        .where(eq(usersTable.id, user.id));
+        .where(eq(usersTable.id, currentUser.id));
     } catch {
       // Best-effort rollback.
     }
@@ -338,6 +428,38 @@ router.post("/users/password-reset/confirm", async (req, res): Promise<void> => 
     return;
   }
 
+  let releaseLocks: (() => Promise<void>) | undefined;
+  try {
+    releaseLocks = await acquireAccountRequestLocks(user.id, "shared");
+  } catch (err) {
+    req.log.error({ err, userId: user.id }, "Could not safely complete password reset");
+    res.status(503).json({ error: "Password reset could not be safely completed" });
+    return;
+  }
+  if (req.aborted) {
+    await releaseLocks();
+    return;
+  }
+  if (!releaseAccountRequestLocksOnResponse(res, releaseLocks, (err) => {
+    req.log.error({ err, userId: user!.id }, "Failed to release password-reset account lock");
+  })) return;
+  const [currentUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, user.id))
+    .limit(1);
+  if (
+    !currentUser ||
+    currentUser.deletionPending ||
+    !currentUser.passwordResetCodeHash ||
+    !currentUser.passwordResetExpiresAt ||
+    currentUser.passwordResetExpiresAt.getTime() < Date.now() ||
+    hashVerificationCode(body.data.code) !== currentUser.passwordResetCodeHash
+  ) {
+    res.status(400).json({ error: "Reset code is invalid or has expired" });
+    return;
+  }
+
   const passwordHash = await bcrypt.hash(body.data.newPassword, 10);
   const [updated] = await db
     .update(usersTable)
@@ -347,7 +469,7 @@ router.post("/users/password-reset/confirm", async (req, res): Promise<void> => 
       passwordResetExpiresAt: null,
       passwordResetSentAt: null,
     })
-    .where(eq(usersTable.id, user.id))
+    .where(eq(usersTable.id, currentUser.id))
     .returning();
 
   res.json(formatUser(updated!, { self: true, token: createToken(updated!.id) }));
@@ -387,7 +509,7 @@ router.post("/users/:userId/verify-email/send", authenticate, async (req, res): 
   }
 
   try {
-    const outcome = await issueVerificationCode(user);
+    const outcome = await issueVerificationCode(user, true);
     if (outcome === "cooldown") {
       res.status(429).json({ error: "Verification email sent recently — try again in a minute" });
       return;
@@ -463,8 +585,37 @@ router.post("/users/:userId/avatar/upload-url", authenticate, async (req, res): 
     return;
   }
   const svc = new ObjectStorageService();
-  const uploadURL = await svc.getAvatarUploadURL();
-  res.json({ uploadURL });
+  try {
+    const { uploadURL, objectPath } = await svc.getAvatarUploadURL();
+    const issued = await db.transaction(async (tx) => {
+      const [activeAccount] = await tx
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(
+          and(
+            eq(usersTable.id, req.userId),
+            eq(usersTable.deletionPending, false),
+          ),
+        )
+        .for("share");
+      if (!activeAccount) return false;
+      await tx.insert(userObjectUploadsTable).values({
+        userId: req.userId,
+        kind: "avatar",
+        objectPath,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      });
+      return true;
+    });
+    if (!issued) {
+      res.status(409).json({ error: "Account deletion is in progress" });
+      return;
+    }
+    res.json({ uploadURL });
+  } catch (err) {
+    req.log.error({ err, userId: req.userId }, "Failed to issue owned avatar upload URL");
+    res.status(500).json({ error: "Could not create an avatar upload" });
+  }
 });
 
 // Set the avatar after the client uploaded it to the presigned URL. Self only.
@@ -486,8 +637,25 @@ router.put("/users/:userId/avatar", authenticate, async (req, res): Promise<void
 
   const svc = new ObjectStorageService();
   const avatarUrl = svc.normalizeAvatarPath(body.data.uploadURL);
-  if (!avatarUrl) {
+  if (!avatarUrl || !isGeneratedAvatarObjectPath(avatarUrl)) {
     res.status(400).json({ error: "Invalid avatar upload URL" });
+    return;
+  }
+
+  const [ownershipProof] = await db
+    .select({ id: userObjectUploadsTable.id })
+    .from(userObjectUploadsTable)
+    .where(
+      and(
+        eq(userObjectUploadsTable.userId, req.userId),
+        eq(userObjectUploadsTable.kind, "avatar"),
+        eq(userObjectUploadsTable.objectPath, avatarUrl),
+        gt(userObjectUploadsTable.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  if (!ownershipProof) {
+    res.status(403).json({ error: "Avatar must come from an upload URL issued to this account" });
     return;
   }
 
@@ -617,6 +785,511 @@ router.get("/users/:userId", authenticate, async (req, res): Promise<void> => {
   }
 
   res.json(formatUser(user, { self: req.userId === user.id }));
+});
+
+// Permanently delete the authenticated user's account and all account-owned
+// data. Password confirmation is required even with a valid bearer token.
+router.delete("/users/:userId", authenticate, async (req, res): Promise<void> => {
+  const params = DeleteUserAccountParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.userId !== params.data.userId) {
+    res.status(403).json({ error: "You may only delete your own account" });
+    return;
+  }
+  const body = DeleteUserAccountBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  let user: DbUser | undefined;
+  try {
+    [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, req.userId))
+      .limit(1);
+  } catch (err) {
+    req.log.error({ err, userId: req.userId }, "Failed to load account for deletion");
+    res.status(500).json({ error: "Account could not be verified for deletion" });
+    return;
+  }
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  if (!user.passwordHash) {
+    res.status(400).json({ error: "This account has no password credential; set a password before deleting it" });
+    return;
+  }
+  let passwordMatches: boolean;
+  try {
+    passwordMatches = await bcrypt.compare(body.data.password, user.passwordHash);
+  } catch (err) {
+    req.log.error({ err, userId: user.id }, "Failed to verify account password for deletion");
+    res.status(500).json({ error: "Password could not be verified" });
+    return;
+  }
+  if (!passwordMatches) {
+    res.status(401).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+  const restoreAccountAfterFailure = async (): Promise<void> => {
+    try {
+      await db
+        .update(usersTable)
+        .set({ deletionPending: false })
+        .where(eq(usersTable.id, user!.id));
+    } catch (err) {
+      req.log.error({ err, userId: user!.id }, "Could not clear account deletion lock");
+    }
+  };
+
+  try {
+    if (!user.deletionPending) {
+      const [pendingUser] = await db
+        .update(usersTable)
+        .set({ deletionPending: true })
+        .where(
+          and(
+            eq(usersTable.id, user.id),
+            eq(usersTable.deletionPending, false),
+          ),
+        )
+        .returning({ id: usersTable.id });
+      if (!pendingUser) {
+        res.status(409).json({ error: "Account deletion is already in progress" });
+        return;
+      }
+    }
+  } catch (err) {
+    req.log.error({ err, userId: user.id }, "Failed to freeze account before deletion");
+    try {
+      await db
+        .update(usersTable)
+        .set({ deletionPending: false })
+        .where(eq(usersTable.id, user!.id));
+    } catch (resetErr) {
+      req.log.error({ err: resetErr, userId: user.id }, "Could not clear account deletion lock");
+    }
+    res.status(500).json({ error: "Account could not be prepared for deletion" });
+    return;
+  }
+
+  let cleanupJobId: number | null = null;
+  let sharedObjectsRetained = 0;
+  try {
+    await db.transaction(async (tx) => {
+      // Room ownership changes lock their room rows before modifying membership.
+      // This transaction locks owned rooms too, so membership reads below use
+      // the latest committed state after any in-flight room mutation finishes.
+      // The request-level exclusive advisory barrier has already drained all
+      // shared-lock writes before this cleanup transaction begins.
+      const ownedUploads = await tx
+        .select({
+          kind: userObjectUploadsTable.kind,
+          objectPath: userObjectUploadsTable.objectPath,
+        })
+        .from(userObjectUploadsTable)
+        .where(eq(userObjectUploadsTable.userId, user.id));
+      const legacyLibraryEntries = await tx
+        .select({ objectPath: userLibraryTable.epubObjectPath })
+        .from(userLibraryTable)
+        .where(eq(userLibraryTable.userId, user.id));
+      const storage = new ObjectStorageService();
+      const normalizeLegacyEpubPath = (rawPath: string): string => {
+        try {
+          return storage.normalizeObjectEntityPath(rawPath);
+        } catch {
+          return rawPath;
+        }
+      };
+      const normalizeLegacyAvatarPath = (rawPath: string): string => {
+        try {
+          return storage.normalizeAvatarPath(rawPath) ?? rawPath;
+        } catch {
+          return rawPath;
+        }
+      };
+      const objectCandidates = new Map<string, "epub" | "avatar">();
+      for (const upload of ownedUploads) {
+        if (
+          (upload.kind === "epub" && isGeneratedEpubObjectPath(upload.objectPath)) ||
+          (upload.kind === "avatar" && isGeneratedAvatarObjectPath(upload.objectPath))
+        ) {
+          objectCandidates.set(upload.objectPath, upload.kind);
+        }
+      }
+      for (const entry of legacyLibraryEntries) {
+        const objectPath = normalizeLegacyEpubPath(entry.objectPath);
+        if (isGeneratedEpubObjectPath(objectPath)) {
+          objectCandidates.set(objectPath, "epub");
+        }
+      }
+      const legacyAvatarPath = user.avatarUrl
+        ? normalizeLegacyAvatarPath(user.avatarUrl)
+        : null;
+      if (legacyAvatarPath && isGeneratedAvatarObjectPath(legacyAvatarPath)) {
+        objectCandidates.set(legacyAvatarPath, "avatar");
+      }
+      const safeObjectPaths: string[] = [];
+      for (const [objectPath, kind] of objectCandidates) {
+        const [foreignReference] =
+          kind === "epub"
+            ? await tx
+                .select({ id: userLibraryTable.id })
+                .from(userLibraryTable)
+                .where(
+                  and(
+                    or(
+                      eq(userLibraryTable.epubObjectPath, objectPath),
+                      like(userLibraryTable.epubObjectPath, `%/${objectPath.split("/").at(-1)}`),
+                    ),
+                    sql`${userLibraryTable.userId} <> ${user.id}`,
+                  ),
+                )
+                .limit(1)
+            : await tx
+                .select({ id: usersTable.id })
+                .from(usersTable)
+                .where(
+                  and(
+                    or(
+                      eq(usersTable.avatarUrl, objectPath),
+                      like(usersTable.avatarUrl, `%/avatars/${objectPath.split("/").at(-1)}`),
+                    ),
+                    sql`${usersTable.id} <> ${user.id}`,
+                  ),
+                )
+                .limit(1);
+        if (foreignReference) {
+          sharedObjectsRetained += 1;
+        } else {
+          safeObjectPaths.push(objectPath);
+        }
+      }
+      if (safeObjectPaths.length) {
+        const [job] = await tx
+          .insert(accountObjectCleanupJobsTable)
+          .values({ objectPaths: safeObjectPaths })
+          .returning({ id: accountObjectCleanupJobsTable.id });
+        cleanupJobId = job?.id ?? null;
+      }
+
+      const authoredComments = await tx
+        .select({ id: commentsTable.id, parentId: commentsTable.parentId })
+        .from(commentsTable)
+        .where(eq(commentsTable.userId, user.id));
+      const authoredCommentIds = authoredComments.map((comment) => comment.id);
+      const authoredParentIds = authoredComments
+        .filter((comment) => comment.parentId === null)
+        .map((comment) => comment.id);
+
+      // Remove the user's comments and capture replies to their top-level
+      // comments so replies from other people can be preserved below.
+      const authoredThreadReplies = authoredParentIds.length
+        ? await tx
+            .select({
+              id: commentsTable.id,
+              userId: commentsTable.userId,
+              roomId: commentsTable.roomId,
+            })
+            .from(commentsTable)
+            .where(inArray(commentsTable.parentId, authoredParentIds))
+        : [];
+
+      const ownedHighlights = await tx
+        .select({ id: userHighlightsTable.id })
+        .from(userHighlightsTable)
+        .where(eq(userHighlightsTable.userId, user.id));
+      const highlightIds = new Set(ownedHighlights.map((highlight) => highlight.id));
+
+      const ownedRooms = await tx
+        .select({ id: readingRoomsTable.id })
+        .from(readingRoomsTable)
+        .where(eq(readingRoomsTable.ownerId, user.id))
+        .for("update");
+      const emptyRoomIds: number[] = [];
+      const archivedRoomIds: number[] = [];
+
+      for (const room of ownedRooms) {
+        const otherMembers = await tx
+          .select({ userId: roomMembersTable.userId })
+          .from(roomMembersTable)
+          .where(
+            and(
+              eq(roomMembersTable.roomId, room.id),
+              // roomMembers normally contains the owner, but excluding the
+              // deleting user also handles inconsistent legacy membership.
+              sql`${roomMembersTable.userId} <> ${user.id}`,
+            ),
+          )
+          .orderBy(asc(roomMembersTable.createdAt), asc(roomMembersTable.id));
+        const nextOwner = otherMembers[0];
+        if (nextOwner) {
+          await tx
+            .update(readingRoomsTable)
+            .set({ ownerId: nextOwner.userId })
+            .where(eq(readingRoomsTable.id, room.id));
+          await tx
+            .update(roomMembersTable)
+            .set({ role: "member" })
+            .where(eq(roomMembersTable.roomId, room.id));
+          await tx
+            .update(roomMembersTable)
+            .set({ role: "owner" })
+            .where(
+              and(
+                eq(roomMembersTable.roomId, room.id),
+                eq(roomMembersTable.userId, nextOwner.userId),
+              ),
+            );
+        } else {
+          const roomComments = await tx
+            .select({ id: commentsTable.id, parentId: commentsTable.parentId, userId: commentsTable.userId })
+            .from(commentsTable)
+            .where(eq(commentsTable.roomId, room.id));
+          const roomParentIds = roomComments
+            .filter((comment) => comment.parentId === null)
+            .map((comment) => comment.id);
+          const roomReplies = roomParentIds.length
+            ? await tx
+                .select({ userId: commentsTable.userId })
+                .from(commentsTable)
+                .where(inArray(commentsTable.parentId, roomParentIds))
+            : [];
+          const [foreignHighlight] = await tx
+            .select({ id: userHighlightsTable.id })
+            .from(userHighlightsTable)
+            .where(
+              and(
+                eq(userHighlightsTable.roomId, room.id),
+                sql`${userHighlightsTable.userId} <> ${user.id}`,
+              ),
+            )
+            .limit(1);
+          const disposition = getRoomDeletionDisposition({
+            hasThirdPartyComments:
+              roomComments.some((comment) => comment.userId !== user.id) ||
+              roomReplies.some((reply) => reply.userId !== user.id),
+            hasThirdPartyHighlights: Boolean(foreignHighlight),
+          });
+          if (disposition === "archive") {
+            await tx
+              .update(readingRoomsTable)
+              .set({ ownerId: null })
+              .where(eq(readingRoomsTable.id, room.id));
+            archivedRoomIds.push(room.id);
+          } else {
+            emptyRoomIds.push(room.id);
+          }
+        }
+      }
+
+      const removedCommentIds = new Set<number>([
+        ...authoredCommentIds,
+        ...authoredThreadReplies
+          .filter((reply) => reply.userId === user.id)
+          .map((reply) => reply.id),
+      ]);
+      const removedHighlightIds = new Set<number>(highlightIds);
+
+      if (emptyRoomIds.length) {
+        const roomComments = await tx
+          .select({ id: commentsTable.id, parentId: commentsTable.parentId })
+          .from(commentsTable)
+          .where(inArray(commentsTable.roomId, emptyRoomIds));
+        for (const comment of roomComments) removedCommentIds.add(comment.id);
+        const roomParentIds = roomComments
+          .filter((comment) => comment.parentId === null)
+          .map((comment) => comment.id);
+        if (roomParentIds.length) {
+          const roomReplies = await tx
+            .select({ id: commentsTable.id })
+            .from(commentsTable)
+            .where(inArray(commentsTable.parentId, roomParentIds));
+          for (const reply of roomReplies) removedCommentIds.add(reply.id);
+        }
+        const roomHighlights = await tx
+          .select({ id: userHighlightsTable.id })
+          .from(userHighlightsTable)
+          .where(inArray(userHighlightsTable.roomId, emptyRoomIds));
+        for (const highlight of roomHighlights) removedHighlightIds.add(highlight.id);
+      }
+
+      // Keep replies written by other people when their parent is deleted;
+      // promote them to standalone comments rather than erasing their content
+      // or leaving them attached to a missing parent.
+      const preservedReplyIds = authoredThreadReplies
+        .filter(
+          (reply) =>
+            reply.userId !== user.id &&
+            !removedCommentIds.has(reply.id),
+        )
+        .map((reply) => reply.id);
+      if (preservedReplyIds.length) {
+        await tx
+          .update(commentsTable)
+          .set({ parentId: null })
+          .where(inArray(commentsTable.id, preservedReplyIds));
+      }
+
+      const commentIds = [...removedCommentIds];
+      const highlightIdList = [...removedHighlightIds];
+
+      // Preserve the denormalized like counts on comments that remain.
+      const survivingCommentLikes = await tx
+        .select({ commentId: commentLikesTable.commentId })
+        .from(commentLikesTable)
+        .where(eq(commentLikesTable.userId, user.id));
+      const likeCounts = new Map<number, number>();
+      for (const like of survivingCommentLikes) {
+        if (!removedCommentIds.has(like.commentId)) {
+          likeCounts.set(like.commentId, (likeCounts.get(like.commentId) ?? 0) + 1);
+        }
+      }
+      for (const [commentId, removedLikes] of likeCounts) {
+        await tx
+          .update(commentsTable)
+          .set({
+            likeCount: sql`GREATEST(0, ${commentsTable.likeCount} - ${removedLikes})`,
+          })
+          .where(eq(commentsTable.id, commentId));
+      }
+
+      await tx
+        .delete(commentLikesTable)
+        .where(
+          or(
+            eq(commentLikesTable.userId, user.id),
+            ...(commentIds.length
+              ? [inArray(commentLikesTable.commentId, commentIds)]
+              : []),
+          )!,
+        );
+      await tx
+        .delete(commentSavesTable)
+        .where(
+          or(
+            eq(commentSavesTable.userId, user.id),
+            ...(commentIds.length
+              ? [inArray(commentSavesTable.commentId, commentIds)]
+              : []),
+          )!,
+        );
+      await tx
+        .delete(highlightLikesTable)
+        .where(
+          or(
+            eq(highlightLikesTable.userId, user.id),
+            ...(highlightIdList.length
+              ? [inArray(highlightLikesTable.highlightId, highlightIdList)]
+              : []),
+          )!,
+        );
+
+      const notificationConditions = [
+        eq(notificationsTable.userId, user.id),
+        eq(notificationsTable.actorId, user.id),
+        ...(commentIds.length
+          ? [inArray(notificationsTable.commentId, commentIds)]
+          : []),
+        ...(highlightIdList.length
+          ? [inArray(notificationsTable.highlightId, highlightIdList)]
+          : []),
+        ...(emptyRoomIds.length
+          ? [inArray(notificationsTable.roomId, emptyRoomIds)]
+          : []),
+      ];
+      await tx.delete(notificationsTable).where(or(...notificationConditions)!);
+
+      if (commentIds.length) {
+        await tx.delete(commentsTable).where(inArray(commentsTable.id, commentIds));
+      }
+      if (highlightIdList.length) {
+        await tx
+          .delete(userHighlightsTable)
+          .where(inArray(userHighlightsTable.id, highlightIdList));
+      }
+
+      await tx.delete(userLibraryTable).where(eq(userLibraryTable.userId, user.id));
+      await tx
+        .delete(friendshipsTable)
+        .where(
+          or(
+            eq(friendshipsTable.userId, user.id),
+            eq(friendshipsTable.friendId, user.id),
+          )!,
+        );
+      await tx
+        .delete(friendRequestsTable)
+        .where(
+          or(
+            eq(friendRequestsTable.requesterId, user.id),
+            eq(friendRequestsTable.recipientId, user.id),
+          )!,
+        );
+      await tx.delete(pushTokensTable).where(eq(pushTokensTable.userId, user.id));
+      await tx.delete(feedbackTable).where(eq(feedbackTable.userId, user.id));
+
+      const inviteConditions = [
+        eq(roomInvitesTable.inviterId, user.id),
+        eq(roomInvitesTable.inviteeId, user.id),
+        ...([...emptyRoomIds, ...archivedRoomIds].length
+          ? [inArray(roomInvitesTable.roomId, [...emptyRoomIds, ...archivedRoomIds])]
+          : []),
+      ];
+      await tx.delete(roomInvitesTable).where(or(...inviteConditions)!);
+      await tx.delete(roomMembersTable).where(eq(roomMembersTable.userId, user.id));
+      if (emptyRoomIds.length) {
+        await tx
+          .delete(roomMembersTable)
+          .where(inArray(roomMembersTable.roomId, emptyRoomIds));
+        await tx
+          .delete(readingRoomsTable)
+          .where(inArray(readingRoomsTable.id, emptyRoomIds));
+      }
+
+      await tx
+        .delete(userObjectUploadsTable)
+        .where(eq(userObjectUploadsTable.userId, user.id));
+      await tx.delete(usersTable).where(eq(usersTable.id, user.id));
+    });
+  } catch (err) {
+    await restoreAccountAfterFailure();
+    req.log.error({ err, userId: user.id }, "Account deletion transaction failed");
+    res.status(500).json({ error: "Account data could not be deleted" });
+    return;
+  }
+
+  let objectCleanupPending = false;
+  if (cleanupJobId != null) {
+    try {
+      objectCleanupPending = await processAccountObjectCleanupJob(cleanupJobId);
+    } catch (err) {
+      objectCleanupPending = true;
+      req.log.error(
+        { err, jobId: cleanupJobId, userId: user.id },
+        "Immediate account object cleanup attempt failed; retry remains queued",
+      );
+    }
+  }
+  if (sharedObjectsRetained) {
+    req.log.warn(
+      { count: sharedObjectsRetained, userId: user.id },
+      "Retained account upload objects referenced by another account",
+    );
+  }
+  res.json({
+    ok: true,
+    deleted: true,
+    objectCleanupPending,
+    sharedObjectsRetained,
+  });
 });
 
 // Public profile with follower/following + activity counts and the viewer's

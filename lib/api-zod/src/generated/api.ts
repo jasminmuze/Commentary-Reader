@@ -685,6 +685,33 @@ export const GetUserResponse = zod.object({
 
 
 /**
+ * Requires confirmation with the current password. Only the authenticated user may delete their own account. Shared book covers and other users' content are preserved.
+ * @summary Permanently delete the authenticated user's account and owned data
+ */
+export const DeleteUserAccountParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+
+
+
+export const DeleteUserAccountBody = zod.object({
+  "password": zod.string().min(1).describe('Current account password, required to confirm permanent deletion')
+})
+
+export const deleteUserAccountResponseSharedObjectsRetainedMin = 0;
+
+
+
+export const DeleteUserAccountResponse = zod.object({
+  "ok": zod.literal(true),
+  "deleted": zod.literal(true),
+  "objectCleanupPending": zod.boolean().describe('True when account data was deleted but one or more owned storage objects could not be removed'),
+  "sharedObjectsRetained": zod.number().min(deleteUserAccountResponseSharedObjectsRetainedMin).describe('Number of upload objects retained because another account still references them')
+})
+
+
+/**
  * @summary Search users by username or nickname (viewer taken from bearer token)
  */
 export const SearchUsersQueryParams = zod.object({
@@ -1099,6 +1126,7 @@ export const GetAvatarUploadUrlResponse = zod.object({
 
 
 /**
+ * The image must use a presigned upload URL issued to this account; arbitrary public object paths are rejected.
  * @summary Set the profile photo after uploading it (self only)
  */
 export const SetAvatarParams = zod.object({
@@ -1359,7 +1387,7 @@ export const ListRoomsResponseItem = zod.object({
   "name": zod.string(),
   "description": zod.string(),
   "isPublic": zod.boolean(),
-  "ownerId": zod.number(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
   "memberCount": zod.number(),
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
@@ -1396,7 +1424,7 @@ export const GetTrendingRoomsResponseItem = zod.object({
   "name": zod.string(),
   "description": zod.string(),
   "isPublic": zod.boolean(),
-  "ownerId": zod.number(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
   "memberCount": zod.number(),
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
@@ -1420,7 +1448,7 @@ export const GetMyRoomsResponseItem = zod.object({
   "name": zod.string(),
   "description": zod.string(),
   "isPublic": zod.boolean(),
-  "ownerId": zod.number(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
   "memberCount": zod.number(),
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
@@ -1444,7 +1472,7 @@ export const GetRoomResponse = zod.object({
   "name": zod.string(),
   "description": zod.string(),
   "isPublic": zod.boolean(),
-  "ownerId": zod.number(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
   "memberCount": zod.number(),
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
@@ -1492,7 +1520,7 @@ export const UpdateRoomResponse = zod.object({
   "name": zod.string(),
   "description": zod.string(),
   "isPublic": zod.boolean(),
-  "ownerId": zod.number(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
   "memberCount": zod.number(),
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
@@ -1503,7 +1531,7 @@ export const UpdateRoomResponse = zod.object({
 
 
 /**
- * @summary Join a public room (idempotent)
+ * @summary Join a public room (idempotent; archived rooms cannot be joined)
  */
 export const JoinRoomParams = zod.object({
   "roomId": zod.coerce.number()
@@ -1540,7 +1568,7 @@ export const RemoveRoomMemberResponse = zod.object({
 
 
 /**
- * @summary Invite a friend to the room (any member; idempotent while pending)
+ * @summary Invite a friend to the room (member or owner; idempotent while pending)
  */
 export const InviteToRoomParams = zod.object({
   "roomId": zod.coerce.number()
@@ -1620,7 +1648,7 @@ export const GetUserRoomsResponseItem = zod.object({
   "name": zod.string(),
   "description": zod.string(),
   "isPublic": zod.boolean(),
-  "ownerId": zod.number(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
   "memberCount": zod.number(),
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
@@ -1644,7 +1672,7 @@ export const GetBookRoomsResponseItem = zod.object({
   "name": zod.string(),
   "description": zod.string(),
   "isPublic": zod.boolean(),
-  "ownerId": zod.number(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
   "memberCount": zod.number(),
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),

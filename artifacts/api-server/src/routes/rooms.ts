@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, count, desc, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNotNull, or, sql } from "drizzle-orm";
 import {
   db,
   booksTable,
@@ -101,7 +101,10 @@ router.get("/rooms", authenticate, async (req, res): Promise<void> => {
   const query = ListRoomsQueryParams.safeParse(req.query);
   const q = query.success ? query.data.q?.trim() : undefined;
 
-  const base = eq(readingRoomsTable.isPublic, true);
+  const base = and(
+    eq(readingRoomsTable.isPublic, true),
+    isNotNull(readingRoomsTable.ownerId),
+  );
   const rooms = q
     ? await db
         .select({ room: readingRoomsTable })
@@ -151,6 +154,17 @@ router.post("/rooms", authenticate, async (req, res): Promise<void> => {
 
   // Room + owner membership must never end up in a partial state.
   const room = await db.transaction(async (tx) => {
+    const [activeAccount] = await tx
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.id, req.userId),
+          eq(usersTable.deletionPending, false),
+        ),
+      )
+      .for("share");
+    if (!activeAccount) return null;
     const [created] = await tx
       .insert(readingRoomsTable)
       .values({
@@ -169,6 +183,10 @@ router.post("/rooms", authenticate, async (req, res): Promise<void> => {
     });
     return created;
   });
+  if (!room) {
+    res.status(409).json({ error: "Account deletion is in progress" });
+    return;
+  }
 
   const [dto] = await toRoomDtos([room], req.userId);
   res.status(201).json(dto);
@@ -199,7 +217,12 @@ router.get("/rooms/trending", authenticate, async (req, res): Promise<void> => {
     db
       .select()
       .from(readingRoomsTable)
-      .where(eq(readingRoomsTable.isPublic, true)),
+      .where(
+        and(
+          eq(readingRoomsTable.isPublic, true),
+          isNotNull(readingRoomsTable.ownerId),
+        ),
+      ),
   ]);
 
   const scores = new Map<number, number>();
@@ -291,9 +314,37 @@ async function hasPendingInvite(
   return inv != null;
 }
 
+async function hasArchivedRoomContribution(
+  roomId: number,
+  userId: number,
+): Promise<boolean> {
+  const [comment] = await db
+    .select({ id: commentsTable.id })
+    .from(commentsTable)
+    .where(
+      and(
+        eq(commentsTable.roomId, roomId),
+        eq(commentsTable.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (comment) return true;
+  const [highlight] = await db
+    .select({ id: userHighlightsTable.id })
+    .from(userHighlightsTable)
+    .where(
+      and(
+        eq(userHighlightsTable.roomId, roomId),
+        eq(userHighlightsTable.userId, userId),
+      ),
+    )
+    .limit(1);
+  return highlight != null;
+}
+
 // GET /rooms/:roomId — room home. Private rooms are 404 to outsiders (no
-// existence leak) but visible to members AND pending invitees (so an invite
-// notification can open the room to accept/decline).
+// existence leak) but visible to members, pending invitees, and former
+// contributors of archived rooms.
 router.get("/rooms/:roomId", authenticate, async (req, res): Promise<void> => {
   const params = GetRoomParams.safeParse(req.params);
   if (!params.success) {
@@ -311,7 +362,11 @@ router.get("/rooms/:roomId", authenticate, async (req, res): Promise<void> => {
     getMembership(room.id, req.userId),
     hasPendingInvite(room.id, req.userId),
   ]);
-  if (!room.isPublic && !membership && !invitePending) {
+  const archivedContribution =
+    room.ownerId == null && room.isPublic
+      ? await hasArchivedRoomContribution(room.id, req.userId)
+      : false;
+  if (!room.isPublic && !membership && !invitePending && !archivedContribution) {
     res.status(404).json({ error: "Room not found" });
     return;
   }
@@ -448,21 +503,31 @@ router.post("/rooms/:roomId/join", authenticate, async (req, res): Promise<void>
     return;
   }
 
-  const room = await getRoomRow(params.data.roomId);
-  if (!room) {
-    res.status(404).json({ error: "Room not found" });
-    return;
-  }
-  if (!room.isPublic) {
-    // A pending invite also grants entry via the join button.
-    const invited = await hasPendingInvite(room.id, req.userId);
-    if (!invited) {
-      res.status(403).json({ error: "This room is invite-only" });
-      return;
+  const outcome = await db.transaction(async (tx) => {
+    const [room] = await tx
+      .select({
+        id: readingRoomsTable.id,
+        isPublic: readingRoomsTable.isPublic,
+        ownerId: readingRoomsTable.ownerId,
+      })
+      .from(readingRoomsTable)
+      .where(eq(readingRoomsTable.id, params.data.roomId))
+      .for("update");
+    if (!room) return "missing" as const;
+    if (room.ownerId == null) return "archived" as const;
+    if (!room.isPublic) {
+      const [invite] = await tx
+        .select({ id: roomInvitesTable.id })
+        .from(roomInvitesTable)
+        .where(
+          and(
+            eq(roomInvitesTable.roomId, room.id),
+            eq(roomInvitesTable.inviteeId, req.userId),
+          ),
+        )
+        .limit(1);
+      if (!invite) return "forbidden" as const;
     }
-  }
-
-  await db.transaction(async (tx) => {
     await tx
       .insert(roomMembersTable)
       .values({ roomId: room.id, userId: req.userId, role: "member" })
@@ -476,8 +541,21 @@ router.post("/rooms/:roomId/join", authenticate, async (req, res): Promise<void>
           eq(roomInvitesTable.inviteeId, req.userId),
         ),
       );
+    return "joined" as const;
   });
 
+  if (outcome === "missing") {
+    res.status(404).json({ error: "Room not found" });
+    return;
+  }
+  if (outcome === "archived") {
+    res.status(404).json({ error: "Room is archived and cannot accept new members" });
+    return;
+  }
+  if (outcome === "forbidden") {
+    res.status(403).json({ error: "This room is invite-only" });
+    return;
+  }
   res.json({ ok: true });
 });
 
@@ -489,19 +567,38 @@ router.post("/rooms/:roomId/leave", authenticate, async (req, res): Promise<void
     return;
   }
 
-  const membership = await getMembership(params.data.roomId, req.userId);
-  if (!membership) {
+  const outcome = await db.transaction(async (tx) => {
+    const [room] = await tx
+      .select({ id: readingRoomsTable.id })
+      .from(readingRoomsTable)
+      .where(eq(readingRoomsTable.id, params.data.roomId))
+      .for("update");
+    if (!room) return "missing" as const;
+    const [membership] = await tx
+      .select({ id: roomMembersTable.id, role: roomMembersTable.role })
+      .from(roomMembersTable)
+      .where(
+        and(
+          eq(roomMembersTable.roomId, room.id),
+          eq(roomMembersTable.userId, req.userId),
+        ),
+      )
+      .limit(1);
+    if (!membership) return "not-member" as const;
+    if (membership.role === "owner") return "owner" as const;
+    await tx
+      .delete(roomMembersTable)
+      .where(eq(roomMembersTable.id, membership.id));
+    return "left" as const;
+  });
+  if (outcome === "missing" || outcome === "not-member") {
     res.status(404).json({ error: "Not a member of this room" });
     return;
   }
-  if (membership.role === "owner") {
+  if (outcome === "owner") {
     res.status(400).json({ error: "The owner cannot leave their own room" });
     return;
   }
-
-  await db
-    .delete(roomMembersTable)
-    .where(eq(roomMembersTable.id, membership.id));
   res.json({ ok: true });
 });
 
@@ -516,30 +613,39 @@ router.delete(
       return;
     }
 
-    const room = await getRoomRow(params.data.roomId);
-    if (!room) {
+    const outcome = await db.transaction(async (tx) => {
+      const [room] = await tx
+        .select({ id: readingRoomsTable.id, ownerId: readingRoomsTable.ownerId })
+        .from(readingRoomsTable)
+        .where(eq(readingRoomsTable.id, params.data.roomId))
+        .for("update");
+      if (!room) return "missing-room" as const;
+      if (room.ownerId !== req.userId) return "forbidden" as const;
+      if (params.data.userId === room.ownerId) return "owner" as const;
+      const deleted = await tx
+        .delete(roomMembersTable)
+        .where(
+          and(
+            eq(roomMembersTable.roomId, room.id),
+            eq(roomMembersTable.userId, params.data.userId),
+          ),
+        )
+        .returning({ id: roomMembersTable.id });
+      return deleted.length > 0 ? "removed" as const : "missing-member" as const;
+    });
+    if (outcome === "missing-room") {
       res.status(404).json({ error: "Room not found" });
       return;
     }
-    if (room.ownerId !== req.userId) {
+    if (outcome === "forbidden") {
       res.status(403).json({ error: "Only the owner can remove members" });
       return;
     }
-    if (params.data.userId === room.ownerId) {
+    if (outcome === "owner") {
       res.status(400).json({ error: "The owner cannot be removed" });
       return;
     }
-
-    const deleted = await db
-      .delete(roomMembersTable)
-      .where(
-        and(
-          eq(roomMembersTable.roomId, room.id),
-          eq(roomMembersTable.userId, params.data.userId),
-        ),
-      )
-      .returning();
-    if (deleted.length === 0) {
+    if (outcome === "missing-member") {
       res.status(404).json({ error: "Member not found" });
       return;
     }
@@ -573,8 +679,8 @@ router.post("/rooms/:roomId/invites", authenticate, async (req, res): Promise<vo
     return;
   }
   const membership = await getMembership(room.id, req.userId);
-  if (!membership) {
-    res.status(403).json({ error: "Only room members can invite" });
+  if (!membership && room.ownerId !== req.userId) {
+    res.status(403).json({ error: "Only room members or the owner can invite" });
     return;
   }
 
@@ -637,6 +743,12 @@ router.post(
     }
 
     const accepted = await db.transaction(async (tx) => {
+      const [room] = await tx
+        .select({ id: readingRoomsTable.id, ownerId: readingRoomsTable.ownerId })
+        .from(readingRoomsTable)
+        .where(eq(readingRoomsTable.id, params.data.roomId))
+        .for("update");
+      if (!room || room.ownerId == null) return false;
       const deleted = await tx
         .delete(roomInvitesTable)
         .where(
@@ -726,7 +838,8 @@ router.post(
   },
 );
 
-// GET /rooms/:roomId/feed — latest room-scoped highlights + comments, members only.
+// GET /rooms/:roomId/feed — latest room-scoped highlights + comments; archived
+// rooms remain readable to their former contributors.
 router.get("/rooms/:roomId/feed", authenticate, async (req, res): Promise<void> => {
   const params = GetRoomFeedParams.safeParse(req.params);
   if (!params.success) {
@@ -740,7 +853,11 @@ router.get("/rooms/:roomId/feed", authenticate, async (req, res): Promise<void> 
     return;
   }
   const membership = await getMembership(room.id, req.userId);
-  if (!membership) {
+  const archivedContribution =
+    room.ownerId == null && room.isPublic
+      ? await hasArchivedRoomContribution(room.id, req.userId)
+      : false;
+  if (!membership && !archivedContribution) {
     res.status(403).json({ error: "Members only" });
     return;
   }
@@ -905,7 +1022,7 @@ router.get("/books/:bookId/rooms", authenticate, async (req, res): Promise<void>
 
   const dtos = await toRoomDtos(rooms, req.userId);
   // Private rooms only surface to their own members.
-  res.json(dtos.filter((r) => r.isPublic || r.isMember));
+  res.json(dtos.filter((r) => r.ownerId != null && (r.isPublic || r.isMember)));
 });
 
 export default router;

@@ -15,3 +15,5 @@ export * from "./feedback";
 export * from "./readingRooms";
 export * from "./roomMembers";
 export * from "./roomInvites";
+export * from "./userObjectUploads";
+export * from "./accountObjectCleanupJobs";

@@ -1,17 +1,48 @@
 import { Router, type IRouter } from "express";
+import { and, eq } from "drizzle-orm";
 import {
   ObjectStorageService,
   ObjectNotFoundError,
 } from "../lib/objectStorage";
+import { db, userObjectUploadsTable, usersTable } from "@workspace/db";
 import { authenticate } from "../middlewares/authenticate.js";
 
 const router: IRouter = Router();
 
 // Returns a presigned PUT URL the client uploads the EPUB directly to.
-router.post("/objects/upload", authenticate, async (_req, res): Promise<void> => {
+router.post("/objects/upload", authenticate, async (req, res): Promise<void> => {
   const svc = new ObjectStorageService();
-  const uploadURL = await svc.getObjectEntityUploadURL();
-  res.json({ uploadURL });
+  try {
+    const { uploadURL, objectPath } = await svc.getObjectEntityUploadURL();
+    const issued = await db.transaction(async (tx) => {
+      const [activeAccount] = await tx
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(
+          and(
+            eq(usersTable.id, req.userId),
+            eq(usersTable.deletionPending, false),
+          ),
+        )
+        .for("share");
+      if (!activeAccount) return false;
+      await tx.insert(userObjectUploadsTable).values({
+        userId: req.userId,
+        kind: "epub",
+        objectPath,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      });
+      return true;
+    });
+    if (!issued) {
+      res.status(409).json({ error: "Account deletion is in progress" });
+      return;
+    }
+    res.json({ uploadURL });
+  } catch (err) {
+    req.log.error({ err, userId: req.userId }, "Failed to issue owned EPUB upload URL");
+    res.status(500).json({ error: "Could not create an EPUB upload" });
+  }
 });
 
 // Serves public objects (e.g. avatar images) without authentication — these

@@ -29,6 +29,8 @@ import type {
   CreateLibraryInput,
   CreateQuoteInput,
   CreateRoomInput,
+  DeleteAccountInput,
+  DeleteAccountResult,
   FeedPage,
   FeedbackInput,
   FriendInput,
@@ -1473,7 +1475,7 @@ export const createLibraryEntry = async (createLibraryInput: CreateLibraryInput,
 
 
 
-export const getCreateLibraryEntryMutationOptions = <TError = ErrorType<unknown>,
+export const getCreateLibraryEntryMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLibraryEntry>>, TError,{data: BodyType<CreateLibraryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createLibraryEntry>>, TError,{data: BodyType<CreateLibraryInput>}, TContext> => {
 
@@ -1502,12 +1504,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateLibraryEntryMutationResult = NonNullable<Awaited<ReturnType<typeof createLibraryEntry>>>
     export type CreateLibraryEntryMutationBody = BodyType<CreateLibraryInput>
-    export type CreateLibraryEntryMutationError = ErrorType<unknown>
+    export type CreateLibraryEntryMutationError = ErrorType<void>
 
     /**
  * @summary Register an uploaded EPUB, extract metadata, and auto-match
  */
-export const useCreateLibraryEntry = <TError = ErrorType<unknown>,
+export const useCreateLibraryEntry = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLibraryEntry>>, TError,{data: BodyType<CreateLibraryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createLibraryEntry>>,
@@ -2034,6 +2036,79 @@ export function useGetUser<TData = Awaited<ReturnType<typeof getUser>>, TError =
 
 
 
+
+export const getDeleteUserAccountUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}`
+}
+
+/**
+ * Requires confirmation with the current password. Only the authenticated user may delete their own account. Shared book covers and other users' content are preserved.
+ * @summary Permanently delete the authenticated user's account and owned data
+ */
+export const deleteUserAccount = async (userId: number,
+    deleteAccountInput: DeleteAccountInput, options?: RequestInit): Promise<DeleteAccountResult> => {
+
+  return customFetch<DeleteAccountResult>(getDeleteUserAccountUrl(userId),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      deleteAccountInput,)
+  }
+);}
+
+
+
+
+export const getDeleteUserAccountMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteUserAccount>>, TError,{userId: number;data: BodyType<DeleteAccountInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteUserAccount>>, TError,{userId: number;data: BodyType<DeleteAccountInput>}, TContext> => {
+
+const mutationKey = ['deleteUserAccount'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteUserAccount>>, {userId: number;data: BodyType<DeleteAccountInput>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  deleteUserAccount(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteUserAccountMutationResult = NonNullable<Awaited<ReturnType<typeof deleteUserAccount>>>
+    export type DeleteUserAccountMutationBody = BodyType<DeleteAccountInput>
+    export type DeleteUserAccountMutationError = ErrorType<void>
+
+    /**
+ * @summary Permanently delete the authenticated user's account and owned data
+ */
+export const useDeleteUserAccount = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteUserAccount>>, TError,{userId: number;data: BodyType<DeleteAccountInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteUserAccount>>,
+        TError,
+        {userId: number;data: BodyType<DeleteAccountInput>},
+        TContext
+      > => {
+      return useMutation(getDeleteUserAccountMutationOptions(options));
+    }
 
 export const getSearchUsersUrl = (params: SearchUsersParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -3322,7 +3397,7 @@ export const getAvatarUploadUrl = async (userId: number, options?: RequestInit):
 
 
 
-export const getGetAvatarUploadUrlMutationOptions = <TError = ErrorType<unknown>,
+export const getGetAvatarUploadUrlMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getAvatarUploadUrl>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof getAvatarUploadUrl>>, TError,{userId: number}, TContext> => {
 
@@ -3351,12 +3426,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type GetAvatarUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof getAvatarUploadUrl>>>
 
-    export type GetAvatarUploadUrlMutationError = ErrorType<unknown>
+    export type GetAvatarUploadUrlMutationError = ErrorType<void>
 
     /**
  * @summary Get a presigned URL to upload a profile photo (self only)
  */
-export const useGetAvatarUploadUrl = <TError = ErrorType<unknown>,
+export const useGetAvatarUploadUrl = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getAvatarUploadUrl>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof getAvatarUploadUrl>>,
@@ -3376,6 +3451,7 @@ export const getSetAvatarUrl = (userId: number,) => {
 }
 
 /**
+ * The image must use a presigned upload URL issued to this account; arbitrary public object paths are rejected.
  * @summary Set the profile photo after uploading it (self only)
  */
 export const setAvatar = async (userId: number,
@@ -3394,7 +3470,7 @@ export const setAvatar = async (userId: number,
 
 
 
-export const getSetAvatarMutationOptions = <TError = ErrorType<unknown>,
+export const getSetAvatarMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setAvatar>>, TError,{userId: number;data: BodyType<SetAvatarInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof setAvatar>>, TError,{userId: number;data: BodyType<SetAvatarInput>}, TContext> => {
 
@@ -3423,12 +3499,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type SetAvatarMutationResult = NonNullable<Awaited<ReturnType<typeof setAvatar>>>
     export type SetAvatarMutationBody = BodyType<SetAvatarInput>
-    export type SetAvatarMutationError = ErrorType<unknown>
+    export type SetAvatarMutationError = ErrorType<void>
 
     /**
  * @summary Set the profile photo after uploading it (self only)
  */
-export const useSetAvatar = <TError = ErrorType<unknown>,
+export const useSetAvatar = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setAvatar>>, TError,{userId: number;data: BodyType<SetAvatarInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof setAvatar>>,
@@ -4718,7 +4794,7 @@ export const getJoinRoomUrl = (roomId: number,) => {
 }
 
 /**
- * @summary Join a public room (idempotent)
+ * @summary Join a public room (idempotent; archived rooms cannot be joined)
  */
 export const joinRoom = async (roomId: number, options?: RequestInit): Promise<OkResult> => {
 
@@ -4766,7 +4842,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type JoinRoomMutationError = ErrorType<void>
 
     /**
- * @summary Join a public room (idempotent)
+ * @summary Join a public room (idempotent; archived rooms cannot be joined)
  */
 export const useJoinRoom = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinRoom>>, TError,{roomId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -4930,7 +5006,7 @@ export const getInviteToRoomUrl = (roomId: number,) => {
 }
 
 /**
- * @summary Invite a friend to the room (any member; idempotent while pending)
+ * @summary Invite a friend to the room (member or owner; idempotent while pending)
  */
 export const inviteToRoom = async (roomId: number,
     roomInviteInput: RoomInviteInput, options?: RequestInit): Promise<OkResult> => {
@@ -4980,7 +5056,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type InviteToRoomMutationError = ErrorType<void>
 
     /**
- * @summary Invite a friend to the room (any member; idempotent while pending)
+ * @summary Invite a friend to the room (member or owner; idempotent while pending)
  */
 export const useInviteToRoom = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteToRoom>>, TError,{roomId: number;data: BodyType<RoomInviteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

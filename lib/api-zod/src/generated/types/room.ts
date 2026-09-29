@@ -12,7 +12,11 @@ export interface Room {
   name: string;
   description: string;
   isPublic: boolean;
-  ownerId: number;
+  /**
+     * Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members
+     * @nullable
+     */
+  ownerId: number | null;
   memberCount: number;
   bookTitle: string;
   bookAuthor: string;

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,10 +16,12 @@ import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQueryClient } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "@/components/UserAvatar";
 import { FeedbackModal } from "@/components/FeedbackModal";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import {
   useUpdateUserSettings,
   useGetAvatarUploadUrl,
@@ -26,6 +29,7 @@ import {
   useRemoveAvatar,
   useSendVerificationEmail,
   useConfirmEmailVerification,
+  useDeleteUserAccount,
   ApiError,
 } from "@workspace/api-client-react";
 import type { Visibility, FeedbackInputType } from "@workspace/api-client-react";
@@ -45,8 +49,14 @@ export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, setUser, logout } = useUser();
+  const queryClient = useQueryClient();
   const updateSettings = useUpdateUserSettings();
+  const deleteUserAccount = useDeleteUserAccount();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const getUploadUrl = useGetAvatarUploadUrl();
   const setAvatar = useSetAvatar();
@@ -253,6 +263,65 @@ export default function ProfileScreen() {
       { text: "Cancel", style: "cancel" },
       { text: "Log out", style: "destructive", onPress: () => void performLogout() },
     ]);
+  };
+
+  const openDeleteAccount = () => {
+    setDeletePassword("");
+    setDeleteConfirmed(false);
+    setDeleteError("");
+    setDeleteModalVisible(true);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user || !deletePassword || !deleteConfirmed || deleteUserAccount.isPending) return;
+    setDeleteError("");
+    let objectCleanupPending = false;
+    try {
+      const result = await deleteUserAccount.mutateAsync({
+        userId: user.id,
+        data: { password: deletePassword },
+      });
+      objectCleanupPending = result.objectCleanupPending;
+    } catch (error) {
+      setDeleteError(
+        error instanceof ApiError && error.status === 401
+          ? "That password is incorrect. Your account is still active."
+          : "We couldn't delete your account. Please try again. Your session is still active.",
+      );
+      setDeletePassword("");
+      return;
+    }
+
+    // From this point on the server has confirmed permanent deletion. Failures
+    // in local cleanup must never be reported as a failed account deletion.
+    setDeletePassword("");
+    setDeleteModalVisible(false);
+    const cleanupWarnings: string[] = [];
+    try {
+      queryClient.clear();
+    } catch {
+      cleanupWarnings.push("The app couldn't clear all cached data.");
+    }
+    try {
+      await logout();
+    } catch {
+      cleanupWarnings.push("The app couldn't clear all saved sign-in data.");
+    }
+    try {
+      router.replace("/");
+    } catch {
+      cleanupWarnings.push("The app couldn't return to the sign-in screen; please restart Shelfmates.");
+    }
+
+    if (objectCleanupPending) {
+      cleanupWarnings.push("Some account-owned files could not be removed. Please contact support.");
+    }
+    if (cleanupWarnings.length > 0) {
+      Alert.alert(
+        "Account deleted",
+        `Your account was permanently deleted. ${cleanupWarnings.join(" ")}`,
+      );
+    }
   };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -656,6 +725,133 @@ export default function ProfileScreen() {
         onClose={() => setFeedbackType(null)}
       />
 
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!deleteUserAccount.isPending) setDeleteModalVisible(false);
+        }}
+      >
+        <View style={[styles.deleteOverlay, { backgroundColor: "rgba(0, 0, 0, 0.55)" }]}>
+          <KeyboardAwareScrollViewCompat
+            contentContainerStyle={styles.deleteModalScroll}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View
+              accessibilityViewIsModal
+              style={[
+                styles.deleteModal,
+                {
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                  borderRadius: colors.radius,
+                },
+              ]}
+            >
+              <View style={styles.deleteModalHeading}>
+                <Feather name="alert-triangle" size={22} color={colors.destructive} />
+                <Text style={[styles.deleteModalTitle, { color: colors.foreground }]}>
+                  Permanently delete your account?
+                </Text>
+              </View>
+              <Text style={[styles.deleteModalText, { color: colors.mutedForeground }]}>
+                This is irreversible. Your account and associated content will be permanently deleted and cannot be restored.
+              </Text>
+              <Text style={[styles.deleteModalLabel, { color: colors.foreground }]}>
+                Enter your password to continue
+              </Text>
+              <TextInput
+                style={[
+                  styles.deletePasswordInput,
+                  {
+                    backgroundColor: colors.card,
+                    color: colors.foreground,
+                    borderColor: colors.border,
+                    borderRadius: colors.radius,
+                  },
+                ]}
+                accessibilityLabel="Account password"
+                placeholder="Password"
+                placeholderTextColor={colors.mutedForeground}
+                value={deletePassword}
+                onChangeText={(value) => {
+                  setDeletePassword(value);
+                  setDeleteError("");
+                }}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={handleDeleteAccount}
+                editable={!deleteUserAccount.isPending}
+              />
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: deleteConfirmed, disabled: deleteUserAccount.isPending }}
+                accessibilityLabel="I understand this action is permanent and cannot be undone"
+                onPress={() => setDeleteConfirmed((confirmed) => !confirmed)}
+                disabled={deleteUserAccount.isPending}
+                style={styles.deleteConfirmRow}
+              >
+                <View
+                  style={[
+                    styles.deleteCheckbox,
+                    {
+                      borderColor: deleteConfirmed ? colors.destructive : colors.border,
+                      backgroundColor: deleteConfirmed ? colors.destructive : "transparent",
+                    },
+                  ]}
+                >
+                  {deleteConfirmed ? <Feather name="check" size={14} color={colors.primaryForeground} /> : null}
+                </View>
+                <Text style={[styles.deleteConfirmText, { color: colors.foreground }]}>
+                  I understand this action is permanent and cannot be undone.
+                </Text>
+              </Pressable>
+              {deleteError ? (
+                <Text accessibilityRole="alert" style={[styles.deleteError, { color: colors.destructive }]}>
+                  {deleteError}
+                </Text>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Permanently delete my account"
+                disabled={!deletePassword || !deleteConfirmed || deleteUserAccount.isPending}
+                onPress={() => void handleDeleteAccount()}
+                style={({ pressed }) => [
+                  styles.deleteActionButton,
+                  {
+                    backgroundColor: colors.destructive,
+                    borderRadius: colors.radius,
+                    opacity: pressed || !deletePassword || !deleteConfirmed || deleteUserAccount.isPending ? 0.65 : 1,
+                  },
+                ]}
+              >
+                {deleteUserAccount.isPending ? (
+                  <ActivityIndicator size={16} color={colors.primaryForeground} />
+                ) : (
+                  <Text style={[styles.deleteActionText, { color: colors.primaryForeground }]}>
+                    Permanently delete account
+                  </Text>
+                )}
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setDeletePassword("");
+                  setDeleteModalVisible(false);
+                }}
+                disabled={deleteUserAccount.isPending}
+                style={styles.deleteCancelButton}
+              >
+                <Text style={[styles.deleteCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+              </Pressable>
+            </View>
+          </KeyboardAwareScrollViewCompat>
+        </View>
+      </Modal>
+
       {/* Account */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>ACCOUNT</Text>
@@ -681,6 +877,31 @@ export default function ProfileScreen() {
         <Text style={[styles.helperText, { color: colors.mutedForeground }]}>
           Logging out stops push notifications to this device.
         </Text>
+      </View>
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.destructive }]}>DANGER ZONE</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+          <Text style={[styles.visDesc, { color: colors.mutedForeground, marginTop: 0, marginBottom: 12 }]}>
+            Permanently delete your account and associated content.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Delete account"
+            onPress={openDeleteAccount}
+            disabled={deleteUserAccount.isPending}
+            style={({ pressed }) => [
+              styles.deleteEntryButton,
+              {
+                backgroundColor: colors.destructive,
+                borderRadius: colors.radius,
+                opacity: pressed || deleteUserAccount.isPending ? 0.65 : 1,
+              },
+            ]}
+          >
+            <Feather name="trash-2" size={16} color={colors.primaryForeground} />
+            <Text style={[styles.deleteActionText, { color: colors.primaryForeground }]}>Delete account</Text>
+          </Pressable>
+        </View>
       </View>
     </ScrollView>
   );
@@ -856,6 +1077,98 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     fontSize: 15,
+    fontWeight: "600",
+  },
+  deleteOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  deleteModalScroll: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingVertical: 24,
+  },
+  deleteModal: {
+    width: "100%",
+    maxWidth: 480,
+    alignSelf: "center",
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
+  },
+  deleteModalHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  deleteModalTitle: {
+    flex: 1,
+    fontSize: 19,
+    fontWeight: "700",
+  },
+  deleteModalText: {
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  deleteModalLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  deletePasswordInput: {
+    height: 48,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    borderWidth: 1,
+  },
+  deleteConfirmRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  deleteCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteConfirmText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  deleteError: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  deleteEntryButton: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  deleteActionButton: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  deleteActionText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  deleteCancelButton: {
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteCancelText: {
+    fontSize: 14,
     fontWeight: "600",
   },
 });

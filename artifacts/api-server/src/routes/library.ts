@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { db, booksTable, userLibraryTable } from "@workspace/db";
+import { and, desc, eq, isNull, sql, gt, ne } from "drizzle-orm";
+import { db, booksTable, userLibraryTable, userObjectUploadsTable, usersTable } from "@workspace/db";
 import {
   CreateLibraryEntryBody,
   GetLibraryEntryParams,
@@ -16,7 +16,7 @@ import type {
   LibraryUploadResult,
   MatchResult,
 } from "@workspace/api-zod";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { isGeneratedEpubObjectPath, ObjectStorageService } from "../lib/objectStorage";
 import { extractEpubMetadata, extractEpubCover } from "../lib/epubMetadata";
 import { formatBook } from "../lib/queries";
 import { normalizeTitle, normalizeAuthor } from "../lib/text";
@@ -99,15 +99,61 @@ router.post("/library", authenticate, async (req, res): Promise<void> => {
   const svc = new ObjectStorageService();
   let normalizedPath: string;
   let buffer: Uint8Array;
+  normalizedPath = svc.normalizeObjectEntityPath(uploadURL);
+  if (!isGeneratedEpubObjectPath(normalizedPath)) {
+    res.status(400).json({ error: "Invalid EPUB upload URL" });
+    return;
+  }
+
+  const [sharedEntry] = await db
+    .select({ id: userLibraryTable.id })
+    .from(userLibraryTable)
+    .where(
+      and(
+        eq(userLibraryTable.epubObjectPath, normalizedPath),
+        ne(userLibraryTable.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (sharedEntry) {
+    res.status(409).json({ error: "This EPUB object is already registered to another account" });
+    return;
+  }
+
+  const [claimedUpload] = await db
+    .update(userObjectUploadsTable)
+    .set({ consumedAt: new Date() })
+    .where(
+      and(
+        eq(userObjectUploadsTable.userId, userId),
+        eq(userObjectUploadsTable.kind, "epub"),
+        eq(userObjectUploadsTable.objectPath, normalizedPath),
+        gt(userObjectUploadsTable.expiresAt, new Date()),
+        isNull(userObjectUploadsTable.consumedAt),
+      ),
+    )
+    .returning({ id: userObjectUploadsTable.id });
+  if (!claimedUpload) {
+    res.status(403).json({ error: "EPUB must come from an unused upload URL issued to this account" });
+    return;
+  }
+
   try {
-    normalizedPath = await svc.trySetObjectEntityAclPolicy(uploadURL, {
+    const aclPath = await svc.trySetObjectEntityAclPolicy(uploadURL, {
       owner: String(userId),
       visibility: "private",
     });
+    if (aclPath !== normalizedPath) {
+      throw new Error("Upload URL path changed during finalization");
+    }
     const file = await svc.getObjectEntityFile(normalizedPath);
     const [buf] = await file.download();
     buffer = buf;
   } catch (err) {
+    await db
+      .update(userObjectUploadsTable)
+      .set({ consumedAt: null })
+      .where(eq(userObjectUploadsTable.id, claimedUpload.id));
     req.log.error({ err }, "Failed to finalize uploaded EPUB");
     res.status(400).json({ error: "Could not read uploaded file" });
     return;
@@ -151,17 +197,35 @@ router.post("/library", authenticate, async (req, res): Promise<void> => {
       ? "candidates"
       : "none";
 
-  const [entry] = await db
-    .insert(userLibraryTable)
-    .values({
-      userId,
-      canonicalBookId: matchedBook ? matchedBook.id : null,
-      epubObjectPath: normalizedPath,
-      originalTitle: meta.title ?? null,
-      originalAuthor: meta.author ?? null,
-      originalIsbn: meta.isbn ?? null,
-    })
-    .returning();
+  const entry = await db.transaction(async (tx) => {
+    const [activeAccount] = await tx
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.id, userId),
+          eq(usersTable.deletionPending, false),
+        ),
+      )
+      .for("share");
+    if (!activeAccount) return undefined;
+    const [registered] = await tx
+      .insert(userLibraryTable)
+      .values({
+        userId,
+        canonicalBookId: matchedBook ? matchedBook.id : null,
+        epubObjectPath: normalizedPath,
+        originalTitle: meta.title ?? null,
+        originalAuthor: meta.author ?? null,
+        originalIsbn: meta.isbn ?? null,
+      })
+      .returning();
+    return registered;
+  });
+  if (!entry) {
+    res.status(409).json({ error: "Account deletion is in progress" });
+    return;
+  }
 
   // If the matched canonical book has no cover yet, extract one from this
   // upload (before formatting so the response already carries coverUrl).
@@ -175,7 +239,7 @@ router.post("/library", authenticate, async (req, res): Promise<void> => {
   }
 
   const result: LibraryUploadResult = {
-    entry: await formatLibraryEntry(entry!),
+    entry: await formatLibraryEntry(entry),
     match: { status, book: matchedBook, candidates },
   };
   res.status(201).json(result);
