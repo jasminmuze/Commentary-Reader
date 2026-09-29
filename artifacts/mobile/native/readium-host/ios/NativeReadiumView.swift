@@ -27,6 +27,7 @@ import ReadiumShared
 import ReadiumStreamer
 import React
 import UIKit
+import WebKit
 
 /// Shared Readium context (official TestApp `Readium.swift` pattern).
 private final class ReadiumContext {
@@ -71,10 +72,28 @@ class NativeReadiumView: UIView {
     private var publication: Publication?
     private var navigator: EPUBNavigatorViewController?
     private var listenedGroups = Set<String>()
+    private var scrollModeEnabled = false
+    private var observedScrollViews: [ObjectIdentifier: UIScrollView] = [:]
+    private var observerRefreshGeneration = 0
+    private var pullGestureActive = false
+    private var pullInProgress = false
+    private var pullCandidateActive = false
+    private var pullDirection = 0 // +1 next chapter, -1 previous chapter
+    private var pullTargetIndex = -1
+    private var pullTargetTitle: String?
+    private var pullLastSentProgress = -1.0
+    private var pullLastTranslation = CGPoint.zero
+    private var pullLastContentOffsetY: CGFloat = 0
+    private var pullCandidateAnchor = CGPoint.zero
+    private var pullTravel = CGPoint.zero
+    private var lastChapterJumpAt: TimeInterval = 0
+    private var chapterTitleByHref: [String: String] = [:]
 
     private static let maxParentWaitAttempts = 20
     private static let parentWaitInterval: TimeInterval = 0.25
     private static let readiumLocationVersion = 4
+    private static let chapterPullThreshold: CGFloat = 80
+    private static let chapterJumpCooldown: TimeInterval = 0.7
 
     // MARK: - Lifecycle
 
@@ -103,6 +122,7 @@ class NativeReadiumView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         navigator?.view.frame = bounds
+        refreshChapterPullObservers()
     }
 
     // MARK: - Opening
@@ -223,7 +243,10 @@ class NativeReadiumView: UIView {
             initialLocation: initialLocator,
             config: EPUBNavigatorViewController.Configuration(
                 preferences: preferences,
-                editingActions: editingActions
+                editingActions: editingActions,
+                // Scroll-mode chapter changes are provided by the observe-only
+                // vertical overscroll detector below.
+                disablePageTurnsWhileScrolling: true
             ),
             httpServer: ReadiumContext.shared.httpServer
         )
@@ -238,6 +261,8 @@ class NativeReadiumView: UIView {
         addSubview(navigator.view)
         navigator.didMove(toParent: hostController)
 
+        scrollModeEnabled = isScrollModeEnabled()
+        refreshChapterPullObservers()
         sendOpened(publication)
     }
 
@@ -250,6 +275,12 @@ class NativeReadiumView: UIView {
         }
         settingsJson = newSettingsJson as NSString
         navigator.submitPreferences(ReaderPreferencesMapper.parse(json: newSettingsJson))
+        scrollModeEnabled = isScrollModeEnabled()
+        if !scrollModeEnabled {
+            cancelChapterPull()
+        }
+        refreshChapterPullObservers()
+        scheduleChapterPullObserverRefreshes()
         resolve(true)
     }
 
@@ -444,6 +475,9 @@ class NativeReadiumView: UIView {
                     for link in links {
                         let title = link.title?.isEmpty == false ? link.title! : link.href
                         toc.append(["title": title, "href": link.href, "depth": depth])
+                        if let linkTitle = link.title, !linkTitle.isEmpty {
+                            self.chapterTitleByHref[Self.hrefWithoutFragment(link.href)] = linkTitle
+                        }
                         walk(link.children, depth: depth + 1)
                     }
                 }
@@ -466,10 +500,12 @@ class NativeReadiumView: UIView {
             self.sendDebug(
                 "view opened \"\(publication.metadata.title ?? "?")\" (toc=\(toc.count), searchable=\(publication.isSearchable))"
             )
+            self.refreshChapterPullObservers()
         }
     }
 
     fileprivate func sendLocation(_ locator: Locator) {
+        refreshChapterPullObservers()
         let progress = locator.locations.totalProgression ?? locator.locations.progression
         var snapshot: [String: Any] = [
             "v": Self.readiumLocationVersion,
@@ -514,6 +550,7 @@ class NativeReadiumView: UIView {
     func dispose() {
         guard !disposed else { return }
         disposed = true
+        removeChapterPullObservers()
         if libId >= 0 {
             NativeReadiumViewRegistry.unregister(libId, self)
         }
@@ -539,6 +576,351 @@ class NativeReadiumView: UIView {
         else { return nil }
         let locatorObject = (root["locator"] as? [String: Any]) ?? root
         return try? Locator(json: locatorObject)
+    }
+
+    // MARK: - Scroll-mode chapter pull (observe-only)
+
+    /// Readium 3.1.0's public navigator view tree contains a `WKWebView` for
+    /// each loaded EPUB spread. Observe the WebKit scroll views' existing pan
+    /// recognizers; no recognizer/delegate replacement or touch interception
+    /// is used, so WebKit keeps handling scrolling, taps and text selection.
+    private func refreshChapterPullObservers() {
+        guard let root = navigator?.view else { return }
+        var current: [ObjectIdentifier: UIScrollView] = [:]
+
+        func walk(_ view: UIView) {
+            if let webView = view as? WKWebView {
+                let scrollView = webView.scrollView
+                current[ObjectIdentifier(scrollView)] = scrollView
+            }
+            for child in view.subviews {
+                walk(child)
+            }
+        }
+        walk(root)
+
+        let removed = observedScrollViews.filter { current[$0.key] == nil }
+        for (identifier, scrollView) in removed {
+            scrollView.panGestureRecognizer.removeTarget(self, action: #selector(observeChapterPullPan(_:)))
+            observedScrollViews.removeValue(forKey: identifier)
+        }
+        for (identifier, scrollView) in current where observedScrollViews[identifier] == nil {
+            scrollView.panGestureRecognizer.addTarget(self, action: #selector(observeChapterPullPan(_:)))
+            observedScrollViews[identifier] = scrollView
+        }
+    }
+
+    /// Readium can invalidate and recreate its spread views asynchronously
+    /// after preferences change. Re-scan on subsequent main-loop turns as well
+    /// as from layout/location callbacks, so the replacement WebViews are
+    /// observed without modifying their scroll delegates.
+    private func scheduleChapterPullObserverRefreshes() {
+        observerRefreshGeneration += 1
+        let generation = observerRefreshGeneration
+        for delay in [0.0, 0.05, 0.15, 0.35, 0.75, 1.5, 2.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self = self,
+                      !self.disposed,
+                      self.observerRefreshGeneration == generation
+                else { return }
+                self.refreshChapterPullObservers()
+            }
+        }
+    }
+
+    private func removeChapterPullObservers() {
+        observerRefreshGeneration += 1
+        for scrollView in observedScrollViews.values {
+            scrollView.panGestureRecognizer.removeTarget(self, action: #selector(observeChapterPullPan(_:)))
+        }
+        observedScrollViews.removeAll()
+        cancelChapterPull()
+    }
+
+    @objc private func observeChapterPullPan(_ recognizer: UIPanGestureRecognizer) {
+        guard let scrollView = recognizer.view as? UIScrollView,
+              scrollModeEnabled,
+              isVisibleChapterScrollView(scrollView)
+        else {
+            if pullInProgress { cancelChapterPull() }
+            return
+        }
+
+        switch recognizer.state {
+        case .began:
+            resetChapterPullGesture()
+            pullLastTranslation = recognizer.translation(in: scrollView)
+            pullLastContentOffsetY = scrollView.contentOffset.y
+            pullGestureActive = Date().timeIntervalSince1970 - lastChapterJumpAt > Self.chapterJumpCooldown
+                && navigator?.currentSelection == nil
+                && recognizer.numberOfTouches <= 1
+        case .changed:
+            guard pullGestureActive, navigator?.currentSelection == nil,
+                  recognizer.numberOfTouches <= 1
+            else {
+                if pullInProgress { cancelChapterPull() }
+                resetChapterPullGesture()
+                return
+            }
+            updateChapterPull(scrollView, translation: recognizer.translation(in: scrollView))
+        case .ended:
+            guard pullGestureActive else {
+                resetChapterPullGesture()
+                return
+            }
+            updateChapterPull(scrollView, translation: recognizer.translation(in: scrollView))
+            if pullInProgress {
+                let distance = pullDirection > 0 ? -pullTravel.y : pullTravel.y
+                if distance >= Self.chapterPullThreshold {
+                    commitChapterPull()
+                } else {
+                    cancelChapterPull()
+                }
+            }
+            resetChapterPullGesture()
+        case .cancelled, .failed:
+            if pullInProgress { cancelChapterPull() }
+            resetChapterPullGesture()
+        default:
+            break
+        }
+    }
+
+    private func updateChapterPull(_ scrollView: UIScrollView, translation: CGPoint) {
+        let delta = CGPoint(
+            x: translation.x - pullLastTranslation.x,
+            y: translation.y - pullLastTranslation.y
+        )
+        pullLastTranslation = translation
+        let previousOffset = pullLastContentOffsetY
+        let offset = scrollView.contentOffset.y
+        pullLastContentOffsetY = offset
+        let top = -scrollView.adjustedContentInset.top
+        let bottom = max(
+            top,
+            scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom
+        )
+
+        if pullInProgress {
+            pullTravel.x += delta.x
+            pullTravel.y += delta.y
+            let distance = pullDirection > 0 ? -pullTravel.y : pullTravel.y
+            guard distance > 0, isVerticallyDominant(pullTravel) else {
+                cancelChapterPullAttempt()
+                return
+            }
+            sendChapterPullProgress(distance)
+            return
+        }
+
+        if pullCandidateActive {
+            let travel = CGPoint(
+                x: translation.x - pullCandidateAnchor.x,
+                y: translation.y - pullCandidateAnchor.y
+            )
+            let distance = pullDirection > 0 ? -travel.y : travel.y
+            let stillAtEdge = pullDirection > 0 ? offset >= bottom - 1 : offset <= top + 1
+            guard stillAtEdge, distance > 0 else {
+                pullCandidateActive = false
+                pullDirection = 0
+                pullTravel = .zero
+                return
+            }
+            guard isVerticallyDominant(travel) else { return }
+            beginChapterPull(direction: pullDirection, travel: travel)
+            sendChapterPullProgress(distance)
+            return
+        }
+
+        let direction: Int
+        if delta.y < 0, offset >= bottom - 1 {
+            direction = 1
+        } else if delta.y > 0, offset <= top + 1 {
+            direction = -1
+        } else {
+            return
+        }
+
+        guard adjacentChapter(direction: direction) != nil else { return }
+        let fingerDistance = direction > 0 ? -delta.y : delta.y
+        let distanceConsumedBeforeEdge = direction > 0
+            ? max(0, bottom - previousOffset)
+            : max(0, previousOffset - top)
+        let beyondEdgeDistance = max(0, fingerDistance - distanceConsumedBeforeEdge)
+        guard beyondEdgeDistance > 0, fingerDistance > 0 else { return }
+        let beyondEdgeFraction = beyondEdgeDistance / fingerDistance
+        pullCandidateActive = true
+        pullDirection = direction
+        pullCandidateAnchor = CGPoint(
+            x: translation.x - delta.x * beyondEdgeFraction,
+            y: translation.y - delta.y * beyondEdgeFraction
+        )
+        let travel = CGPoint(
+            x: delta.x * beyondEdgeFraction,
+            y: delta.y * beyondEdgeFraction
+        )
+        let distance = direction > 0 ? -travel.y : travel.y
+        guard isVerticallyDominant(travel) else { return }
+        beginChapterPull(direction: direction, travel: travel)
+        sendChapterPullProgress(distance)
+    }
+
+    private func beginChapterPull(direction: Int, travel: CGPoint) {
+        guard let target = adjacentChapter(direction: direction) else {
+            pullCandidateActive = false
+            pullDirection = 0
+            pullTravel = .zero
+            return
+        }
+        pullCandidateActive = false
+        pullInProgress = true
+        pullDirection = direction
+        pullTargetIndex = target.index
+        pullTargetTitle = target.title
+        pullTravel = travel
+        pullLastSentProgress = 0
+        sendChapterPull("pull", direction: direction, progress: 0, title: target.title)
+    }
+
+    private func isVerticallyDominant(_ translation: CGPoint) -> Bool {
+        abs(translation.y) > abs(translation.x) * 1.2
+    }
+
+    private func sendChapterPullProgress(_ distance: CGFloat) {
+        let progress = min(Double(distance / Self.chapterPullThreshold), 1.5)
+        guard abs(progress - pullLastSentProgress) >= 0.01 else { return }
+        pullLastSentProgress = progress
+        sendChapterPull("pull", direction: pullDirection, progress: progress, title: pullTargetTitle)
+    }
+
+    /// Ends a pull attempt but keeps tracking the current pan, matching the
+    /// Android behavior that permits another pull before the finger is lifted.
+    private func cancelChapterPullAttempt() {
+        if pullInProgress {
+            sendChapterPull("cancel", direction: pullDirection, progress: 0, title: pullTargetTitle)
+        }
+        pullInProgress = false
+        pullCandidateActive = false
+        pullDirection = 0
+        pullTargetIndex = -1
+        pullTargetTitle = nil
+        pullLastSentProgress = -1
+        pullTravel = .zero
+    }
+
+    private func adjacentChapter(direction: Int) -> (index: Int, title: String?)? {
+        guard let publication = publication,
+              let currentHref = navigator?.currentLocation?.href.string
+        else { return nil }
+        let href = Self.hrefWithoutFragment(currentHref)
+        guard let currentIndex = publication.readingOrder.firstIndex(where: {
+            Self.hrefWithoutFragment($0.href) == href
+        }) else { return nil }
+        let targetIndex = currentIndex + direction
+        guard publication.readingOrder.indices.contains(targetIndex) else { return nil }
+        let link = publication.readingOrder[targetIndex]
+        let title = link.title.flatMap { $0.isEmpty ? nil : $0 }
+            ?? chapterTitleByHref[Self.hrefWithoutFragment(link.href)]
+        return (targetIndex, title)
+    }
+
+    private func commitChapterPull() {
+        guard let publication = publication,
+              let navigator = navigator,
+              publication.readingOrder.indices.contains(pullTargetIndex)
+        else { return }
+
+        let link = publication.readingOrder[pullTargetIndex]
+        let direction = pullDirection
+        let title = pullTargetTitle
+
+        Task { [weak self] in
+            var destinationLink = link
+            if direction < 0 {
+                // Readium's locator service may honor a fragment on the link.
+                // Backward chapter pulls need the resource end, not that anchor.
+                destinationLink.href = Self.hrefWithoutFragment(destinationLink.href)
+            }
+            guard let self = self, !self.disposed,
+                  var locator = await publication.locate(destinationLink)
+            else {
+                self?.sendChapterPull("cancel", direction: direction, progress: 0, title: title)
+                return
+            }
+            if direction < 0 {
+                // A backward chapter transition lands at the end of that chapter.
+                locator = locator.copy(locations: { locations in
+                    locations.progression = 1.0
+                })
+            }
+            guard !self.disposed, self.navigator === navigator else { return }
+            let moved = await navigator.go(to: locator, options: NavigatorGoOptions(animated: true))
+            if moved {
+                self.lastChapterJumpAt = Date().timeIntervalSince1970
+            }
+            self.sendChapterPull(moved ? "commit" : "cancel",
+                                 direction: direction, progress: moved ? 1 : 0, title: title)
+        }
+    }
+
+    private func cancelChapterPull() {
+        if pullInProgress {
+            sendChapterPull("cancel", direction: pullDirection, progress: 0, title: pullTargetTitle)
+        }
+        resetChapterPullGesture()
+    }
+
+    private func resetChapterPullGesture() {
+        pullGestureActive = false
+        pullInProgress = false
+        pullCandidateActive = false
+        pullDirection = 0
+        pullTargetIndex = -1
+        pullTargetTitle = nil
+        pullLastSentProgress = -1
+        pullLastTranslation = .zero
+        pullLastContentOffsetY = 0
+        pullCandidateAnchor = .zero
+        pullTravel = .zero
+    }
+
+    private func sendChapterPull(_ phase: String, direction: Int, progress: Double, title: String?) {
+        NativeReadiumEvents.send("NativeReadiumHost.chapterPull", [
+            "libraryId": libId,
+            "phase": phase,
+            "direction": direction > 0 ? "next" : "prev",
+            "progress": progress,
+            "targetTitle": title ?? NSNull(),
+        ])
+    }
+
+    private func isVisibleChapterScrollView(_ scrollView: UIScrollView) -> Bool {
+        guard let root = navigator?.view else {
+            return false
+        }
+        var ancestor = scrollView.superview
+        while ancestor != nil, !(ancestor is WKWebView) {
+            ancestor = ancestor?.superview
+        }
+        guard let webView = ancestor as? WKWebView else { return false }
+        let visibleRect = webView.convert(webView.bounds, to: nil).intersection(root.convert(root.bounds, to: nil))
+        return webView.window != nil
+            && !webView.isHidden
+            && webView.alpha > 0
+            && visibleRect.width > root.bounds.width / 2
+            && visibleRect.height > 0
+    }
+
+    private func isScrollModeEnabled() -> Bool {
+        guard let text = settingsJson as String?,
+              let data = text.data(using: .utf8),
+              let settings = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return false }
+        return settings["scrollMode"] as? String == "vertical"
+    }
+
+    private static func hrefWithoutFragment(_ href: String) -> String {
+        String(href.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first ?? Substring(href))
     }
 
     private static func findLink(in publication: Publication, href: String) async -> ReadiumShared.Link? {
