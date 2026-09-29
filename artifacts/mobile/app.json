@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.shelfmates.app",
+      "bundleIdentifier": "app.shelfmates",
       "buildNumber": "1",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Shelfmates uses your photo library so you can pick a profile photo.",
@@ -23,7 +23,7 @@
       }
     },
     "android": {
-      "package": "com.shelfmates.app",
+      "package": "app.shelfmates",
       "versionCode": 1
     },
     "web": {
