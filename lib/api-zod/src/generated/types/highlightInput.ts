@@ -5,10 +5,18 @@
  * Bookmarks - Social Ebook Reader API
  * OpenAPI spec version: 0.1.0
  */
-import type { Visibility } from './visibility';
+import type { ContentVisibility } from './contentVisibility';
 
 export interface HighlightInput {
   userLibraryId?: number;
   cfiRange?: string;
-  visibility?: Visibility;
+  visibility?: ContentVisibility;
+  /** Scope this highlight to a reading room (author must be a member) */
+  roomId?: number;
+  /**
+     * Author's reading progress when highlighting (room spoiler guard)
+     * @minimum 0
+     * @maximum 100
+     */
+  authorProgress?: number;
 }

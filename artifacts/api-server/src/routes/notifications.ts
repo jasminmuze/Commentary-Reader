@@ -6,13 +6,17 @@ import {
   usersTable,
   commentsTable,
   quotesTable,
+  userHighlightsTable,
+  readingRoomsTable,
 } from "@workspace/db";
 import {
   GetNotificationsParams,
   MarkNotificationsReadParams,
+  MarkNotificationReadParams,
 } from "@workspace/api-zod";
 import type { NotificationItem } from "@workspace/api-zod";
 import { authenticate } from "../middlewares/authenticate.js";
+import { getViewer, visibilityPredicate } from "../lib/social";
 
 const router: IRouter = Router();
 
@@ -34,45 +38,139 @@ router.get("/users/:userId/notifications", authenticate, async (req, res): Promi
     .orderBy(desc(notificationsTable.createdAt))
     .limit(50);
 
-  const unreadCount = notifs.filter((n) => !n.read).length;
-
   if (notifs.length === 0) {
     res.json({ notifications: [], unreadCount: 0 });
     return;
   }
 
-  const actorIds = [...new Set(notifs.map((n) => n.actorId))];
-  const commentIds = [...new Set(notifs.map((n) => n.commentId))];
+  const viewer = await getViewer(req.userId);
 
-  const [actors, comments] = await Promise.all([
+  const actorIds = [...new Set(notifs.map((n) => n.actorId))];
+  // friend_* notifications have no comment; highlight_like has a highlight instead.
+  const commentIds = [
+    ...new Set(
+      notifs
+        .map((n) => n.commentId)
+        .filter((id): id is number => id != null),
+    ),
+  ];
+  const highlightIds = [
+    ...new Set(
+      notifs
+        .map((n) => n.highlightId)
+        .filter((id): id is number => id != null),
+    ),
+  ];
+  const roomIds = [
+    ...new Set(
+      notifs.map((n) => n.roomId).filter((id): id is number => id != null),
+    ),
+  ];
+
+  // Re-check visibility at read time: a notification may reference a comment or
+  // highlight the viewer can no longer see (e.g. room-only content after the
+  // viewer left the room). allowViewerRooms=true keeps room-only rows visible
+  // to CURRENT members; everyone else falls under the community rules.
+  const [actors, comments, highlights, rooms] = await Promise.all([
     db.select().from(usersTable).where(inArray(usersTable.id, actorIds)),
-    db.select().from(commentsTable).where(inArray(commentsTable.id, commentIds)),
+    commentIds.length
+      ? db
+          .select()
+          .from(commentsTable)
+          .where(
+            and(
+              inArray(commentsTable.id, commentIds),
+              visibilityPredicate(
+                commentsTable.visibility,
+                commentsTable.userId,
+                viewer,
+                commentsTable.roomId,
+                true,
+              ),
+            ),
+          )
+      : Promise.resolve([]),
+    highlightIds.length
+      ? db
+          .select()
+          .from(userHighlightsTable)
+          .where(
+            and(
+              inArray(userHighlightsTable.id, highlightIds),
+              visibilityPredicate(
+                userHighlightsTable.visibility,
+                userHighlightsTable.userId,
+                viewer,
+                userHighlightsTable.roomId,
+                true,
+              ),
+            ),
+          )
+      : Promise.resolve([]),
+    roomIds.length
+      ? db
+          .select({ id: readingRoomsTable.id, name: readingRoomsTable.name })
+          .from(readingRoomsTable)
+          .where(inArray(readingRoomsTable.id, roomIds))
+      : Promise.resolve([]),
   ]);
 
   const actorMap = new Map(actors.map((a) => [a.id, a]));
   const commentMap = new Map(comments.map((c) => [c.id, c]));
+  const highlightMap = new Map(highlights.map((h) => [h.id, h]));
+  const roomMap = new Map(rooms.map((r) => [r.id, r]));
 
-  const quoteIds = [...new Set(comments.map((c) => c.quoteId))];
+  const quoteIds = [
+    ...new Set([
+      ...comments.map((c) => c.quoteId),
+      ...highlights.map((h) => h.quoteId),
+    ]),
+  ];
   const quotes = quoteIds.length
     ? await db.select().from(quotesTable).where(inArray(quotesTable.id, quoteIds))
     : [];
   const quoteMap = new Map(quotes.map((q) => [q.id, q]));
 
-  const items: NotificationItem[] = notifs.map((n) => {
+  // Drop notifications whose linked comment/highlight is gone or no longer
+  // visible to the viewer (deleted, or room-only content after leaving the
+  // room) so old notifications can't reveal text the viewer may not see.
+  const visibleNotifs = notifs.filter((n) => {
+    if (n.commentId != null && !commentMap.has(n.commentId)) return false;
+    if (n.highlightId != null && !highlightMap.has(n.highlightId)) return false;
+    return true;
+  });
+  const unreadCount = visibleNotifs.filter((n) => !n.read).length;
+
+  const items: NotificationItem[] = visibleNotifs.map((n) => {
     const actor = actorMap.get(n.actorId);
-    const comment = commentMap.get(n.commentId);
-    const quote = comment ? quoteMap.get(comment.quoteId) : undefined;
+    const comment = n.commentId != null ? commentMap.get(n.commentId) : undefined;
+    const highlight =
+      n.highlightId != null ? highlightMap.get(n.highlightId) : undefined;
+    // highlight_like anchors to the highlight's quote; everything else to the comment's.
+    const quoteId = comment?.quoteId ?? highlight?.quoteId;
+    const quote = quoteId != null ? quoteMap.get(quoteId) : undefined;
     return {
       id: n.id,
       type: n.type,
       actorId: n.actorId,
       actorUsername: actor?.username ?? "unknown",
+      actorNickname: actor?.nickname ?? null,
+      actorAvatarUrl: actor?.avatarUrl ?? null,
       actorAvatarColor: actor?.avatarColor ?? "#7A8BAA",
-      commentId: n.commentId,
+      commentId: n.commentId ?? 0,
       commentText: comment?.text ?? "",
+      // Mask signal: true only when the comment has spoilers AND the viewer
+      // isn't its author (authors always see their own text).
+      commentContainsSpoilers:
+        comment != null &&
+        comment.containsSpoilers &&
+        comment.userId !== req.userId,
       parentCommentId: comment?.parentId ?? null,
-      quoteId: comment?.quoteId ?? 0,
+      quoteId: quoteId ?? 0,
       quoteText: quote?.text ?? "",
+      roomId: n.roomId ?? null,
+      roomName:
+        n.roomId != null ? (roomMap.get(n.roomId)?.name ?? "") : "",
       read: n.read,
       createdAt: n.createdAt,
     };
@@ -103,6 +201,43 @@ router.put("/users/:userId/notifications/read-all", authenticate, async (req, re
     );
 
   res.json({ unreadCount: 0 });
+});
+
+// PUT /notifications/:notificationId/read — mark a single notification as read.
+// Only the owner may mark it; others get 404 (no existence leak).
+router.put("/notifications/:notificationId/read", authenticate, async (req, res): Promise<void> => {
+  const params = MarkNotificationReadParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [updated] = await db
+    .update(notificationsTable)
+    .set({ read: true })
+    .where(
+      and(
+        eq(notificationsTable.id, params.data.notificationId),
+        eq(notificationsTable.userId, req.userId),
+      ),
+    )
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: "Notification not found" });
+    return;
+  }
+
+  const remaining = await db
+    .select({ id: notificationsTable.id })
+    .from(notificationsTable)
+    .where(
+      and(
+        eq(notificationsTable.userId, req.userId),
+        eq(notificationsTable.read, false),
+      ),
+    );
+
+  res.json({ unreadCount: remaining.length });
 });
 
 export default router;

@@ -10,8 +10,18 @@ import {
   notificationsTable,
 } from "@workspace/db";
 import {
+  createLikeNotification,
+  createMentionNotifications,
+  getNotificationPrefs,
+  sendReplyPush,
+} from "../lib/notifications";
+import {
   GetQuoteCommentsParams,
   GetQuoteCommentsQueryParams,
+  GetCommentParams,
+  UpdateCommentParams,
+  UpdateCommentBody,
+  DeleteCommentParams,
   CreateCommentParams,
   CreateCommentBody,
   LikeCommentParams,
@@ -30,10 +40,6 @@ import { authenticate } from "../middlewares/authenticate.js";
 
 const router: IRouter = Router();
 
-function parseMentionedUsernames(text: string): string[] {
-  return [...text.matchAll(/\B@(\w+)/g)].map((m) => m[1]!);
-}
-
 // GET /quotes/:quoteId/comments — top-level comments only (parentId IS NULL).
 router.get("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<void> => {
   const params = GetQuoteCommentsParams.safeParse(req.params);
@@ -47,14 +53,25 @@ router.get("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<
   const filter = queryParams.success
     ? (queryParams.data.filter ?? "all")
     : "all";
+  const roomId = queryParams.success ? queryParams.data.roomId : undefined;
 
   const { quoteId } = params.data;
   const viewer = await getViewer(userId);
-  const visible = visibilityPredicate(
-    commentsTable.visibility,
-    commentsTable.userId,
-    viewer,
-  );
+  // Room scope: only that room's comments, members only. Otherwise the
+  // community visibility rules (which exclude other rooms' content).
+  if (roomId != null && !viewer.roomIds.includes(roomId)) {
+    res.status(403).json({ error: "Not a member of this room" });
+    return;
+  }
+  const visible =
+    roomId != null
+      ? eq(commentsTable.roomId, roomId)
+      : visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+          commentsTable.roomId,
+        );
   // Only return top-level comments — replies are fetched separately.
   const topLevel = isNull(commentsTable.parentId);
   let comments;
@@ -122,13 +139,35 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
   }
 
   const userId = req.userId;
+
+  // Room-scoped comment: author must be a member of the room.
+  const roomId = body.data.roomId ?? null;
+  if (roomId != null) {
+    const viewer = await getViewer(userId);
+    if (!viewer.roomIds.includes(roomId)) {
+      res.status(403).json({ error: "Not a member of this room" });
+      return;
+    }
+  }
+
+  // 'room' visibility (members only) is only meaningful with a room scope.
+  if (body.data.visibility === "room" && roomId == null) {
+    res.status(400).json({ error: "visibility 'room' requires roomId" });
+    return;
+  }
+
   let visibility = body.data.visibility;
   if (!visibility) {
-    const [author] = await db
-      .select({ defaultVisibility: usersTable.defaultVisibility })
-      .from(usersTable)
-      .where(eq(usersTable.id, userId));
-    visibility = author?.defaultVisibility ?? "public";
+    if (roomId != null) {
+      // Room-scoped default: members only.
+      visibility = "room";
+    } else {
+      const [author] = await db
+        .select({ defaultVisibility: usersTable.defaultVisibility })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId));
+      visibility = author?.defaultVisibility ?? "public";
+    }
   }
 
   const [comment] = await db
@@ -139,11 +178,148 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
       text: body.data.text,
       visibility,
       likeCount: 0,
+      containsSpoilers: body.data.containsSpoilers ?? false,
+      roomId,
+      authorProgress: body.data.authorProgress ?? null,
     })
     .returning();
+  if (!comment) {
+    res.status(500).json({ error: "Failed to create comment" });
+    return;
+  }
 
-  const formatted = await formatComment(comment!, userId);
+  // 'mention' notifications for @mentioned users (best-effort, non-fatal).
+  try {
+    await createMentionNotifications({
+      text: body.data.text,
+      actorId: userId,
+      commentId: comment.id,
+      containsSpoilers: body.data.containsSpoilers ?? false,
+      // Room-only comments must never leak their text to non-members via
+      // mention notifications/pushes.
+      ...(comment.visibility === "room" && comment.roomId !== null
+        ? { restrictToRoomId: comment.roomId }
+        : {}),
+    });
+  } catch (err) {
+    req.log.warn({ err }, "Failed to create mention notifications");
+  }
+
+  const formatted = await formatComment(comment, userId);
   res.status(201).json(formatted);
+});
+
+// GET /comments/:commentId — single comment by id (visibility-gated).
+// Used by the mobile app to open a reply thread from a notification.
+router.get("/comments/:commentId", authenticate, async (req, res): Promise<void> => {
+  const params = GetCommentParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const userId = req.userId;
+  const viewer = await getViewer(userId);
+  const [comment] = await db
+    .select()
+    .from(commentsTable)
+    .where(
+      and(
+        eq(commentsTable.id, params.data.commentId),
+        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId, true),
+      ),
+    )
+    .limit(1);
+  if (!comment) {
+    res.status(404).json({ error: "Comment not found" });
+    return;
+  }
+
+  const formatted = await formatComment(comment, userId);
+  res.json(formatted);
+});
+
+// PATCH /comments/:commentId — update an authored comment or reply.
+router.patch("/comments/:commentId", authenticate, async (req, res): Promise<void> => {
+  const params = UpdateCommentParams.safeParse(req.params);
+  const body = UpdateCommentBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({
+      error: !params.success ? params.error.message : body.success ? "" : body.error.message,
+    });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(commentsTable)
+    .where(eq(commentsTable.id, params.data.commentId))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Comment not found" });
+    return;
+  }
+  if (existing.userId !== req.userId) {
+    res.status(403).json({ error: "Only the author can update this comment" });
+    return;
+  }
+  if (body.data.visibility === "room" && existing.roomId == null) {
+    res.status(400).json({ error: "visibility 'room' requires roomId" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(commentsTable)
+    .set({
+      text: body.data.text.trim(),
+      visibility: body.data.visibility,
+      containsSpoilers: body.data.containsSpoilers,
+    })
+    .where(eq(commentsTable.id, existing.id))
+    .returning();
+  if (!updated) {
+    res.status(500).json({ error: "Failed to update comment" });
+    return;
+  }
+  res.json(await formatComment(updated, req.userId));
+});
+
+// DELETE /comments/:commentId — delete an authored comment. Deleting a
+// top-level comment also removes its replies and all dependent social rows.
+router.delete("/comments/:commentId", authenticate, async (req, res): Promise<void> => {
+  const params = DeleteCommentParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(commentsTable)
+    .where(eq(commentsTable.id, params.data.commentId))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Comment not found" });
+    return;
+  }
+  if (existing.userId !== req.userId) {
+    res.status(403).json({ error: "Only the author can delete this comment" });
+    return;
+  }
+
+  const childRows = await db
+    .select({ id: commentsTable.id })
+    .from(commentsTable)
+    .where(eq(commentsTable.parentId, existing.id));
+  const ids = [existing.id, ...childRows.map((row) => row.id)];
+
+  await db.transaction(async (tx) => {
+    await tx.delete(commentLikesTable).where(inArray(commentLikesTable.commentId, ids));
+    await tx.delete(commentSavesTable).where(inArray(commentSavesTable.commentId, ids));
+    await tx.delete(notificationsTable).where(inArray(notificationsTable.commentId, ids));
+    await tx.delete(commentsTable).where(inArray(commentsTable.id, ids));
+  });
+  res.json({ ok: true });
 });
 
 // GET /comments/:commentId/replies — flat chronological replies (visibility-gated).
@@ -166,7 +342,7 @@ router.get("/comments/:commentId/replies", authenticate, async (req, res): Promi
       and(
         eq(commentsTable.id, commentId),
         isNull(commentsTable.parentId),
-        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer),
+        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId, true),
       ),
     )
     .limit(1);
@@ -181,7 +357,7 @@ router.get("/comments/:commentId/replies", authenticate, async (req, res): Promi
     .where(
       and(
         eq(commentsTable.parentId, commentId),
-        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer),
+        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId, true),
       ),
     )
     .orderBy(asc(commentsTable.createdAt));
@@ -219,7 +395,7 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
       and(
         eq(commentsTable.id, commentId),
         isNull(commentsTable.parentId),
-        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer),
+        visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId, true),
       ),
     )
     .limit(1);
@@ -228,13 +404,25 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
     return;
   }
 
+  // Replies inherit the parent's room scope, so 'room' visibility is only
+  // valid when the parent thread is room-scoped.
+  if (body.data.visibility === "room" && parentComment.roomId == null) {
+    res.status(400).json({ error: "visibility 'room' requires a room-scoped thread" });
+    return;
+  }
+
   let visibility = body.data.visibility;
   if (!visibility) {
-    const [author] = await db
-      .select({ defaultVisibility: usersTable.defaultVisibility })
-      .from(usersTable)
-      .where(eq(usersTable.id, userId));
-    visibility = author?.defaultVisibility ?? "public";
+    if (parentComment.roomId != null) {
+      // Room-scoped default: members only.
+      visibility = "room";
+    } else {
+      const [author] = await db
+        .select({ defaultVisibility: usersTable.defaultVisibility })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId));
+      visibility = author?.defaultVisibility ?? "public";
+    }
   }
 
   const [reply] = await db
@@ -246,6 +434,10 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
       visibility,
       likeCount: 0,
       parentId: commentId,
+      containsSpoilers: body.data.containsSpoilers ?? false,
+      // Replies inherit the parent's room scope so threads never straddle scopes.
+      roomId: parentComment.roomId ?? null,
+      authorProgress: body.data.authorProgress ?? null,
     })
     .returning();
   if (!reply) {
@@ -255,40 +447,47 @@ router.post("/comments/:commentId/replies", authenticate, async (req, res): Prom
 
   // Fire notifications (best-effort — don't fail the request if they error).
   try {
-    const notifiedUserIds = new Set<number>([userId]);
+    const notifiedUserIds = new Set<number>();
 
-    // 'reply' notification for the parent comment author.
+    // 'reply' notification for the parent comment author — skipped entirely
+    // (in-app AND push) when they disabled reply notifications.
     if (parentComment.userId !== userId) {
-      await db.insert(notificationsTable).values({
-        userId: parentComment.userId,
-        type: "reply",
-        actorId: userId,
-        commentId: reply.id,
-      });
+      const prefs = await getNotificationPrefs(parentComment.userId);
+      if (prefs.notifyReplies) {
+        await db.insert(notificationsTable).values({
+          userId: parentComment.userId,
+          type: "reply",
+          actorId: userId,
+          commentId: reply.id,
+        });
+        sendReplyPush({
+          recipientId: parentComment.userId,
+          actorId: userId,
+          commentId: reply.id,
+          text: body.data.text,
+          containsSpoilers: body.data.containsSpoilers ?? false,
+        });
+      }
+      // Even when reply notifications are off, don't double-notify the parent
+      // author via a mention in the same reply.
       notifiedUserIds.add(parentComment.userId);
     }
 
     // 'mention' notifications for @mentioned users.
-    const mentionedNames = parseMentionedUsernames(body.data.text);
-    if (mentionedNames.length > 0) {
-      const mentionedUsers = await db
-        .select({ id: usersTable.id })
-        .from(usersTable)
-        .where(inArray(usersTable.username, mentionedNames));
-      const toNotify = mentionedUsers.filter((u) => !notifiedUserIds.has(u.id));
-      if (toNotify.length > 0) {
-        await db.insert(notificationsTable).values(
-          toNotify.map((u) => ({
-            userId: u.id,
-            type: "mention" as const,
-            actorId: userId,
-            commentId: reply.id,
-          })),
-        );
-      }
-    }
-  } catch {
-    // Notification errors are non-fatal.
+    await createMentionNotifications({
+      text: body.data.text,
+      actorId: userId,
+      commentId: reply.id,
+      excludeUserIds: notifiedUserIds,
+      containsSpoilers: body.data.containsSpoilers ?? false,
+      // Room-only replies must never leak their text to non-members via
+      // mention notifications/pushes.
+      ...(reply.visibility === "room" && reply.roomId !== null
+        ? { restrictToRoomId: reply.roomId }
+        : {}),
+    });
+  } catch (err) {
+    req.log.warn({ err }, "Failed to create reply/mention notifications");
   }
 
   const formatted = await formatComment(reply, userId);
@@ -309,7 +508,11 @@ router.post("/comments/:commentId/like", authenticate, async (req, res): Promise
   // Authz: you may only like a comment you are allowed to see.
   const viewer = await getViewer(userId);
   const [visibleComment] = await db
-    .select({ id: commentsTable.id })
+    .select({
+      id: commentsTable.id,
+      userId: commentsTable.userId,
+      text: commentsTable.text,
+    })
     .from(commentsTable)
     .where(
       and(
@@ -318,6 +521,8 @@ router.post("/comments/:commentId/like", authenticate, async (req, res): Promise
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
+          commentsTable.roomId,
+          true,
         ),
       ),
     )
@@ -359,6 +564,21 @@ router.post("/comments/:commentId/like", authenticate, async (req, res): Promise
       .set({ likeCount: sql`${commentsTable.likeCount} + 1` })
       .where(eq(commentsTable.id, commentId))
       .returning();
+
+    // Notify the comment author (best-effort, non-fatal; skips self-likes and
+    // disabled settings inside the helper).
+    try {
+      await createLikeNotification({
+        recipientId: visibleComment.userId,
+        actorId: userId,
+        type: "comment_like",
+        commentId,
+        previewText: visibleComment.text,
+      });
+    } catch (err) {
+      req.log.warn({ err }, "Failed to create comment like notification");
+    }
+
     res.json({ liked: true, likeCount: updated?.likeCount ?? 0 });
   }
 });
@@ -386,6 +606,8 @@ router.post("/comments/:commentId/save", authenticate, async (req, res): Promise
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
+          commentsTable.roomId,
+          true,
         ),
       ),
     )

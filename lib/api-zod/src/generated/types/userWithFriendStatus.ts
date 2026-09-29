@@ -5,11 +5,21 @@
  * Bookmarks - Social Ebook Reader API
  * OpenAPI spec version: 0.1.0
  */
+import type { UserWithFriendStatusFriendStatus } from './userWithFriendStatusFriendStatus';
 
 export interface UserWithFriendStatus {
   id: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   createdAt: Date;
+  /** Deprecated alias of isFollowing (kept for older clients). */
   isFriend: boolean;
+  /** True when the viewer already follows this user. */
+  isFollowing: boolean;
+  /** Friend relationship between the viewer and this user (friends = mutual follow). */
+  friendStatus: UserWithFriendStatusFriendStatus;
 }

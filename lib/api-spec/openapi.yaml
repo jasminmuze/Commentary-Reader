@@ -20,6 +20,8 @@ tags:
     description: User library / uploaded EPUB operations
   - name: users
     description: User operations
+  - name: rooms
+    description: Reading room (book club) operations
 paths:
   /healthz:
     get:
@@ -104,6 +106,12 @@ paths:
           required: true
           schema:
             type: integer
+        - name: roomId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Restrict overlay to quotes with activity in this room (viewer must be a member)
       responses:
         "200":
           description: Quotes list
@@ -155,6 +163,12 @@ paths:
             type: string
             enum: [best, friends, all]
             default: all
+        - name: roomId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Only comments scoped to this room (viewer must be a member)
       responses:
         "200":
           description: Comments list
@@ -167,7 +181,7 @@ paths:
     post:
       operationId: createComment
       tags: [comments]
-      summary: Create a comment on a quote
+      summary: Create a comment on a quote (parses @mentions and fires notifications)
       parameters:
         - name: quoteId
           in: path
@@ -212,6 +226,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HighlightResult"
+    delete:
+      operationId: deleteHighlight
+      tags: [quotes]
+      summary: Delete the current user's highlight on a quote
+      parameters:
+        - name: quoteId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Highlight deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HighlightResult"
+        "404":
+          description: Highlight not found
+
+  /quotes/{quoteId}/reader-context:
+    get:
+      operationId: getQuoteReaderContext
+      tags: [quotes]
+      summary: Where to read this quote — its canonical book and my library entry (if any)
+      parameters:
+        - name: quoteId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reader context for the quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteReaderContext"
+        "404":
+          description: Quote not found
 
   /comments/{commentId}/like:
     post:
@@ -250,6 +304,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SaveResult"
+
+  /comments/{commentId}:
+    get:
+      operationId: getComment
+      tags: [comments]
+      summary: Get a single comment by id (visibility-gated)
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "404":
+          description: Comment not found or not visible
+    patch:
+      operationId: updateComment
+      tags: [comments]
+      summary: Update the current user's comment or reply
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCommentInput"
+      responses:
+        "200":
+          description: Comment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "403":
+          description: Only the author can update this comment
+        "404":
+          description: Comment not found
+    delete:
+      operationId: deleteComment
+      tags: [comments]
+      summary: Delete the current user's comment or reply
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Comment deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "403":
+          description: Only the author can delete this comment
+        "404":
+          description: Comment not found
 
   /comments/{commentId}/replies:
     get:
@@ -313,6 +436,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LibraryUploadResult"
+        "403":
+          description: EPUB must use an unused upload URL issued to the authenticated account
+        "409":
+          description: The EPUB object is already registered to another account, or account deletion is in progress
 
   /library/{libraryId}:
     get:
@@ -410,7 +537,7 @@ paths:
     post:
       operationId: createUser
       tags: [users]
-      summary: Create or get a user
+      summary: Sign up a new user
       requestBody:
         required: true
         content:
@@ -419,11 +546,34 @@ paths:
               $ref: "#/components/schemas/UserInput"
       responses:
         "200":
-          description: User created or retrieved
+          description: User created
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+        "409":
+          description: Username or email already taken
+
+  /users/login:
+    post:
+      operationId: loginUser
+      tags: [users]
+      summary: Log in with username or email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Authenticated user with bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Invalid username or password
 
   /users/{userId}:
     get:
@@ -445,23 +595,54 @@ paths:
                 $ref: "#/components/schemas/User"
         "404":
           description: Not found
+    delete:
+      operationId: deleteUserAccount
+      tags: [users]
+      summary: Permanently delete the authenticated user's account and owned data
+      description: Requires confirmation with the current password. Only the authenticated user may delete their own account. Shared book covers and other users' content are preserved.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteAccountInput"
+      responses:
+        "200":
+          description: Account and account-owned data permanently deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteAccountResult"
+        "400":
+          description: Invalid request or account has no password credential
+        "401":
+          description: Unauthorized or current password is incorrect
+        "403":
+          description: Authenticated user may only delete their own account
+        "404":
+          description: User not found
+        "500":
+          description: Account data could not be deleted
+        "409":
+          description: Account deletion is already in progress
 
   /users/search:
     get:
       operationId: searchUsers
       tags: [users]
-      summary: Search users by username
+      summary: Search users by username or nickname (viewer taken from bearer token)
       parameters:
         - name: q
           in: query
           required: true
           schema:
             type: string
-        - name: userId
-          in: query
-          required: false
-          schema:
-            type: integer
       responses:
         "200":
           description: Search results
@@ -536,6 +717,71 @@ paths:
         "204":
           description: Friend removed
 
+  /friend-requests:
+    post:
+      operationId: sendFriendRequest
+      tags: [users]
+      summary: Send a friend request (requester taken from bearer token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FriendRequestInput"
+      responses:
+        "200":
+          description: Request created (idempotent — ok even if already pending or already friends)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "400":
+          description: Cannot send a friend request to yourself
+        "404":
+          description: Recipient not found
+
+  /friend-requests/{requesterId}/accept:
+    post:
+      operationId: acceptFriendRequest
+      tags: [users]
+      summary: Accept a pending friend request sent to the authenticated user
+      parameters:
+        - name: requesterId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request accepted — both users now follow each other
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "404":
+          description: No pending request from this user
+
+  /friend-requests/{requesterId}/decline:
+    post:
+      operationId: declineFriendRequest
+      tags: [users]
+      summary: Decline a pending friend request sent to the authenticated user
+      parameters:
+        - name: requesterId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request declined (removed; the requester may request again)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "404":
+          description: No pending request from this user
+
   /users/{userId}/saved-comments:
     get:
       operationId: getSavedComments
@@ -556,6 +802,74 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Comment"
+
+  /users/{userId}/records:
+    get:
+      operationId: getUserRecords
+      tags: [users]
+      summary: My records grouped by book (my highlight/comment/saved counts; self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Per-book record summaries, most recent activity first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserRecordsBook"
+
+  /users/{userId}/records/{bookId}:
+    get:
+      operationId: getUserBookRecords
+      tags: [users]
+      summary: My highlights, comments, and saved comments for one book (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: My records for this book
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserBookRecords"
+        "404":
+          description: Book not found
+
+  /users/{userId}/highlights:
+    get:
+      operationId: getUserHighlights
+      tags: [users]
+      summary: All my highlights across books, newest first (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: My highlights, chronological (newest first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserHighlightItem"
 
   /users/{userId}/profile:
     get:
@@ -603,6 +917,168 @@ paths:
               schema:
                 $ref: "#/components/schemas/User"
 
+  /users/password-reset/request:
+    post:
+      operationId: requestPasswordReset
+      tags: [users]
+      summary: Request a password reset code by email (unauthenticated)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequestInput"
+      responses:
+        "200":
+          description: If the email is registered and verified, a reset code has been sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "429":
+          description: Reset email sent too recently — wait before retrying
+        "502":
+          description: Email delivery failed
+
+  /users/password-reset/confirm:
+    post:
+      operationId: confirmPasswordReset
+      tags: [users]
+      summary: Reset the password using the emailed code (unauthenticated)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetConfirmInput"
+      responses:
+        "200":
+          description: Password reset — returns the authenticated user with a new bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid or expired reset code
+
+  /users/{userId}/verify-email/send:
+    post:
+      operationId: sendVerificationEmail
+      tags: [users]
+      summary: Send (or resend) the email verification code (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Verification email sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "400":
+          description: No email on account, or email already verified
+        "429":
+          description: Sent too recently — wait before resending
+        "502":
+          description: Email delivery failed
+
+  /users/{userId}/verify-email/confirm:
+    post:
+      operationId: confirmEmailVerification
+      tags: [users]
+      summary: Confirm the 6-digit email verification code (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyEmailInput"
+      responses:
+        "200":
+          description: Email verified — returns the updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid or expired code
+
+  /users/{userId}/avatar/upload-url:
+    post:
+      operationId: getAvatarUploadUrl
+      tags: [users]
+      summary: Get a presigned URL to upload a profile photo (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Presigned upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarUploadUrl"
+        "409":
+          description: Account deletion is in progress
+
+  /users/{userId}/avatar:
+    put:
+      operationId: setAvatar
+      tags: [users]
+      summary: Set the profile photo after uploading it (self only)
+      description: The image must use a presigned upload URL issued to this account; arbitrary public object paths are rejected.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAvatarInput"
+      responses:
+        "200":
+          description: Updated user with the new avatarUrl
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "403":
+          description: Avatar upload was not issued to the authenticated account
+    delete:
+      operationId: removeAvatar
+      tags: [users]
+      summary: Remove the profile photo (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated user with avatarUrl cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
   /users/{userId}/notifications:
     get:
       operationId: getNotifications
@@ -641,6 +1117,528 @@ paths:
               schema:
                 $ref: "#/components/schemas/UnreadCount"
 
+  /notifications/{notificationId}/read:
+    put:
+      operationId: markNotificationRead
+      tags: [users]
+      summary: Mark a single notification as read (must belong to the authenticated user)
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Unread count after marking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCount"
+        "404":
+          description: Notification not found
+
+  /users/{userId}/push-tokens:
+    post:
+      operationId: registerPushToken
+      tags: [users]
+      summary: Register an Expo push token for the user (upsert; reassigns the token on account switch)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenInput"
+      responses:
+        "200":
+          description: Token registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+    delete:
+      operationId: unregisterPushToken
+      tags: [users]
+      summary: Unregister an Expo push token for the user (e.g. on logout)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenInput"
+      responses:
+        "200":
+          description: Token unregistered (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /feedback:
+    post:
+      operationId: submitFeedback
+      tags: [users]
+      summary: Submit in-app feedback or a bug report (author taken from bearer token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackInput"
+      responses:
+        "201":
+          description: Feedback stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /highlights/{highlightId}/like:
+    post:
+      operationId: likeHighlight
+      tags: [quotes]
+      summary: Toggle a like on a highlight (liker taken from bearer token)
+      parameters:
+        - name: highlightId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Like toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LikeResult"
+        "404":
+          description: Highlight not found
+
+  /users/{userId}/notification-settings:
+    get:
+      operationId: getNotificationSettings
+      tags: [users]
+      summary: Get the current user's per-type notification settings (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Notification settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationSettings"
+    put:
+      operationId: updateNotificationSettings
+      tags: [users]
+      summary: Update the current user's per-type notification settings (self only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationSettings"
+      responses:
+        "200":
+          description: Updated notification settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationSettings"
+
+  /feed:
+    get:
+      operationId: getFeed
+      tags: [users]
+      summary: Comment feed of users I follow (newest first, viewer taken from bearer token)
+      parameters:
+        - name: roomId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Restrict the feed to activity in this reading room (viewer must be a member).
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor from a previous page's nextCursor. Omit for the first page.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Feed page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedPage"
+
+  /rooms:
+    get:
+      operationId: listRooms
+      tags: [rooms]
+      summary: Search / browse public reading rooms (by room name or book title)
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public rooms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Room"
+    post:
+      operationId: createRoom
+      tags: [rooms]
+      summary: Create a reading room (creator becomes the owner)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoomInput"
+      responses:
+        "201":
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "404":
+          description: Book not found
+
+  /rooms/trending:
+    get:
+      operationId: getTrendingRooms
+      tags: [rooms]
+      summary: Trending public rooms (recent member growth + comment activity)
+      responses:
+        "200":
+          description: Trending rooms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Room"
+
+  /rooms/mine:
+    get:
+      operationId: getMyRooms
+      tags: [rooms]
+      summary: Rooms the authenticated user is a member of
+      parameters:
+        - name: bookId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Only my rooms for this canonical book (reader scope picker)
+      responses:
+        "200":
+          description: My rooms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Room"
+
+  /rooms/{roomId}:
+    get:
+      operationId: getRoom
+      tags: [rooms]
+      summary: Room home — book, members with reading progress, viewer state
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Room detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomDetail"
+        "404":
+          description: Room not found (or private and viewer is neither member nor invitee)
+    patch:
+      operationId: updateRoom
+      tags: [rooms]
+      summary: Update room name/description/privacy (owner only)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoomInput"
+      responses:
+        "200":
+          description: Room updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "403":
+          description: Only the owner can update the room
+        "404":
+          description: Room not found
+
+  /rooms/{roomId}/join:
+    post:
+      operationId: joinRoom
+      tags: [rooms]
+      summary: Join a public room (idempotent; archived rooms cannot be joined)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Joined
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "403":
+          description: Private room — invite required
+        "404":
+          description: Room not found or archived and no longer joinable
+
+  /rooms/{roomId}/leave:
+    post:
+      operationId: leaveRoom
+      tags: [rooms]
+      summary: Leave a room (the owner cannot leave their own room)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Left
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "400":
+          description: The owner cannot leave their own room
+        "404":
+          description: Not a member
+
+  /rooms/{roomId}/members/{userId}:
+    delete:
+      operationId: removeRoomMember
+      tags: [rooms]
+      summary: Remove a member from the room (owner only)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "403":
+          description: Only the owner can remove members
+        "404":
+          description: Room or member not found
+
+  /rooms/{roomId}/invites:
+    post:
+      operationId: inviteToRoom
+      tags: [rooms]
+      summary: Invite a friend to the room (member or owner; idempotent while pending)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomInviteInput"
+      responses:
+        "200":
+          description: Invite sent (or already pending / already a member)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "403":
+          description: Only room members or the owner can invite
+        "404":
+          description: Room or user not found
+
+  /rooms/{roomId}/invites/accept:
+    post:
+      operationId: acceptRoomInvite
+      tags: [rooms]
+      summary: Accept a pending invite to this room (invitee only)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invite accepted — you are now a member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "404":
+          description: No pending invite for this room
+
+  /rooms/{roomId}/invites/decline:
+    post:
+      operationId: declineRoomInvite
+      tags: [rooms]
+      summary: Decline a pending invite to this room (invitee only)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invite declined (removed; you can be invited again)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "404":
+          description: No pending invite for this room
+
+  /rooms/{roomId}/feed:
+    get:
+      operationId: getRoomFeed
+      tags: [rooms]
+      summary: Latest room-scoped comments (members only)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Room activity feed, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoomFeedItem"
+        "403":
+          description: Members only
+        "404":
+          description: Room not found
+
+  /users/{userId}/rooms:
+    get:
+      operationId: getUserRooms
+      tags: [users]
+      summary: Public rooms the given user is a member of
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rooms the user belongs to
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Room"
+
+  /books/{bookId}/rooms:
+    get:
+      operationId: getBookRooms
+      tags: [rooms]
+      summary: Public rooms for a book (plus the viewer's own rooms for it)
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rooms for this book
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Room"
+
 components:
   schemas:
     HealthStatus:
@@ -653,7 +1651,7 @@ components:
 
     Book:
       type: object
-      required: [id, title, author, description, coverColor, quoteCount, commentCount, highlightCount]
+      required: [id, title, author, description, coverColor, coverUrl, quoteCount, commentCount, highlightCount]
       properties:
         id:
           type: integer
@@ -665,6 +1663,9 @@ components:
           type: string
         coverColor:
           type: string
+        coverUrl:
+          type: [string, "null"]
+          description: Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
         quoteCount:
           type: integer
         commentCount:
@@ -695,9 +1696,26 @@ components:
         highlightedByMe:
           type: boolean
 
+    QuoteReaderContext:
+      type: object
+      required: [quoteId, canonicalBookId, quoteText, searchText, libraryId]
+      properties:
+        quoteId:
+          type: integer
+        canonicalBookId:
+          type: integer
+        quoteText:
+          type: string
+        searchText:
+          type: string
+          description: Distinctive leading substring used to locate the quote in an EPUB
+        libraryId:
+          type: [integer, "null"]
+          description: The viewer's library entry for this book, or null if not in their library
+
     BookDetail:
       type: object
-      required: [id, title, author, description, coverColor, quoteCount, commentCount, highlightCount, topQuotes, bestComments]
+      required: [id, title, author, description, coverColor, coverUrl, quoteCount, commentCount, highlightCount, topQuotes, bestComments]
       properties:
         id:
           type: integer
@@ -709,6 +1727,9 @@ components:
           type: string
         coverColor:
           type: string
+        coverUrl:
+          type: [string, "null"]
+          description: Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
         quoteCount:
           type: integer
         commentCount:
@@ -726,7 +1747,7 @@ components:
 
     Comment:
       type: object
-      required: [id, quoteId, userId, username, avatarColor, text, visibility, likeCount, likedByMe, savedByMe, replyCount, createdAt]
+      required: [id, quoteId, userId, username, nickname, avatarUrl, avatarColor, text, visibility, likeCount, likedByMe, savedByMe, replyCount, containsSpoilers, roomId, authorProgress, createdAt]
       properties:
         id:
           type: integer
@@ -736,12 +1757,16 @@ components:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
         avatarColor:
           type: string
         text:
           type: string
         visibility:
-          $ref: "#/components/schemas/Visibility"
+          $ref: "#/components/schemas/ContentVisibility"
         quoteText:
           type: string
         likeCount:
@@ -756,6 +1781,15 @@ components:
         parentId:
           type: [integer, "null"]
           description: ID of the parent comment for replies; null for top-level comments
+        containsSpoilers:
+          type: boolean
+          description: Author-flagged spoiler; clients blur the text for other users until tapped
+        roomId:
+          type: [integer, "null"]
+          description: Non-null when the comment is scoped to a reading room (members only)
+        authorProgress:
+          type: [integer, "null"]
+          description: Author's reading progress (0-100) when writing; null when unknown or not room-scoped
         createdAt:
           type: string
           format: date-time
@@ -768,7 +1802,31 @@ components:
           type: string
           minLength: 1
         visibility:
-          $ref: "#/components/schemas/Visibility"
+          $ref: "#/components/schemas/ContentVisibility"
+        containsSpoilers:
+          type: boolean
+          description: Mark this comment as containing spoilers (default false)
+        roomId:
+          type: integer
+          description: Scope this comment to a reading room (author must be a member)
+        authorProgress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Author's reading progress when writing (room spoiler guard)
+
+    UpdateCommentInput:
+      type: object
+      required: [text, visibility, containsSpoilers]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+        visibility:
+          $ref: "#/components/schemas/ContentVisibility"
+        containsSpoilers:
+          type: boolean
 
     CreateQuoteInput:
       type: object
@@ -787,7 +1845,15 @@ components:
         cfiRange:
           type: string
         visibility:
-          $ref: "#/components/schemas/Visibility"
+          $ref: "#/components/schemas/ContentVisibility"
+        roomId:
+          type: integer
+          description: Scope this highlight to a reading room (author must be a member)
+        authorProgress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Author's reading progress when highlighting (room spoiler guard)
 
     HighlightResult:
       type: object
@@ -925,16 +1991,33 @@ components:
     Visibility:
       type: string
       enum: [public, friends, private]
-      description: Who can see a comment or highlight — public, friends (mutual follows), or private (author only)
+      description: Default visibility for new comments/highlights — public, friends (mutual follows), or private (author only)
+
+    ContentVisibility:
+      type: string
+      enum: [public, friends, private, room]
+      description: Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)
 
     User:
       type: object
-      required: [id, username, avatarColor, defaultVisibility, createdAt]
+      required: [id, username, nickname, avatarUrl, email, emailVerified, avatarColor, defaultVisibility, createdAt]
       properties:
         id:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+          description: Display name shown instead of the username; null falls back to username
+        avatarUrl:
+          type: [string, "null"]
+          description: Object path of the profile photo (e.g. /public-objects/avatars/...); null falls back to the colored initial avatar
+        email:
+          type: [string, "null"]
+          description: Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts
+        emailVerified:
+          type: boolean
+          description: Whether the user confirmed their email; only meaningful in self contexts
         avatarColor:
           type: string
         defaultVisibility:
@@ -944,7 +2027,7 @@ components:
           format: date-time
         token:
           type: string
-          description: HMAC-signed bearer token — only present in POST /users response
+          description: HMAC-signed bearer token — only present in POST /users and POST /users/login responses
 
     UserProfile:
       type: object
@@ -952,6 +2035,8 @@ components:
         [
           id,
           username,
+          nickname,
+          avatarUrl,
           avatarColor,
           createdAt,
           followerCount,
@@ -961,12 +2046,17 @@ components:
           isFollowedByMe,
           followsMe,
           isMe,
+          friendStatus,
         ]
       properties:
         id:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
         avatarColor:
           type: string
         createdAt:
@@ -989,22 +2079,94 @@ components:
         isMe:
           type: boolean
           description: Whether this profile is the requesting user
+        friendStatus:
+          type: string
+          enum: [none, requested, incoming, friends]
+          description: >-
+            Friend relationship between the viewer and this profile:
+            none = no relationship, requested = viewer sent a pending request,
+            incoming = this profile sent the viewer a pending request,
+            friends = mutual follow (friends). Always "none" on your own profile.
 
     UpdateUserSettings:
       type: object
-      required: [defaultVisibility]
       properties:
         defaultVisibility:
           $ref: "#/components/schemas/Visibility"
+        nickname:
+          type: [string, "null"]
+          maxLength: 30
+          description: New display name; null or empty string clears it (falls back to username)
+
+    VerifyEmailInput:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+          description: The 6-digit verification code from the email
+
+    AvatarUploadUrl:
+      type: object
+      required: [uploadURL]
+      properties:
+        uploadURL:
+          type: string
+          description: Presigned PUT URL for uploading the avatar image
+
+    SetAvatarInput:
+      type: object
+      required: [uploadURL]
+      properties:
+        uploadURL:
+          type: string
+          description: The presigned upload URL (or object path) returned after upload
+
+    NotificationSettings:
+      type: object
+      required: [likes, replies, mentions, friends, rooms]
+      properties:
+        rooms:
+          type: boolean
+          description: Notify on reading-room invites
+        likes:
+          type: boolean
+          description: Notify when someone likes my highlight or comment
+        replies:
+          type: boolean
+          description: Notify when someone replies to my comment
+        mentions:
+          type: boolean
+          description: Notify when someone @mentions me
+        friends:
+          type: boolean
+          description: Notify on friend requests and accepts
 
     UserWithFriendStatus:
       type: object
-      required: [id, username, avatarColor, createdAt, isFriend]
+      required:
+        [
+          id,
+          username,
+          nickname,
+          avatarUrl,
+          avatarColor,
+          createdAt,
+          isFriend,
+          isFollowing,
+          friendStatus,
+        ]
       properties:
         id:
           type: integer
         username:
           type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
         avatarColor:
           type: string
         createdAt:
@@ -1012,14 +2174,73 @@ components:
           format: date-time
         isFriend:
           type: boolean
+          description: Deprecated alias of isFollowing (kept for older clients).
+        isFollowing:
+          type: boolean
+          description: True when the viewer already follows this user.
+        friendStatus:
+          type: string
+          enum: [none, requested, incoming, friends]
+          description: Friend relationship between the viewer and this user (friends = mutual follow).
+
+    PasswordResetRequestInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: The email address associated with the account
+
+    PasswordResetConfirmInput:
+      type: object
+      required: [email, code, newPassword]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+          description: The 6-digit code from the reset email
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 100
 
     UserInput:
       type: object
-      required: [username]
+      required: [username, email, password]
       properties:
         username:
           type: string
           minLength: 2
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        nickname:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: Optional display name shown instead of the username
+        password:
+          type: string
+          minLength: 8
+          maxLength: 100
+
+    LoginInput:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier:
+          type: string
+          description: Username or email address (email matched case-insensitively)
+        password:
+          type: string
 
     FriendInput:
       type: object
@@ -1028,28 +2249,42 @@ components:
         friendId:
           type: integer
 
+    FriendRequestInput:
+      type: object
+      required: [recipientId]
+      properties:
+        recipientId:
+          type: integer
+
     NotificationItem:
       type: object
-      required: [id, type, actorId, actorUsername, actorAvatarColor, commentId, commentText, parentCommentId, quoteId, read, createdAt]
+      required: [id, type, actorId, actorUsername, actorNickname, actorAvatarUrl, actorAvatarColor, commentId, commentText, commentContainsSpoilers, parentCommentId, quoteId, read, createdAt]
       properties:
         id:
           type: integer
         type:
           type: string
-          enum: [reply, mention]
-          description: "reply = someone replied to your comment; mention = you were @mentioned"
+          enum: [reply, mention, friend_request, friend_accept, highlight_like, comment_like, room_invite]
+          description: "reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room"
         actorId:
           type: integer
         actorUsername:
           type: string
+        actorNickname:
+          type: [string, "null"]
+        actorAvatarUrl:
+          type: [string, "null"]
         actorAvatarColor:
           type: string
         commentId:
           type: integer
-          description: The reply comment that triggered the notification
+          description: The reply comment that triggered the notification (0 for friend_* notifications)
         commentText:
           type: string
           description: Preview of the reply text
+        commentContainsSpoilers:
+          type: boolean
+          description: True when the referenced comment is marked as containing spoilers AND the viewer is not its author — clients should mask commentText behind a spoiler placeholder. Always false for the comment author and for notifications without a comment.
         parentCommentId:
           type: [integer, "null"]
           description: The original top-level comment (null for mention-only notifications)
@@ -1058,6 +2293,12 @@ components:
         quoteText:
           type: string
           description: The quote text for navigation context
+        roomId:
+          type: [integer, "null"]
+          description: The reading room (room_invite notifications only)
+        roomName:
+          type: string
+          description: The reading room name (room_invite notifications only)
         read:
           type: boolean
         createdAt:
@@ -1081,3 +2322,373 @@ components:
       properties:
         unreadCount:
           type: integer
+
+    PushTokenInput:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: Expo push token, e.g. ExponentPushToken[xxxxxxxx]
+
+    FeedbackInput:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [feedback, bug]
+          description: General feedback or a bug report
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    OkResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+
+    DeleteAccountInput:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+          minLength: 1
+          description: Current account password, required to confirm permanent deletion
+
+    DeleteAccountResult:
+      type: object
+      required: [ok, deleted, objectCleanupPending, sharedObjectsRetained]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        deleted:
+          type: boolean
+          enum: [true]
+        objectCleanupPending:
+          type: boolean
+          description: True when account data was deleted but one or more owned storage objects could not be removed
+        sharedObjectsRetained:
+          type: integer
+          minimum: 0
+          description: Number of upload objects retained because another account still references them
+
+    UserRecordsBook:
+      type: object
+      required: [bookId, title, author, coverColor, highlightCount, commentCount, savedCount]
+      properties:
+        bookId:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        coverColor:
+          type: string
+        highlightCount:
+          type: integer
+          description: Number of my highlights in this book
+        commentCount:
+          type: integer
+          description: Number of my comments in this book
+        savedCount:
+          type: integer
+          description: Number of comments I saved in this book
+
+    UserHighlightItem:
+      type: object
+      required: [id, quoteId, bookId, bookTitle, bookAuthor, coverColor, quoteText, createdAt]
+      properties:
+        id:
+          type: integer
+        quoteId:
+          type: integer
+        bookId:
+          type: integer
+        bookTitle:
+          type: string
+        bookAuthor:
+          type: string
+        coverColor:
+          type: string
+        quoteText:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    UserBookRecords:
+      type: object
+      required: [book, highlights, comments, savedComments]
+      properties:
+        book:
+          $ref: "#/components/schemas/UserRecordsBook"
+        highlights:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserHighlightItem"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"
+        savedComments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"
+
+    FeedItem:
+      type: object
+      required: [type, id, userId, username, nickname, avatarUrl, avatarColor, bookId, bookTitle, bookAuthor, coverColor, coverUrl, quoteId, quoteText, quoteTextTruncated, likeCount, likedByMe, containsSpoilers, createdAt]
+      properties:
+        type:
+          type: string
+          enum: [highlight, comment]
+        id:
+          type: integer
+          description: Highlight id or comment id depending on type
+        userId:
+          type: integer
+        username:
+          type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
+        avatarColor:
+          type: string
+        bookId:
+          type: integer
+        bookTitle:
+          type: string
+        bookAuthor:
+          type: string
+        coverColor:
+          type: string
+        coverUrl:
+          type: [string, "null"]
+          description: Public object path of the book cover image, or null for a color cover
+        quoteId:
+          type: integer
+        quoteText:
+          type: string
+          description: Quote text — truncated to a preview length unless the viewer owns the book
+        quoteTextTruncated:
+          type: boolean
+          description: Whether quoteText was truncated for copyright protection
+        commentText:
+          type: string
+          description: Present only when type is comment
+        likeCount:
+          type: integer
+          description: Number of likes on this highlight or comment
+        likedByMe:
+          type: boolean
+          description: Whether the viewer has liked this item
+        containsSpoilers:
+          type: boolean
+          description: True when a comment item is author-flagged as a spoiler (always false for highlights)
+        createdAt:
+          type: string
+          format: date-time
+
+    FeedPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeedItem"
+        nextCursor:
+          type: [string, "null"]
+          description: Pass as cursor to fetch the next page; null when there are no more items
+
+    CreateRoomInput:
+      type: object
+      required: [canonicalBookId, name, isPublic]
+      properties:
+        canonicalBookId:
+          type: integer
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 500
+        isPublic:
+          type: boolean
+
+    UpdateRoomInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 500
+        isPublic:
+          type: boolean
+
+    Room:
+      type: object
+      required: [id, canonicalBookId, name, description, isPublic, ownerId, memberCount, bookTitle, bookAuthor, coverColor, createdAt]
+      properties:
+        id:
+          type: integer
+        canonicalBookId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        isPublic:
+          type: boolean
+        ownerId:
+          type: [integer, "null"]
+          description: Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members
+        memberCount:
+          type: integer
+        bookTitle:
+          type: string
+        bookAuthor:
+          type: string
+        coverColor:
+          type: string
+        isMember:
+          type: boolean
+          description: Whether the viewer is a member of this room
+        createdAt:
+          type: string
+          format: date-time
+
+    RoomMemberInfo:
+      type: object
+      required: [userId, username, nickname, avatarUrl, avatarColor, role, readingProgress]
+      properties:
+        userId:
+          type: integer
+        username:
+          type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
+        avatarColor:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+        readingProgress:
+          type: [integer, "null"]
+          description: The member's reading progress (0-100) in this book, or null if unknown
+
+    RoomDetail:
+      type: object
+      required: [id, canonicalBookId, name, description, isPublic, ownerId, memberCount, bookTitle, bookAuthor, coverColor, createdAt, members, isMember, myRole, invitePending, myLibraryId, myReadingProgress]
+      properties:
+        id:
+          type: integer
+        canonicalBookId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        isPublic:
+          type: boolean
+        ownerId:
+          type: [integer, "null"]
+          description: Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members
+        memberCount:
+          type: integer
+        bookTitle:
+          type: string
+        bookAuthor:
+          type: string
+        coverColor:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomMemberInfo"
+        isMember:
+          type: boolean
+        myRole:
+          type: [string, "null"]
+          enum: [owner, member, null]
+          description: The viewer's role, or null when not a member
+        invitePending:
+          type: boolean
+          description: Whether the viewer has a pending invite to this room
+        myLibraryId:
+          type: [integer, "null"]
+          description: The viewer's library entry for this book (to open the reader), or null
+        myReadingProgress:
+          type: [integer, "null"]
+          description: The viewer's reading progress (0-100) in this book (spoiler guard), or null
+
+    RoomInviteInput:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: integer
+          description: The friend to invite
+
+    RoomFeedItem:
+      type: object
+      required: [type, id, userId, username, nickname, avatarUrl, avatarColor, quoteId, quoteText, quoteTextTruncated, likeCount, likedByMe, containsSpoilers, authorProgress, createdAt]
+      properties:
+        type:
+          type: string
+          enum: [highlight, comment]
+        id:
+          type: integer
+          description: Highlight id or comment id depending on type
+        userId:
+          type: integer
+        username:
+          type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
+        avatarColor:
+          type: string
+        quoteId:
+          type: integer
+        quoteText:
+          type: string
+          description: Quote text — truncated to a preview length unless the viewer owns the book
+        quoteTextTruncated:
+          type: boolean
+          description: Whether quoteText was truncated for copyright protection
+        commentText:
+          type: string
+          description: Present only when type is comment
+        likeCount:
+          type: integer
+        likedByMe:
+          type: boolean
+        containsSpoilers:
+          type: boolean
+          description: Author-flagged spoiler (comments only)
+        authorProgress:
+          type: [integer, "null"]
+          description: Author's reading progress (0-100) when posting — blur when greater than the viewer's progress
+        createdAt:
+          type: string
+          format: date-time

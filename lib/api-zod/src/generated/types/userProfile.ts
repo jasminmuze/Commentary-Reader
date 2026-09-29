@@ -5,10 +5,15 @@
  * Bookmarks - Social Ebook Reader API
  * OpenAPI spec version: 0.1.0
  */
+import type { UserProfileFriendStatus } from './userProfileFriendStatus';
 
 export interface UserProfile {
   id: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   createdAt: Date;
   followerCount: number;
@@ -21,4 +26,6 @@ export interface UserProfile {
   followsMe: boolean;
   /** Whether this profile is the requesting user */
   isMe: boolean;
+  /** Friend relationship between the viewer and this profile: none = no relationship, requested = viewer sent a pending request, incoming = this profile sent the viewer a pending request, friends = mutual follow (friends). Always "none" on your own profile. */
+  friendStatus: UserProfileFriendStatus;
 }

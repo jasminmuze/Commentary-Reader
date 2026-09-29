@@ -7,7 +7,7 @@
  */
 
 /**
- * reply = someone replied to your comment; mention = you were @mentioned
+ * reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room
  */
 export type NotificationItemType = typeof NotificationItemType[keyof typeof NotificationItemType];
 
@@ -15,4 +15,9 @@ export type NotificationItemType = typeof NotificationItemType[keyof typeof Noti
 export const NotificationItemType = {
   reply: 'reply',
   mention: 'mention',
+  friend_request: 'friend_request',
+  friend_accept: 'friend_accept',
+  highlight_like: 'highlight_like',
+  comment_like: 'comment_like',
+  room_invite: 'room_invite',
 } as const;

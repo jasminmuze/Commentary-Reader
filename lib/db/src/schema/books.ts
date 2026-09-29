@@ -11,6 +11,9 @@ export const booksTable = pgTable("books", {
   isbn: text("isbn"),
   description: text("description").notNull().default(""),
   coverColor: text("cover_color").notNull(),
+  // Public object path (/public-objects/covers/<id>) of the cover image
+  // extracted from the first uploaded EPUB that contained one. Null = color cover.
+  coverUrl: text("cover_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

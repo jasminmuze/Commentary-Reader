@@ -9,8 +9,11 @@ if (!rawSecret) {
 }
 const SECRET = rawSecret;
 
+/** Tokens expire after 30 days; the client re-logs-in when it gets a 401. */
+const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 /**
- * Create a short-lived HMAC-signed bearer token encoding the userId.
+ * Create an HMAC-signed bearer token encoding the userId and issue time.
  * Format (base64url): base64url(`${userId}.${timestamp}.${hmac}`)
  */
 export function createToken(userId: number): string {
@@ -42,7 +45,12 @@ export function verifyToken(token: string): number | null {
       )
     )
       return null;
-    const userId = parseInt(payload.split(".")[0] ?? "", 10);
+    const [idPart, tsPart] = payload.split(".");
+    const issuedAt = parseInt(tsPart ?? "", 10);
+    if (Number.isNaN(issuedAt) || Date.now() - issuedAt > TOKEN_TTL_MS) {
+      return null;
+    }
+    const userId = parseInt(idPart ?? "", 10);
     return Number.isNaN(userId) ? null : userId;
   } catch {
     return null;

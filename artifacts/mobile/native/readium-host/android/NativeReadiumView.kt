@@ -252,6 +252,9 @@ class NativeReadiumView(
                 listener = this,
                 configuration = EpubNavigatorFragment.Configuration(
                     selectionActionModeCallback = selectionCallback,
+                    // In scroll mode, chapters change only via the vertical pull gesture.
+                    // Readium still allows horizontal page turns in paged mode.
+                    disablePageTurnsWhileScrolling = true,
                 ),
             )
 

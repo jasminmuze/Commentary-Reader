@@ -7,7 +7,7 @@
  */
 
 /**
- * Who can see a comment or highlight — public, friends (mutual follows), or private (author only)
+ * Default visibility for new comments/highlights — public, friends (mutual follows), or private (author only)
  */
 export type Visibility = typeof Visibility[keyof typeof Visibility];
 

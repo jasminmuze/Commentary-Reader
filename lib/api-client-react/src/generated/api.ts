@@ -4252,7 +4252,7 @@ export const getGetFeedUrl = (params?: GetFeedParams,) => {
 }
 
 /**
- * @summary Activity feed of users I follow (highlights + comments, newest first, viewer taken from bearer token)
+ * @summary Comment feed of users I follow (newest first, viewer taken from bearer token)
  */
 export const getFeed = async (params?: GetFeedParams, options?: RequestInit): Promise<FeedPage> => {
 
@@ -4299,7 +4299,7 @@ export type GetFeedQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Activity feed of users I follow (highlights + comments, newest first, viewer taken from bearer token)
+ * @summary Comment feed of users I follow (newest first, viewer taken from bearer token)
  */
 
 export function useGetFeed<TData = Awaited<ReturnType<typeof getFeed>>, TError = ErrorType<unknown>>(
@@ -5218,7 +5218,7 @@ export const getGetRoomFeedUrl = (roomId: number,) => {
 }
 
 /**
- * @summary Latest room-scoped highlights and comments (members only)
+ * @summary Latest room-scoped comments (members only)
  */
 export const getRoomFeed = async (roomId: number, options?: RequestInit): Promise<RoomFeedItem[]> => {
 
@@ -5265,7 +5265,7 @@ export type GetRoomFeedQueryError = ErrorType<void>
 
 
 /**
- * @summary Latest room-scoped highlights and comments (members only)
+ * @summary Latest room-scoped comments (members only)
  */
 
 export function useGetRoomFeed<TData = Awaited<ReturnType<typeof getRoomFeed>>, TError = ErrorType<void>>(

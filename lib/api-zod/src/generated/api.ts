@@ -29,6 +29,7 @@ export const ListBooksResponseItem = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -64,6 +65,7 @@ export const GetBookResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number(),
@@ -82,15 +84,20 @@ export const GetBookResponse = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 }))
 })
@@ -101,6 +108,10 @@ export const GetBookResponse = zod.object({
  */
 export const GetBookQuotesParams = zod.object({
   "bookId": zod.coerce.number()
+})
+
+export const GetBookQuotesQueryParams = zod.object({
+  "roomId": zod.coerce.number().optional().describe('Restrict overlay to quotes with activity in this room (viewer must be a member)')
 })
 
 export const GetBookQuotesResponseItem = zod.object({
@@ -154,7 +165,8 @@ export const GetQuoteCommentsParams = zod.object({
 export const getQuoteCommentsQueryFilterDefault = `all`;
 
 export const GetQuoteCommentsQueryParams = zod.object({
-  "filter": zod.enum(['best', 'friends', 'all']).default(getQuoteCommentsQueryFilterDefault)
+  "filter": zod.enum(['best', 'friends', 'all']).default(getQuoteCommentsQueryFilterDefault),
+  "roomId": zod.coerce.number().optional().describe('Only comments scoped to this room (viewer must be a member)')
 })
 
 export const GetQuoteCommentsResponseItem = zod.object({
@@ -162,33 +174,44 @@ export const GetQuoteCommentsResponseItem = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 })
 export const GetQuoteCommentsResponse = zod.array(GetQuoteCommentsResponseItem)
 
 
 /**
- * @summary Create a comment on a quote
+ * @summary Create a comment on a quote (parses @mentions and fires notifications)
  */
 export const CreateCommentParams = zod.object({
   "quoteId": zod.coerce.number()
 })
 
 
+export const createCommentBodyAuthorProgressMin = 0;
+export const createCommentBodyAuthorProgressMax = 100;
+
 
 
 export const CreateCommentBody = zod.object({
   "text": zod.string().min(1),
-  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)')
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
+  "containsSpoilers": zod.boolean().optional().describe('Mark this comment as containing spoilers (default false)'),
+  "roomId": zod.number().optional().describe('Scope this comment to a reading room (author must be a member)'),
+  "authorProgress": zod.number().min(createCommentBodyAuthorProgressMin).max(createCommentBodyAuthorProgressMax).optional().describe('Author\'s reading progress when writing (room spoiler guard)')
 })
 
 
@@ -199,15 +222,51 @@ export const ToggleHighlightParams = zod.object({
   "quoteId": zod.coerce.number()
 })
 
+export const toggleHighlightBodyAuthorProgressMin = 0;
+export const toggleHighlightBodyAuthorProgressMax = 100;
+
+
+
 export const ToggleHighlightBody = zod.object({
   "userLibraryId": zod.number().optional(),
   "cfiRange": zod.string().optional(),
-  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)')
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
+  "roomId": zod.number().optional().describe('Scope this highlight to a reading room (author must be a member)'),
+  "authorProgress": zod.number().min(toggleHighlightBodyAuthorProgressMin).max(toggleHighlightBodyAuthorProgressMax).optional().describe('Author\'s reading progress when highlighting (room spoiler guard)')
 })
 
 export const ToggleHighlightResponse = zod.object({
   "highlighted": zod.boolean(),
   "highlightCount": zod.number()
+})
+
+
+/**
+ * @summary Delete the current user's highlight on a quote
+ */
+export const DeleteHighlightParams = zod.object({
+  "quoteId": zod.coerce.number()
+})
+
+export const DeleteHighlightResponse = zod.object({
+  "highlighted": zod.boolean(),
+  "highlightCount": zod.number()
+})
+
+
+/**
+ * @summary Where to read this quote — its canonical book and my library entry (if any)
+ */
+export const GetQuoteReaderContextParams = zod.object({
+  "quoteId": zod.coerce.number()
+})
+
+export const GetQuoteReaderContextResponse = zod.object({
+  "quoteId": zod.number(),
+  "canonicalBookId": zod.number(),
+  "quoteText": zod.string(),
+  "searchText": zod.string().describe('Distinctive leading substring used to locate the quote in an EPUB'),
+  "libraryId": zod.number().nullable().describe('The viewer\'s library entry for this book, or null if not in their library')
 })
 
 
@@ -237,6 +296,88 @@ export const SaveCommentResponse = zod.object({
 
 
 /**
+ * @summary Get a single comment by id (visibility-gated)
+ */
+export const GetCommentParams = zod.object({
+  "commentId": zod.coerce.number()
+})
+
+export const GetCommentResponse = zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
+  "avatarColor": zod.string(),
+  "text": zod.string(),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
+  "quoteText": zod.string().optional(),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update the current user's comment or reply
+ */
+export const UpdateCommentParams = zod.object({
+  "commentId": zod.coerce.number()
+})
+
+export const updateCommentBodyTextMax = 500;
+
+
+
+export const UpdateCommentBody = zod.object({
+  "text": zod.string().min(1).max(updateCommentBodyTextMax),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
+  "containsSpoilers": zod.boolean()
+})
+
+export const UpdateCommentResponse = zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
+  "avatarColor": zod.string(),
+  "text": zod.string(),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
+  "quoteText": zod.string().optional(),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete the current user's comment or reply
+ */
+export const DeleteCommentParams = zod.object({
+  "commentId": zod.coerce.number()
+})
+
+export const DeleteCommentResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
  * @summary Get replies to a top-level comment (flat, chronological, visibility-gated)
  */
 export const GetCommentRepliesParams = zod.object({
@@ -248,15 +389,20 @@ export const GetCommentRepliesResponseItem = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 })
 export const GetCommentRepliesResponse = zod.array(GetCommentRepliesResponseItem)
@@ -270,11 +416,17 @@ export const CreateReplyParams = zod.object({
 })
 
 
+export const createReplyBodyAuthorProgressMin = 0;
+export const createReplyBodyAuthorProgressMax = 100;
+
 
 
 export const CreateReplyBody = zod.object({
   "text": zod.string().min(1),
-  "visibility": zod.enum(['public', 'friends', 'private']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)')
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).optional().describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
+  "containsSpoilers": zod.boolean().optional().describe('Mark this comment as containing spoilers (default false)'),
+  "roomId": zod.number().optional().describe('Scope this comment to a reading room (author must be a member)'),
+  "authorProgress": zod.number().min(createReplyBodyAuthorProgressMin).max(createReplyBodyAuthorProgressMax).optional().describe('Author\'s reading progress when writing (room spoiler guard)')
 })
 
 
@@ -316,6 +468,7 @@ export const GetLibraryEntryResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -357,6 +510,7 @@ export const MatchLibraryEntryResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -405,6 +559,7 @@ export const UpdateReadingLocationResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -442,6 +597,7 @@ export const GetUserLibraryResponseItem = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -451,23 +607,59 @@ export const GetUserLibraryResponse = zod.array(GetUserLibraryResponseItem)
 
 
 /**
- * @summary Create or get a user
+ * @summary Sign up a new user
  */
 export const createUserBodyUsernameMin = 2;
+
+export const createUserBodyEmailMax = 254;
+
+export const createUserBodyNicknameMax = 30;
+
+export const createUserBodyPasswordMin = 8;
+export const createUserBodyPasswordMax = 100;
 
 
 
 export const CreateUserBody = zod.object({
-  "username": zod.string().min(createUserBodyUsernameMin)
+  "username": zod.string().min(createUserBodyUsernameMin),
+  "email": zod.string().email().max(createUserBodyEmailMax),
+  "nickname": zod.string().min(1).max(createUserBodyNicknameMax).optional().describe('Optional display name shown instead of the username'),
+  "password": zod.string().min(createUserBodyPasswordMin).max(createUserBodyPasswordMax)
 })
 
 export const CreateUserResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
+})
+
+
+/**
+ * @summary Log in with username or email and password
+ */
+export const LoginUserBody = zod.object({
+  "identifier": zod.string().describe('Username or email address (email matched case-insensitively)'),
+  "password": zod.string()
+})
+
+export const LoginUserResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
+  "avatarColor": zod.string(),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
 
 
@@ -481,27 +673,61 @@ export const GetUserParams = zod.object({
 export const GetUserResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
 
 
 /**
- * @summary Search users by username
+ * Requires confirmation with the current password. Only the authenticated user may delete their own account. Shared book covers and other users' content are preserved.
+ * @summary Permanently delete the authenticated user's account and owned data
+ */
+export const DeleteUserAccountParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+
+
+
+export const DeleteUserAccountBody = zod.object({
+  "password": zod.string().min(1).describe('Current account password, required to confirm permanent deletion')
+})
+
+export const deleteUserAccountResponseSharedObjectsRetainedMin = 0;
+
+
+
+export const DeleteUserAccountResponse = zod.object({
+  "ok": zod.literal(true),
+  "deleted": zod.literal(true),
+  "objectCleanupPending": zod.boolean().describe('True when account data was deleted but one or more owned storage objects could not be removed'),
+  "sharedObjectsRetained": zod.number().min(deleteUserAccountResponseSharedObjectsRetainedMin).describe('Number of upload objects retained because another account still references them')
+})
+
+
+/**
+ * @summary Search users by username or nickname (viewer taken from bearer token)
  */
 export const SearchUsersQueryParams = zod.object({
-  "q": zod.coerce.string(),
-  "userId": zod.coerce.number().optional()
+  "q": zod.coerce.string()
 })
 
 export const SearchUsersResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "createdAt": zod.coerce.date(),
-  "isFriend": zod.boolean()
+  "isFriend": zod.boolean().describe('Deprecated alias of isFollowing (kept for older clients).'),
+  "isFollowing": zod.boolean().describe('True when the viewer already follows this user.'),
+  "friendStatus": zod.enum(['none', 'requested', 'incoming', 'friends']).describe('Friend relationship between the viewer and this user (friends = mutual follow).')
 })
 export const SearchUsersResponse = zod.array(SearchUsersResponseItem)
 
@@ -516,10 +742,14 @@ export const GetFriendsParams = zod.object({
 export const GetFriendsResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
 export const GetFriendsResponse = zod.array(GetFriendsResponseItem)
 
@@ -538,10 +768,14 @@ export const AddFriendBody = zod.object({
 export const AddFriendResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
 
 
@@ -551,6 +785,42 @@ export const AddFriendResponse = zod.object({
 export const RemoveFriendParams = zod.object({
   "userId": zod.coerce.number(),
   "friendId": zod.coerce.number()
+})
+
+
+/**
+ * @summary Send a friend request (requester taken from bearer token)
+ */
+export const SendFriendRequestBody = zod.object({
+  "recipientId": zod.number()
+})
+
+export const SendFriendRequestResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Accept a pending friend request sent to the authenticated user
+ */
+export const AcceptFriendRequestParams = zod.object({
+  "requesterId": zod.coerce.number()
+})
+
+export const AcceptFriendRequestResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Decline a pending friend request sent to the authenticated user
+ */
+export const DeclineFriendRequestParams = zod.object({
+  "requesterId": zod.coerce.number()
+})
+
+export const DeclineFriendRequestResponse = zod.object({
+  "ok": zod.boolean()
 })
 
 
@@ -566,18 +836,135 @@ export const GetSavedCommentsResponseItem = zod.object({
   "quoteId": zod.number(),
   "userId": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "text": zod.string(),
-  "visibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
   "quoteText": zod.string().optional(),
   "likeCount": zod.number(),
   "likedByMe": zod.boolean(),
   "savedByMe": zod.boolean(),
   "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
   "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
   "createdAt": zod.coerce.date()
 })
 export const GetSavedCommentsResponse = zod.array(GetSavedCommentsResponseItem)
+
+
+/**
+ * @summary My records grouped by book (my highlight/comment/saved counts; self only)
+ */
+export const GetUserRecordsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetUserRecordsResponseItem = zod.object({
+  "bookId": zod.number(),
+  "title": zod.string(),
+  "author": zod.string(),
+  "coverColor": zod.string(),
+  "highlightCount": zod.number().describe('Number of my highlights in this book'),
+  "commentCount": zod.number().describe('Number of my comments in this book'),
+  "savedCount": zod.number().describe('Number of comments I saved in this book')
+})
+export const GetUserRecordsResponse = zod.array(GetUserRecordsResponseItem)
+
+
+/**
+ * @summary My highlights, comments, and saved comments for one book (self only)
+ */
+export const GetUserBookRecordsParams = zod.object({
+  "userId": zod.coerce.number(),
+  "bookId": zod.coerce.number()
+})
+
+export const GetUserBookRecordsResponse = zod.object({
+  "book": zod.object({
+  "bookId": zod.number(),
+  "title": zod.string(),
+  "author": zod.string(),
+  "coverColor": zod.string(),
+  "highlightCount": zod.number().describe('Number of my highlights in this book'),
+  "commentCount": zod.number().describe('Number of my comments in this book'),
+  "savedCount": zod.number().describe('Number of comments I saved in this book')
+}),
+  "highlights": zod.array(zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "bookId": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "quoteText": zod.string(),
+  "createdAt": zod.coerce.date()
+})),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
+  "avatarColor": zod.string(),
+  "text": zod.string(),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
+  "quoteText": zod.string().optional(),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
+  "createdAt": zod.coerce.date()
+})),
+  "savedComments": zod.array(zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
+  "avatarColor": zod.string(),
+  "text": zod.string(),
+  "visibility": zod.enum(['public', 'friends', 'private', 'room']).describe('Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)'),
+  "quoteText": zod.string().optional(),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "savedByMe": zod.boolean(),
+  "replyCount": zod.number().describe('Number of visible replies (0 for replies themselves)'),
+  "parentId": zod.number().nullish().describe('ID of the parent comment for replies; null for top-level comments'),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler; clients blur the text for other users until tapped'),
+  "roomId": zod.number().nullable().describe('Non-null when the comment is scoped to a reading room (members only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when writing; null when unknown or not room-scoped'),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary All my highlights across books, newest first (self only)
+ */
+export const GetUserHighlightsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetUserHighlightsResponseItem = zod.object({
+  "id": zod.number(),
+  "quoteId": zod.number(),
+  "bookId": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "quoteText": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const GetUserHighlightsResponse = zod.array(GetUserHighlightsResponseItem)
 
 
 /**
@@ -590,6 +977,8 @@ export const GetUserProfileParams = zod.object({
 export const GetUserProfileResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
   "avatarColor": zod.string(),
   "createdAt": zod.coerce.date(),
   "followerCount": zod.number(),
@@ -598,7 +987,8 @@ export const GetUserProfileResponse = zod.object({
   "commentCount": zod.number(),
   "isFollowedByMe": zod.boolean().describe('Whether the requesting user follows this profile'),
   "followsMe": zod.boolean().describe('Whether this profile follows the requesting user'),
-  "isMe": zod.boolean().describe('Whether this profile is the requesting user')
+  "isMe": zod.boolean().describe('Whether this profile is the requesting user'),
+  "friendStatus": zod.enum(['none', 'requested', 'incoming', 'friends']).describe('Friend relationship between the viewer and this profile: none = no relationship, requested = viewer sent a pending request, incoming = this profile sent the viewer a pending request, friends = mutual follow (friends). Always \"none\" on your own profile.')
 })
 
 
@@ -609,17 +999,176 @@ export const UpdateUserSettingsParams = zod.object({
   "userId": zod.coerce.number()
 })
 
+export const updateUserSettingsBodyNicknameMax = 30;
+
+
+
 export const UpdateUserSettingsBody = zod.object({
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)')
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).optional().describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
+  "nickname": zod.string().max(updateUserSettingsBodyNicknameMax).nullish().describe('New display name; null or empty string clears it (falls back to username)')
 })
 
 export const UpdateUserSettingsResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
   "avatarColor": zod.string(),
-  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Who can see a comment or highlight — public, friends (mutual follows), or private (author only)'),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
   "createdAt": zod.coerce.date(),
-  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users response')
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
+})
+
+
+/**
+ * @summary Request a password reset code by email (unauthenticated)
+ */
+export const requestPasswordResetBodyEmailMax = 254;
+
+
+
+export const RequestPasswordResetBody = zod.object({
+  "email": zod.string().email().max(requestPasswordResetBodyEmailMax).describe('The email address associated with the account')
+})
+
+export const RequestPasswordResetResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Reset the password using the emailed code (unauthenticated)
+ */
+export const confirmPasswordResetBodyEmailMax = 254;
+
+export const confirmPasswordResetBodyCodeMin = 6;
+export const confirmPasswordResetBodyCodeMax = 6;
+
+export const confirmPasswordResetBodyNewPasswordMin = 8;
+export const confirmPasswordResetBodyNewPasswordMax = 100;
+
+
+
+export const ConfirmPasswordResetBody = zod.object({
+  "email": zod.string().email().max(confirmPasswordResetBodyEmailMax),
+  "code": zod.string().min(confirmPasswordResetBodyCodeMin).max(confirmPasswordResetBodyCodeMax).describe('The 6-digit code from the reset email'),
+  "newPassword": zod.string().min(confirmPasswordResetBodyNewPasswordMin).max(confirmPasswordResetBodyNewPasswordMax)
+})
+
+export const ConfirmPasswordResetResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
+  "avatarColor": zod.string(),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
+})
+
+
+/**
+ * @summary Send (or resend) the email verification code (self only)
+ */
+export const SendVerificationEmailParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const SendVerificationEmailResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Confirm the 6-digit email verification code (self only)
+ */
+export const ConfirmEmailVerificationParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const confirmEmailVerificationBodyCodeMin = 6;
+export const confirmEmailVerificationBodyCodeMax = 6;
+
+
+
+export const ConfirmEmailVerificationBody = zod.object({
+  "code": zod.string().min(confirmEmailVerificationBodyCodeMin).max(confirmEmailVerificationBodyCodeMax).describe('The 6-digit verification code from the email')
+})
+
+export const ConfirmEmailVerificationResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
+  "avatarColor": zod.string(),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
+})
+
+
+/**
+ * @summary Get a presigned URL to upload a profile photo (self only)
+ */
+export const GetAvatarUploadUrlParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetAvatarUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().describe('Presigned PUT URL for uploading the avatar image')
+})
+
+
+/**
+ * The image must use a presigned upload URL issued to this account; arbitrary public object paths are rejected.
+ * @summary Set the profile photo after uploading it (self only)
+ */
+export const SetAvatarParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const SetAvatarBody = zod.object({
+  "uploadURL": zod.string().describe('The presigned upload URL (or object path) returned after upload')
+})
+
+export const SetAvatarResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
+  "avatarColor": zod.string(),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
+})
+
+
+/**
+ * @summary Remove the profile photo (self only)
+ */
+export const RemoveAvatarParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const RemoveAvatarResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable().describe('Display name shown instead of the username; null falls back to username'),
+  "avatarUrl": zod.string().nullable().describe('Object path of the profile photo (e.g. \/public-objects\/avatars\/...); null falls back to the colored initial avatar'),
+  "email": zod.string().nullable().describe('Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts'),
+  "emailVerified": zod.boolean().describe('Whether the user confirmed their email; only meaningful in self contexts'),
+  "avatarColor": zod.string(),
+  "defaultVisibility": zod.enum(['public', 'friends', 'private']).describe('Default visibility for new comments\/highlights — public, friends (mutual follows), or private (author only)'),
+  "createdAt": zod.coerce.date(),
+  "token": zod.string().optional().describe('HMAC-signed bearer token — only present in POST \/users and POST \/users\/login responses')
 })
 
 
@@ -633,15 +1182,20 @@ export const GetNotificationsParams = zod.object({
 export const GetNotificationsResponse = zod.object({
   "notifications": zod.array(zod.object({
   "id": zod.number(),
-  "type": zod.enum(['reply', 'mention']).describe('reply = someone replied to your comment; mention = you were @mentioned'),
+  "type": zod.enum(['reply', 'mention', 'friend_request', 'friend_accept', 'highlight_like', 'comment_like', 'room_invite']).describe('reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room'),
   "actorId": zod.number(),
   "actorUsername": zod.string(),
+  "actorNickname": zod.string().nullable(),
+  "actorAvatarUrl": zod.string().nullable(),
   "actorAvatarColor": zod.string(),
-  "commentId": zod.number().describe('The reply comment that triggered the notification'),
+  "commentId": zod.number().describe('The reply comment that triggered the notification (0 for friend_\* notifications)'),
   "commentText": zod.string().describe('Preview of the reply text'),
+  "commentContainsSpoilers": zod.boolean().describe('True when the referenced comment is marked as containing spoilers AND the viewer is not its author — clients should mask commentText behind a spoiler placeholder. Always false for the comment author and for notifications without a comment.'),
   "parentCommentId": zod.number().nullable().describe('The original top-level comment (null for mention-only notifications)'),
   "quoteId": zod.number(),
   "quoteText": zod.string().optional().describe('The quote text for navigation context'),
+  "roomId": zod.number().nullish().describe('The reading room (room_invite notifications only)'),
+  "roomName": zod.string().optional().describe('The reading room name (room_invite notifications only)'),
   "read": zod.boolean(),
   "createdAt": zod.coerce.date()
 })),
@@ -659,5 +1213,473 @@ export const MarkNotificationsReadParams = zod.object({
 export const MarkNotificationsReadResponse = zod.object({
   "unreadCount": zod.number()
 })
+
+
+/**
+ * @summary Mark a single notification as read (must belong to the authenticated user)
+ */
+export const MarkNotificationReadParams = zod.object({
+  "notificationId": zod.coerce.number()
+})
+
+export const MarkNotificationReadResponse = zod.object({
+  "unreadCount": zod.number()
+})
+
+
+/**
+ * @summary Register an Expo push token for the user (upsert; reassigns the token on account switch)
+ */
+export const RegisterPushTokenParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const registerPushTokenBodyTokenMax = 4096;
+
+
+
+export const RegisterPushTokenBody = zod.object({
+  "token": zod.string().min(1).max(registerPushTokenBodyTokenMax).describe('Expo push token, e.g. ExponentPushToken[xxxxxxxx]')
+})
+
+export const RegisterPushTokenResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Unregister an Expo push token for the user (e.g. on logout)
+ */
+export const UnregisterPushTokenParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const unregisterPushTokenBodyTokenMax = 4096;
+
+
+
+export const UnregisterPushTokenBody = zod.object({
+  "token": zod.string().min(1).max(unregisterPushTokenBodyTokenMax).describe('Expo push token, e.g. ExponentPushToken[xxxxxxxx]')
+})
+
+export const UnregisterPushTokenResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Submit in-app feedback or a bug report (author taken from bearer token)
+ */
+export const submitFeedbackBodyTextMax = 2000;
+
+
+
+export const SubmitFeedbackBody = zod.object({
+  "type": zod.enum(['feedback', 'bug']).describe('General feedback or a bug report'),
+  "text": zod.string().min(1).max(submitFeedbackBodyTextMax)
+})
+
+
+/**
+ * @summary Toggle a like on a highlight (liker taken from bearer token)
+ */
+export const LikeHighlightParams = zod.object({
+  "highlightId": zod.coerce.number()
+})
+
+export const LikeHighlightResponse = zod.object({
+  "liked": zod.boolean(),
+  "likeCount": zod.number()
+})
+
+
+/**
+ * @summary Get the current user's per-type notification settings (self only)
+ */
+export const GetNotificationSettingsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetNotificationSettingsResponse = zod.object({
+  "rooms": zod.boolean().describe('Notify on reading-room invites'),
+  "likes": zod.boolean().describe('Notify when someone likes my highlight or comment'),
+  "replies": zod.boolean().describe('Notify when someone replies to my comment'),
+  "mentions": zod.boolean().describe('Notify when someone @mentions me'),
+  "friends": zod.boolean().describe('Notify on friend requests and accepts')
+})
+
+
+/**
+ * @summary Update the current user's per-type notification settings (self only)
+ */
+export const UpdateNotificationSettingsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const UpdateNotificationSettingsBody = zod.object({
+  "rooms": zod.boolean().describe('Notify on reading-room invites'),
+  "likes": zod.boolean().describe('Notify when someone likes my highlight or comment'),
+  "replies": zod.boolean().describe('Notify when someone replies to my comment'),
+  "mentions": zod.boolean().describe('Notify when someone @mentions me'),
+  "friends": zod.boolean().describe('Notify on friend requests and accepts')
+})
+
+export const UpdateNotificationSettingsResponse = zod.object({
+  "rooms": zod.boolean().describe('Notify on reading-room invites'),
+  "likes": zod.boolean().describe('Notify when someone likes my highlight or comment'),
+  "replies": zod.boolean().describe('Notify when someone replies to my comment'),
+  "mentions": zod.boolean().describe('Notify when someone @mentions me'),
+  "friends": zod.boolean().describe('Notify on friend requests and accepts')
+})
+
+
+/**
+ * @summary Comment feed of users I follow (newest first, viewer taken from bearer token)
+ */
+export const getFeedQueryLimitDefault = 20;
+export const getFeedQueryLimitMax = 50;
+
+
+
+export const GetFeedQueryParams = zod.object({
+  "roomId": zod.coerce.number().optional().describe('Restrict the feed to activity in this reading room (viewer must be a member).'),
+  "cursor": zod.coerce.string().optional().describe('Opaque cursor from a previous page\'s nextCursor. Omit for the first page.'),
+  "limit": zod.coerce.number().min(1).max(getFeedQueryLimitMax).default(getFeedQueryLimitDefault)
+})
+
+export const GetFeedResponse = zod.object({
+  "items": zod.array(zod.object({
+  "type": zod.enum(['highlight', 'comment']),
+  "id": zod.number().describe('Highlight id or comment id depending on type'),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
+  "avatarColor": zod.string(),
+  "bookId": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the book cover image, or null for a color cover'),
+  "quoteId": zod.number(),
+  "quoteText": zod.string().describe('Quote text — truncated to a preview length unless the viewer owns the book'),
+  "quoteTextTruncated": zod.boolean().describe('Whether quoteText was truncated for copyright protection'),
+  "commentText": zod.string().optional().describe('Present only when type is comment'),
+  "likeCount": zod.number().describe('Number of likes on this highlight or comment'),
+  "likedByMe": zod.boolean().describe('Whether the viewer has liked this item'),
+  "containsSpoilers": zod.boolean().describe('True when a comment item is author-flagged as a spoiler (always false for highlights)'),
+  "createdAt": zod.coerce.date()
+})),
+  "nextCursor": zod.string().nullable().describe('Pass as cursor to fetch the next page; null when there are no more items')
+})
+
+
+/**
+ * @summary Search / browse public reading rooms (by room name or book title)
+ */
+export const ListRoomsQueryParams = zod.object({
+  "q": zod.coerce.string().optional()
+})
+
+export const ListRoomsResponseItem = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+export const ListRoomsResponse = zod.array(ListRoomsResponseItem)
+
+
+/**
+ * @summary Create a reading room (creator becomes the owner)
+ */
+export const createRoomBodyNameMax = 80;
+
+export const createRoomBodyDescriptionMax = 500;
+
+
+
+export const CreateRoomBody = zod.object({
+  "canonicalBookId": zod.number(),
+  "name": zod.string().min(1).max(createRoomBodyNameMax),
+  "description": zod.string().max(createRoomBodyDescriptionMax).optional(),
+  "isPublic": zod.boolean()
+})
+
+
+/**
+ * @summary Trending public rooms (recent member growth + comment activity)
+ */
+export const GetTrendingRoomsResponseItem = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+export const GetTrendingRoomsResponse = zod.array(GetTrendingRoomsResponseItem)
+
+
+/**
+ * @summary Rooms the authenticated user is a member of
+ */
+export const GetMyRoomsQueryParams = zod.object({
+  "bookId": zod.coerce.number().optional().describe('Only my rooms for this canonical book (reader scope picker)')
+})
+
+export const GetMyRoomsResponseItem = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+export const GetMyRoomsResponse = zod.array(GetMyRoomsResponseItem)
+
+
+/**
+ * @summary Room home — book, members with reading progress, viewer state
+ */
+export const GetRoomParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const GetRoomResponse = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "members": zod.array(zod.object({
+  "userId": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
+  "avatarColor": zod.string(),
+  "role": zod.enum(['owner', 'member']),
+  "readingProgress": zod.number().nullable().describe('The member\'s reading progress (0-100) in this book, or null if unknown')
+})),
+  "isMember": zod.boolean(),
+  "myRole": zod.union([zod.literal('owner'),zod.literal('member'),zod.literal(null)]).nullable().describe('The viewer\'s role, or null when not a member'),
+  "invitePending": zod.boolean().describe('Whether the viewer has a pending invite to this room'),
+  "myLibraryId": zod.number().nullable().describe('The viewer\'s library entry for this book (to open the reader), or null'),
+  "myReadingProgress": zod.number().nullable().describe('The viewer\'s reading progress (0-100) in this book (spoiler guard), or null')
+})
+
+
+/**
+ * @summary Update room name/description/privacy (owner only)
+ */
+export const UpdateRoomParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const updateRoomBodyNameMax = 80;
+
+export const updateRoomBodyDescriptionMax = 500;
+
+
+
+export const UpdateRoomBody = zod.object({
+  "name": zod.string().min(1).max(updateRoomBodyNameMax).optional(),
+  "description": zod.string().max(updateRoomBodyDescriptionMax).optional(),
+  "isPublic": zod.boolean().optional()
+})
+
+export const UpdateRoomResponse = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Join a public room (idempotent; archived rooms cannot be joined)
+ */
+export const JoinRoomParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const JoinRoomResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Leave a room (the owner cannot leave their own room)
+ */
+export const LeaveRoomParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const LeaveRoomResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Remove a member from the room (owner only)
+ */
+export const RemoveRoomMemberParams = zod.object({
+  "roomId": zod.coerce.number(),
+  "userId": zod.coerce.number()
+})
+
+export const RemoveRoomMemberResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Invite a friend to the room (member or owner; idempotent while pending)
+ */
+export const InviteToRoomParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const InviteToRoomBody = zod.object({
+  "userId": zod.number().describe('The friend to invite')
+})
+
+export const InviteToRoomResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Accept a pending invite to this room (invitee only)
+ */
+export const AcceptRoomInviteParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const AcceptRoomInviteResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Decline a pending invite to this room (invitee only)
+ */
+export const DeclineRoomInviteParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const DeclineRoomInviteResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Latest room-scoped comments (members only)
+ */
+export const GetRoomFeedParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const GetRoomFeedResponseItem = zod.object({
+  "type": zod.enum(['highlight', 'comment']),
+  "id": zod.number().describe('Highlight id or comment id depending on type'),
+  "userId": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
+  "avatarColor": zod.string(),
+  "quoteId": zod.number(),
+  "quoteText": zod.string().describe('Quote text — truncated to a preview length unless the viewer owns the book'),
+  "quoteTextTruncated": zod.boolean().describe('Whether quoteText was truncated for copyright protection'),
+  "commentText": zod.string().optional().describe('Present only when type is comment'),
+  "likeCount": zod.number(),
+  "likedByMe": zod.boolean(),
+  "containsSpoilers": zod.boolean().describe('Author-flagged spoiler (comments only)'),
+  "authorProgress": zod.number().nullable().describe('Author\'s reading progress (0-100) when posting — blur when greater than the viewer\'s progress'),
+  "createdAt": zod.coerce.date()
+})
+export const GetRoomFeedResponse = zod.array(GetRoomFeedResponseItem)
+
+
+/**
+ * @summary Public rooms the given user is a member of
+ */
+export const GetUserRoomsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetUserRoomsResponseItem = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+export const GetUserRoomsResponse = zod.array(GetUserRoomsResponseItem)
+
+
+/**
+ * @summary Public rooms for a book (plus the viewer's own rooms for it)
+ */
+export const GetBookRoomsParams = zod.object({
+  "bookId": zod.coerce.number()
+})
+
+export const GetBookRoomsResponseItem = zod.object({
+  "id": zod.number(),
+  "canonicalBookId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "isPublic": zod.boolean(),
+  "ownerId": zod.number().nullable().describe('Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members'),
+  "memberCount": zod.number(),
+  "bookTitle": zod.string(),
+  "bookAuthor": zod.string(),
+  "coverColor": zod.string(),
+  "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
+  "createdAt": zod.coerce.date()
+})
+export const GetBookRoomsResponse = zod.array(GetBookRoomsResponseItem)
 
 

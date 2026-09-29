@@ -9,4 +9,17 @@
 export interface UserInput {
   /** @minLength 2 */
   username: string;
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * Optional display name shown instead of the username
+     * @minLength 1
+     * @maxLength 30
+     */
+  nickname?: string;
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  password: string;
 }

@@ -10,9 +10,26 @@ import type { Visibility } from './visibility';
 export interface User {
   id: number;
   username: string;
+  /**
+     * Display name shown instead of the username; null falls back to username
+     * @nullable
+     */
+  nickname: string | null;
+  /**
+     * Object path of the profile photo (e.g. /public-objects/avatars/...); null falls back to the colored initial avatar
+     * @nullable
+     */
+  avatarUrl: string | null;
+  /**
+     * Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts
+     * @nullable
+     */
+  email: string | null;
+  /** Whether the user confirmed their email; only meaningful in self contexts */
+  emailVerified: boolean;
   avatarColor: string;
   defaultVisibility: Visibility;
   createdAt: Date;
-  /** HMAC-signed bearer token — only present in POST /users response */
+  /** HMAC-signed bearer token — only present in POST /users and POST /users/login responses */
   token?: string;
 }

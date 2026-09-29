@@ -5,16 +5,20 @@
  * Bookmarks - Social Ebook Reader API
  * OpenAPI spec version: 0.1.0
  */
-import type { Visibility } from './visibility';
+import type { ContentVisibility } from './contentVisibility';
 
 export interface Comment {
   id: number;
   quoteId: number;
   userId: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   text: string;
-  visibility: Visibility;
+  visibility: ContentVisibility;
   quoteText?: string;
   likeCount: number;
   likedByMe: boolean;
@@ -26,5 +30,17 @@ export interface Comment {
      * @nullable
      */
   parentId?: number | null;
+  /** Author-flagged spoiler; clients blur the text for other users until tapped */
+  containsSpoilers: boolean;
+  /**
+     * Non-null when the comment is scoped to a reading room (members only)
+     * @nullable
+     */
+  roomId: number | null;
+  /**
+     * Author's reading progress (0-100) when writing; null when unknown or not room-scoped
+     * @nullable
+     */
+  authorProgress: number | null;
   createdAt: Date;
 }

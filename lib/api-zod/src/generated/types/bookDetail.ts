@@ -14,6 +14,11 @@ export interface BookDetail {
   author: string;
   description: string;
   coverColor: string;
+  /**
+     * Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
+     * @nullable
+     */
+  coverUrl: string | null;
   quoteCount: number;
   commentCount: number;
   highlightCount: number;

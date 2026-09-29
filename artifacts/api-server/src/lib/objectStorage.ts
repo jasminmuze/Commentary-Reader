@@ -11,8 +11,13 @@ import {
   getObjectAclPolicy,
   setObjectAclPolicy,
 } from "./objectAcl";
+import {
+  isGeneratedAvatarObjectPath,
+  isGeneratedEpubObjectPath,
+} from "./objectStoragePaths.js";
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
+export { isGeneratedAvatarObjectPath, isGeneratedEpubObjectPath } from "./objectStoragePaths.js";
 
 // The object storage client is used to interact with the object storage service.
 export const objectStorageClient = new Storage({
@@ -44,6 +49,48 @@ export class ObjectNotFoundError extends Error {
 // The object storage service is used to interact with the object storage service.
 export class ObjectStorageService {
   constructor() {}
+
+  // Delete only object paths generated for account-owned EPUBs and avatars.
+  // Public cover objects are deliberately excluded because they can be shared
+  // by canonical book records.
+  async deleteOwnedObjects(objectPaths: string[]): Promise<unknown[]> {
+    const failures: unknown[] = [];
+    const candidates: Array<{ bucketName: string; objectName: string }> = [];
+
+    for (const objectPath of objectPaths) {
+      if (isGeneratedEpubObjectPath(objectPath)) {
+        try {
+          const privateDir = this.getPrivateObjectDir().replace(/\/+$/, "");
+          const filename = objectPath.split("/").at(-1)!;
+          candidates.push(parseObjectPath(`${privateDir}/uploads/${filename}`));
+        } catch (err) {
+          failures.push(err);
+        }
+      } else if (isGeneratedAvatarObjectPath(objectPath)) {
+        try {
+          const publicRoot = this.getPublicObjectSearchPaths()[0]!.replace(/\/+$/, "");
+          const objectId = objectPath.split("/").at(-1)!;
+          candidates.push(parseObjectPath(`${publicRoot}/avatars/${objectId}`));
+        } catch (err) {
+          failures.push(err);
+        }
+      } else {
+        failures.push(new Error("Unexpected account-owned object path"));
+      }
+    }
+
+    for (const candidate of candidates) {
+      try {
+        await objectStorageClient
+          .bucket(candidate.bucketName)
+          .file(candidate.objectName)
+          .delete({ ignoreNotFound: true });
+      } catch (err) {
+        failures.push(err);
+      }
+    }
+    return failures;
+  }
 
   // Gets the public object search paths.
   getPublicObjectSearchPaths(): Array<string> {
@@ -134,7 +181,7 @@ export class ObjectStorageService {
   }
 
   // Gets the upload URL for an object entity.
-  async getObjectEntityUploadURL(): Promise<string> {
+  async getObjectEntityUploadURL(): Promise<{ uploadURL: string; objectPath: string }> {
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
@@ -149,12 +196,66 @@ export class ObjectStorageService {
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     // Sign URL for PUT method with TTL
-    return signObjectURL({
+    const uploadURL = await signObjectURL({
       bucketName,
       objectName,
       method: "PUT",
       ttlSec: 900,
     });
+    return { uploadURL, objectPath: `/objects/uploads/${objectId}.epub` };
+  }
+
+  // Gets a signed PUT URL for uploading an avatar image into the PUBLIC
+  // object dir (avatars are world-readable by design).
+  async getAvatarUploadURL(): Promise<{ uploadURL: string; objectPath: string }> {
+    const publicPath = this.getPublicObjectSearchPaths()[0]!;
+    const objectId = randomUUID();
+    const fullPath = `${publicPath}/avatars/${objectId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const uploadURL = await signObjectURL({
+      bucketName,
+      objectName,
+      method: "PUT",
+      ttlSec: 900,
+    });
+    return { uploadURL, objectPath: `/public-objects/avatars/${objectId}` };
+  }
+
+  // Uploads a book cover image (extracted server-side from an EPUB) into the
+  // PUBLIC object dir and returns its /public-objects/covers/<id> path.
+  // Covers are world-readable by design (like avatars).
+  async uploadBookCover(data: Uint8Array, contentType: string): Promise<string> {
+    const publicPath = this.getPublicObjectSearchPaths()[0]!;
+    const objectId = randomUUID();
+    const fullPath = `${publicPath}/covers/${objectId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    await file.save(Buffer.from(data), {
+      contentType,
+      resumable: false,
+    });
+    return `/public-objects/covers/${objectId}`;
+  }
+
+  // Converts an avatar upload URL (or already-normalized path) into the
+  // /public-objects/avatars/<id> path stored in users.avatar_url. Returns
+  // null if the URL doesn't point into a public avatars directory.
+  normalizeAvatarPath(rawPath: string): string | null {
+    let objectPath = rawPath;
+    if (rawPath.startsWith("https://storage.googleapis.com/")) {
+      const url = new URL(rawPath);
+      objectPath = url.pathname;
+    }
+    if (objectPath.startsWith("/public-objects/avatars/")) {
+      return objectPath;
+    }
+    for (const searchPath of this.getPublicObjectSearchPaths()) {
+      const prefix = searchPath.endsWith("/") ? searchPath : `${searchPath}/`;
+      if (objectPath.startsWith(`${prefix}avatars/`)) {
+        return `/public-objects/${objectPath.slice(prefix.length)}`;
+      }
+    }
+    return null;
   }
 
   // Gets the object entity file from the object path.

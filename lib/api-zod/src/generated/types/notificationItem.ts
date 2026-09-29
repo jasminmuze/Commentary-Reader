@@ -9,15 +9,21 @@ import type { NotificationItemType } from './notificationItemType';
 
 export interface NotificationItem {
   id: number;
-  /** reply = someone replied to your comment; mention = you were @mentioned */
+  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room */
   type: NotificationItemType;
   actorId: number;
   actorUsername: string;
+  /** @nullable */
+  actorNickname: string | null;
+  /** @nullable */
+  actorAvatarUrl: string | null;
   actorAvatarColor: string;
-  /** The reply comment that triggered the notification */
+  /** The reply comment that triggered the notification (0 for friend_* notifications) */
   commentId: number;
   /** Preview of the reply text */
   commentText: string;
+  /** True when the referenced comment is marked as containing spoilers AND the viewer is not its author — clients should mask commentText behind a spoiler placeholder. Always false for the comment author and for notifications without a comment. */
+  commentContainsSpoilers: boolean;
   /**
      * The original top-level comment (null for mention-only notifications)
      * @nullable
@@ -26,6 +32,13 @@ export interface NotificationItem {
   quoteId: number;
   /** The quote text for navigation context */
   quoteText?: string;
+  /**
+     * The reading room (room_invite notifications only)
+     * @nullable
+     */
+  roomId?: number | null;
+  /** The reading room name (room_invite notifications only) */
+  roomName?: string;
   read: boolean;
   createdAt: Date;
 }
