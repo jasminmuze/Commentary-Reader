@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Alert,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
@@ -25,6 +26,8 @@ import {
   useSaveComment,
   useGetCommentReplies,
   useCreateReply,
+  useUpdateComment,
+  useDeleteComment,
   getGetQuoteCommentsQueryKey,
   getGetCommentRepliesQueryKey,
 } from "@workspace/api-client-react";
@@ -33,12 +36,100 @@ import { useUser } from "@/context/UserContext";
 import { CommentCard } from "./CommentCard";
 import { EmptyState } from "./EmptyState";
 import { LoadingShimmer } from "./LoadingShimmer";
-import type { Comment, Visibility } from "@workspace/api-client-react";
+import type { Comment, ContentVisibility, Visibility } from "@workspace/api-client-react";
 
 type FilterType = "best" | "friends";
 
+// ── @mention autocomplete helpers ────────────────────────────────────────────
+
+/**
+ * Returns the partial username being typed after a trailing "@" (e.g. "j" for
+ * "nice @j"), "" right after typing "@", or null when no mention is active.
+ */
+function activeMentionQuery(text: string): string | null {
+  const m = /(^|\s)@(\S*)$/.exec(text);
+  return m ? (m[2] ?? "") : null;
+}
+
+/** Replaces the trailing partial "@..." token with the completed mention. */
+function completeMentionText(text: string, username: string): string {
+  return text.replace(/(^|\s)@\S*$/, `$1@${username} `);
+}
+
+type MentionCandidate = { username: string; nickname?: string | null };
+
+/** Candidates whose username or display name starts with the partial query (case-insensitive). */
+function mentionSuggestions(
+  candidates: MentionCandidate[],
+  text: string,
+  selfUsername?: string,
+): MentionCandidate[] {
+  const query = activeMentionQuery(text);
+  if (query === null) return [];
+  const lower = query.toLowerCase();
+  const seen = new Set<string>();
+  const result: MentionCandidate[] = [];
+  for (const c of candidates) {
+    if (!c.username || c.username === selfUsername || seen.has(c.username)) continue;
+    const display = (c.nickname?.trim() || c.username).toLowerCase();
+    if (
+      (c.username.toLowerCase().startsWith(lower) || display.startsWith(lower)) &&
+      c.username.toLowerCase() !== lower
+    ) {
+      seen.add(c.username);
+      result.push(c);
+    }
+  }
+  return result;
+}
+
+// "Contains spoilers" checkbox shown on its own row below the visibility
+// options in both compose bars (main comment + reply). Visually distinct from
+// the visibility chips: spoiler flags the content, not who can see it.
+function SpoilerCheckbox({
+  active,
+  onToggle,
+}: {
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const colors = useColors();
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={styles.spoilerCheckRow}
+      hitSlop={6}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: active }}
+      accessibilityLabel="Contains spoilers"
+    >
+      <View
+        style={[
+          styles.spoilerCheckBox,
+          {
+            backgroundColor: active ? colors.accent : "transparent",
+            borderColor: active ? colors.accent : colors.border,
+          },
+        ]}
+      >
+        {active ? (
+          <Feather name="check" size={12} color={colors.accentForeground} />
+        ) : null}
+      </View>
+      <Text
+        style={[
+          styles.spoilerCheckLabel,
+          { color: active ? colors.foreground : colors.mutedForeground },
+        ]}
+      >
+        Contains spoilers
+      </Text>
+    </Pressable>
+  );
+}
+
 const VISIBILITY_OPTIONS: {
-  value: Visibility;
+  value: ContentVisibility;
   label: string;
   icon: React.ComponentProps<typeof Feather>["name"];
 }[] = [
@@ -47,12 +138,73 @@ const VISIBILITY_OPTIONS: {
   { value: "private", label: "Private", icon: "lock" },
 ];
 
+// Room-scoped compose: default to members-only, but allow sharing the same
+// row outward to the whole community or to friends.
+const ROOM_VISIBILITY_OPTIONS: typeof VISIBILITY_OPTIONS = [
+  { value: "room", label: "Room only", icon: "home" },
+  { value: "public", label: "Public", icon: "globe" },
+  { value: "friends", label: "Friends", icon: "users" },
+];
+
 interface Props {
   visible: boolean;
   quoteId: number | null;
   quoteText: string;
   onClose: () => void;
-  onCommentSaved?: (visibility: Visibility) => void;
+  onCommentSaved?: (visibility: ContentVisibility) => void;
+  /** When set, the sheet opens directly on this comment's reply thread. */
+  initialReplyThread?: Comment | null;
+  /** When set, the sheet opens its author editor for this comment. */
+  initialEditingComment?: Comment | null;
+  /** When set, the sheet shows only this reading room's comments and posts into it. */
+  roomId?: number | null;
+  /** Viewer's reading progress (0-100) — used for the room spoiler guard. */
+  myProgress?: number | null;
+}
+
+// Room spoiler guard: blur content written by someone further into the book
+// than the viewer, until explicitly revealed.
+function ProgressGuard({
+  authorProgress,
+  myProgress,
+  children,
+}: {
+  authorProgress: number | null | undefined;
+  myProgress: number | null | undefined;
+  children: React.ReactNode;
+}) {
+  const colors = useColors();
+  const [revealed, setRevealed] = useState(false);
+  const guarded =
+    !revealed &&
+    authorProgress !== null &&
+    authorProgress !== undefined &&
+    myProgress !== null &&
+    myProgress !== undefined &&
+    authorProgress > myProgress;
+  if (!guarded) return <>{children}</>;
+  return (
+    <Pressable
+      onPress={() => setRevealed(true)}
+      style={[
+        styles.spoilerCover,
+        {
+          backgroundColor: colors.muted,
+          borderColor: colors.border,
+          borderRadius: colors.radius,
+          marginHorizontal: 16,
+          marginVertical: 6,
+        },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel="Ahead of your progress — tap to reveal"
+    >
+      <Feather name="eye-off" size={14} color={colors.mutedForeground} />
+      <Text style={[styles.spoilerCoverText, { color: colors.mutedForeground }]}>
+        Ahead of your progress ({authorProgress}%) — tap to reveal
+      </Text>
+    </Pressable>
+  );
 }
 
 // ── Reply thread sub-view ────────────────────────────────────────────────────
@@ -61,16 +213,37 @@ interface ReplyThreadProps {
   parentComment: Comment;
   onBack: () => void;
   bottomPad: number;
+  roomId?: number | null;
+  myProgress?: number | null;
+  onEditComment: (comment: Comment) => void;
+  onDeleteComment: (comment: Comment) => void;
 }
 
-function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
+function ReplyThread({
+  parentComment,
+  onBack,
+  bottomPad,
+  roomId,
+  myProgress,
+  onEditComment,
+  onDeleteComment,
+}: ReplyThreadProps) {
   const colors = useColors();
   const { user } = useUser();
   const queryClient = useQueryClient();
+  // Spoiler parent comment: blurred for everyone but the author until tapped.
+  const [parentSpoilerRevealed, setParentSpoilerRevealed] = useState(false);
+  const parentSpoilerHidden =
+    parentComment.containsSpoilers === true &&
+    user?.id !== parentComment.userId &&
+    !parentSpoilerRevealed;
   const [replyText, setReplyText] = useState(`@${parentComment.username} `);
-  const [visibility, setVisibility] = useState<Visibility>(
-    user?.defaultVisibility ?? "public",
+  // Room-scoped threads (parent lives in a room) default to members-only.
+  const threadRoomId = parentComment.roomId ?? roomId ?? null;
+  const [visibility, setVisibility] = useState<ContentVisibility>(
+    threadRoomId != null ? "room" : (user?.defaultVisibility ?? "public"),
   );
+  const [containsSpoilers, setContainsSpoilers] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   const { data: replies, isLoading } = useGetCommentReplies(
@@ -85,13 +258,15 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
 
   const createReply = useCreateReply();
 
-  // Extract unique @mention candidates from thread participants (excluding self).
-  const participants = Array.from(
-    new Set(
-      [parentComment.username, ...(replies ?? []).map((r) => r.username)].filter(
-        (u) => u !== user?.username,
-      ),
-    ),
+  // @mention autocomplete: suggest thread participants matching the partial
+  // "@..." the user is typing (shown only while a mention is being typed).
+  const suggestions = mentionSuggestions(
+    [
+      { username: parentComment.username, nickname: parentComment.nickname },
+      ...(replies ?? []).map((r) => ({ username: r.username, nickname: r.nickname })),
+    ],
+    replyText,
+    user?.username,
   );
 
   const handleSubmit = useCallback(() => {
@@ -100,11 +275,19 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
     createReply.mutate(
       {
         commentId: parentComment.id,
-        data: { text: replyText.trim(), visibility },
+        data: {
+          text: replyText.trim(),
+          visibility,
+          containsSpoilers,
+          ...(roomId
+            ? { roomId, ...(myProgress !== null && myProgress !== undefined ? { authorProgress: myProgress } : {}) }
+            : {}),
+        },
       },
       {
         onSuccess: () => {
           setReplyText(`@${parentComment.username} `);
+          setContainsSpoilers(false);
           Keyboard.dismiss();
           queryClient.invalidateQueries({
             queryKey: getGetCommentRepliesQueryKey(parentComment.id),
@@ -114,15 +297,10 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         },
       },
     );
-  }, [user, replyText, visibility, createReply, parentComment, queryClient]);
+  }, [user, replyText, visibility, containsSpoilers, createReply, parentComment, queryClient, roomId, myProgress]);
 
   const handleMentionChip = (username: string) => {
-    const mention = `@${username} `;
-    if (replyText.includes(mention)) return;
-    setReplyText((prev) => {
-      const trimmed = prev.trimEnd();
-      return trimmed ? `${trimmed} ${mention}` : mention;
-    });
+    setReplyText((prev) => completeMentionText(prev, username));
     inputRef.current?.focus();
   };
 
@@ -152,12 +330,48 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         ]}
       >
         <View style={styles.parentMeta}>
-          <Text style={[styles.parentUser, { color: colors.primary }]}>
-            @{parentComment.username}
-          </Text>
-          <Text style={[styles.parentText, { color: colors.foreground }]}>
-            {parentComment.text}
-          </Text>
+          <View style={styles.parentUserRow}>
+            <Text style={[styles.parentUser, { color: colors.primary }]}>
+              @{parentComment.username}
+            </Text>
+            {parentComment.containsSpoilers ? (
+              <View
+                style={[
+                  styles.spoilerBadge,
+                  { backgroundColor: colors.muted, borderRadius: colors.radius },
+                ]}
+              >
+                <Feather name="alert-triangle" size={10} color={colors.mutedForeground} />
+                <Text style={[styles.spoilerBadgeText, { color: colors.mutedForeground }]}>
+                  Spoiler
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          {parentSpoilerHidden ? (
+            <Pressable
+              onPress={() => setParentSpoilerRevealed(true)}
+              style={[
+                styles.spoilerCover,
+                {
+                  backgroundColor: colors.muted,
+                  borderColor: colors.border,
+                  borderRadius: colors.radius,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Spoiler — tap to reveal"
+            >
+              <Feather name="eye-off" size={14} color={colors.mutedForeground} />
+              <Text style={[styles.spoilerCoverText, { color: colors.mutedForeground }]}>
+                Spoiler — tap to reveal
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={[styles.parentText, { color: colors.foreground }]}>
+              {parentComment.text}
+            </Text>
+          )}
         </View>
       </View>
 
@@ -175,12 +389,14 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         <FlatList<Comment>
           style={{ flex: 1 }}
           data={replies ?? []}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item, index) => String(item.id ?? index)}
           renderItem={({ item }) => (
             <CommentCard
               comment={item}
               onLike={() => {}}
               onSave={() => {}}
+              onEdit={onEditComment}
+              onDelete={onDeleteComment}
               isReply
             />
           )}
@@ -196,8 +412,8 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         />
       )}
 
-      {/* Mention chips */}
-      {participants.length > 0 ? (
+      {/* Mention suggestions (shown while typing "@...") */}
+      {suggestions.length > 0 ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -205,10 +421,10 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
           contentContainerStyle={styles.chipsContent}
           keyboardShouldPersistTaps="handled"
         >
-          {participants.map((username) => (
+          {suggestions.map((s) => (
             <Pressable
-              key={username}
-              onPress={() => handleMentionChip(username)}
+              key={s.username}
+              onPress={() => handleMentionChip(s.username)}
               style={({ pressed }) => [
                 styles.mentionChip,
                 {
@@ -220,8 +436,13 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
               ]}
             >
               <Text style={[styles.mentionChipText, { color: colors.primary }]}>
-                @{username}
+                {s.nickname?.trim() ? s.nickname.trim() : `@${s.username}`}
               </Text>
+              {s.nickname?.trim() ? (
+                <Text style={[styles.mentionChipSub, { color: colors.mutedForeground }]}>
+                  @{s.username}
+                </Text>
+              ) : null}
             </Pressable>
           ))}
         </ScrollView>
@@ -238,7 +459,7 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
         ]}
       >
         <View style={styles.visibilityRow}>
-          {VISIBILITY_OPTIONS.map((opt) => {
+          {(threadRoomId != null ? ROOM_VISIBILITY_OPTIONS : VISIBILITY_OPTIONS).map((opt) => {
             const active = visibility === opt.value;
             return (
               <Pressable
@@ -270,6 +491,10 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
             );
           })}
         </View>
+        <SpoilerCheckbox
+          active={containsSpoilers}
+          onToggle={() => setContainsSpoilers((prev) => !prev)}
+        />
         <View style={styles.inputRow}>
           <TextInput
             ref={inputRef}
@@ -314,27 +539,174 @@ function ReplyThread({ parentComment, onBack, bottomPad }: ReplyThreadProps) {
   );
 }
 
+function EditCommentModal({
+  comment,
+  saving,
+  onClose,
+  onSave,
+}: {
+  comment: Comment | null;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (text: string, visibility: ContentVisibility, containsSpoilers: boolean) => void;
+}) {
+  const colors = useColors();
+  const [text, setText] = useState("");
+  const [visibility, setVisibility] = useState<ContentVisibility>("public");
+  const [containsSpoilers, setContainsSpoilers] = useState(false);
+
+  useEffect(() => {
+    if (!comment) return;
+    setText(comment.text);
+    setVisibility(comment.visibility);
+    setContainsSpoilers(comment.containsSpoilers);
+  }, [comment]);
+
+  const visibilityOptions = comment?.roomId ? ROOM_VISIBILITY_OPTIONS : VISIBILITY_OPTIONS;
+
+  return (
+    <Modal visible={!!comment} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.editOverlay} onPress={onClose}>
+        <Pressable
+          style={[
+            styles.editCard,
+            { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius },
+          ]}
+          onPress={(event) => event.stopPropagation()}
+        >
+          <View style={styles.editHeader}>
+            <Text style={[styles.editTitle, { color: colors.foreground }]}>Edit comment</Text>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Feather name="x" size={20} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            multiline
+            maxLength={500}
+            autoFocus
+            style={[
+              styles.editInput,
+              {
+                color: colors.foreground,
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                borderRadius: colors.radius,
+              },
+            ]}
+          />
+          <View style={styles.visibilityRow}>
+            {visibilityOptions.map((option) => {
+              const active = visibility === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setVisibility(option.value)}
+                  style={[
+                    styles.visChip,
+                    {
+                      backgroundColor: active ? colors.primary : colors.background,
+                      borderColor: active ? colors.primary : colors.border,
+                      borderRadius: colors.radius,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name={option.icon}
+                    size={12}
+                    color={active ? colors.primaryForeground : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.visChipText,
+                      { color: active ? colors.primaryForeground : colors.mutedForeground },
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <SpoilerCheckbox
+            active={containsSpoilers}
+            onToggle={() => setContainsSpoilers((value) => !value)}
+          />
+          <Pressable
+            onPress={() => onSave(text.trim(), visibility, containsSpoilers)}
+            disabled={!text.trim() || saving}
+            style={({ pressed }) => [
+              styles.editSave,
+              {
+                backgroundColor: text.trim() ? colors.primary : colors.muted,
+                borderRadius: colors.radius,
+                opacity: pressed || saving ? 0.75 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.editSaveText,
+                { color: text.trim() ? colors.primaryForeground : colors.mutedForeground },
+              ]}
+            >
+              Save changes
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ── Main CommentSheet ────────────────────────────────────────────────────────
 
-export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSaved }: Props) {
+export function CommentSheet({
+  visible,
+  quoteId,
+  quoteText,
+  onClose,
+  onCommentSaved,
+  initialReplyThread,
+  initialEditingComment,
+  roomId,
+  myProgress,
+}: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useUser();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<FilterType>("best");
   const [commentText, setCommentText] = useState("");
-  const [visibility, setVisibility] = useState<Visibility>(user?.defaultVisibility ?? "public");
+  const [visibility, setVisibility] = useState<ContentVisibility>(
+    roomId ? "room" : (user?.defaultVisibility ?? "public"),
+  );
+  const [containsSpoilers, setContainsSpoilers] = useState(false);
   const [replyThread, setReplyThread] = useState<Comment | null>(null);
+  const [editingComment, setEditingComment] = useState<Comment | null>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  // Reset reply thread when sheet closes.
+  // Reset reply thread when sheet closes; jump straight into the requested
+  // thread (e.g. from a tapped notification) when it opens.
   useEffect(() => {
-    if (!visible) setReplyThread(null);
-  }, [visible]);
+    if (!visible) {
+      setReplyThread(null);
+      setEditingComment(null);
+    } else if (initialReplyThread) {
+      setReplyThread(initialReplyThread);
+    }
+    if (visible && initialEditingComment) {
+      setEditingComment(initialEditingComment);
+    }
+  }, [visible, initialReplyThread, initialEditingComment]);
 
   useEffect(() => {
-    if (visible) setVisibility(user?.defaultVisibility ?? "public");
-  }, [visible, user?.defaultVisibility]);
+    if (visible) {
+      setVisibility(roomId ? "room" : (user?.defaultVisibility ?? "public"));
+      setContainsSpoilers(false);
+    }
+  }, [visible, user?.defaultVisibility, roomId]);
 
   useEffect(() => {
     if (visible) {
@@ -353,13 +725,14 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
     }
   }, [visible, slideAnim]);
 
+  const listParams = roomId ? { filter, roomId } : { filter };
   const { data: comments, isLoading } = useGetQuoteComments(
     quoteId ?? 0,
-    { filter },
+    listParams,
     {
       query: {
         enabled: !!quoteId && visible,
-        queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { filter }),
+        queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, listParams),
       },
     },
   );
@@ -367,6 +740,70 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
   const createComment = useCreateComment();
   const likeComment = useLikeComment();
   const saveComment = useSaveComment();
+  const updateComment = useUpdateComment();
+  const deleteComment = useDeleteComment();
+
+  const refreshSocialQueries = useCallback(() => {
+    // A comment appears in quote threads, feeds, room activity, notifications,
+    // and records. Refetch every active server view so edited/deleted content
+    // cannot remain stale in another screen.
+    queryClient.invalidateQueries();
+  }, [queryClient]);
+
+  const handleSaveEdit = useCallback(
+    (text: string, nextVisibility: ContentVisibility, nextContainsSpoilers: boolean) => {
+      if (!editingComment) return;
+      updateComment.mutate(
+        {
+          commentId: editingComment.id,
+          data: {
+            text,
+            visibility: nextVisibility,
+            containsSpoilers: nextContainsSpoilers,
+          },
+        },
+        {
+          onSuccess: (updated) => {
+            if (replyThread?.id === updated.id) setReplyThread(updated);
+            setEditingComment(null);
+            refreshSocialQueries();
+          },
+          onError: () => Alert.alert("Couldn't save", "Please try again in a moment."),
+        },
+      );
+    },
+    [editingComment, updateComment, replyThread?.id, refreshSocialQueries],
+  );
+
+  const handleDeleteComment = useCallback(
+    (comment: Comment) => {
+      Alert.alert(
+        comment.parentId ? "Delete this reply?" : "Delete this comment?",
+        comment.parentId
+          ? "This can't be undone."
+          : "Its replies will also be deleted. This can't be undone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () =>
+              deleteComment.mutate(
+                { commentId: comment.id },
+                {
+                  onSuccess: () => {
+                    if (replyThread?.id === comment.id) setReplyThread(null);
+                    refreshSocialQueries();
+                  },
+                  onError: () => Alert.alert("Couldn't delete", "Please try again in a moment."),
+                },
+              ),
+          },
+        ],
+      );
+    },
+    [deleteComment, replyThread?.id, refreshSocialQueries],
+  );
 
   const handleLike = useCallback(
     (commentId: number) => {
@@ -375,13 +812,13 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
         {
           onSuccess: () => {
             queryClient.invalidateQueries({
-              queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { filter }),
+              queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0),
             });
           },
         },
       );
     },
-    [likeComment, queryClient, quoteId, filter],
+    [likeComment, queryClient, quoteId],
   );
 
   const handleSave = useCallback(
@@ -391,35 +828,55 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
         {
           onSuccess: () => {
             queryClient.invalidateQueries({
-              queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0, { filter }),
+              queryKey: getGetQuoteCommentsQueryKey(quoteId ?? 0),
             });
           },
         },
       );
     },
-    [saveComment, queryClient, quoteId, filter],
+    [saveComment, queryClient, quoteId],
   );
+
+  // @mention autocomplete: suggest quote commenters matching the partial
+  // "@..." the user is typing (shown only while a mention is being typed).
+  const suggestions = mentionSuggestions(
+    (comments ?? []).map((c) => ({ username: c.username, nickname: c.nickname })),
+    commentText,
+    user?.username,
+  );
+
+  const handleMentionChip = useCallback((username: string) => {
+    setCommentText((prev) => completeMentionText(prev, username));
+  }, []);
 
   const handleSubmit = useCallback(() => {
     if (!user || !quoteId || !commentText.trim()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     createComment.mutate(
-      { quoteId, data: { text: commentText.trim(), visibility } },
+      {
+        quoteId,
+        data: {
+          text: commentText.trim(),
+          visibility,
+          containsSpoilers,
+          ...(roomId
+            ? { roomId, ...(myProgress !== null && myProgress !== undefined ? { authorProgress: myProgress } : {}) }
+            : {}),
+        },
+      },
       {
         onSuccess: () => {
           setCommentText("");
+          setContainsSpoilers(false);
           Keyboard.dismiss();
           queryClient.invalidateQueries({
-            queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "best" }),
-          });
-          queryClient.invalidateQueries({
-            queryKey: getGetQuoteCommentsQueryKey(quoteId, { filter: "friends" }),
+            queryKey: getGetQuoteCommentsQueryKey(quoteId),
           });
           onCommentSaved?.(visibility);
         },
       },
     );
-  }, [user, quoteId, commentText, visibility, createComment, queryClient, onCommentSaved]);
+  }, [user, quoteId, commentText, visibility, containsSpoilers, createComment, queryClient, onCommentSaved, roomId, myProgress]);
 
   const translateY = slideAnim.interpolate({
     inputRange: [0, 1],
@@ -452,9 +909,16 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
           {/* ── Reply thread view ── */}
           {replyThread ? (
             <ReplyThread
+              // Remount when switching threads so per-thread state (draft text,
+              // spoiler reveal) never leaks between different parent comments.
+              key={replyThread.id}
               parentComment={replyThread}
               onBack={() => setReplyThread(null)}
               bottomPad={bottomPad}
+              roomId={roomId}
+              myProgress={myProgress}
+              onEditComment={setEditingComment}
+              onDeleteComment={handleDeleteComment}
             />
           ) : (
             /* ── Main comment list view ── */
@@ -505,14 +969,21 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
               <FlatList<Comment>
                 style={styles.list}
                 data={comments ?? []}
-                keyExtractor={(item) => String(item.id)}
+                keyExtractor={(item, index) => String(item.id ?? index)}
                 renderItem={({ item }) => (
-                  <CommentCard
-                    comment={item}
-                    onLike={handleLike}
-                    onSave={handleSave}
-                    onReply={setReplyThread}
-                  />
+                  <ProgressGuard
+                    authorProgress={roomId ? item.authorProgress : null}
+                    myProgress={myProgress}
+                  >
+                    <CommentCard
+                      comment={item}
+                      onLike={handleLike}
+                      onSave={handleSave}
+                      onReply={setReplyThread}
+                      onEdit={setEditingComment}
+                      onDelete={handleDeleteComment}
+                    />
+                  </ProgressGuard>
                 )}
                 ListEmptyComponent={
                   isLoading ? (
@@ -543,6 +1014,41 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
                 keyboardShouldPersistTaps="handled"
               />
 
+              {suggestions.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={[styles.chipsScroll, { borderColor: colors.border }]}
+                  contentContainerStyle={styles.chipsContent}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {suggestions.map((s) => (
+                    <Pressable
+                      key={s.username}
+                      onPress={() => handleMentionChip(s.username)}
+                      style={({ pressed }) => [
+                        styles.mentionChip,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
+                          borderRadius: colors.radius,
+                          opacity: pressed ? 0.7 : 1,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.mentionChipText, { color: colors.primary }]}>
+                        {s.nickname?.trim() ? s.nickname.trim() : `@${s.username}`}
+                      </Text>
+                      {s.nickname?.trim() ? (
+                        <Text style={[styles.mentionChipSub, { color: colors.mutedForeground }]}>
+                          @{s.username}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              ) : null}
+
               <View
                 style={[
                   styles.inputBar,
@@ -553,44 +1059,48 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
                 ]}
               >
                 <View style={styles.visibilityRow}>
-                  {VISIBILITY_OPTIONS.map((opt) => {
-                    const active = visibility === opt.value;
-                    return (
-                      <Pressable
-                        key={opt.value}
-                        onPress={() => setVisibility(opt.value)}
-                        style={[
-                          styles.visChip,
-                          {
-                            backgroundColor: active ? colors.primary : colors.card,
-                            borderColor: active ? colors.primary : colors.border,
-                            borderRadius: colors.radius,
-                          },
-                        ]}
-                      >
-                        <Feather
-                          name={opt.icon}
-                          size={12}
-                          color={
-                            active ? colors.primaryForeground : colors.mutedForeground
-                          }
-                        />
-                        <Text
+                  {(roomId ? ROOM_VISIBILITY_OPTIONS : VISIBILITY_OPTIONS).map((opt) => {
+                      const active = visibility === opt.value;
+                      return (
+                        <Pressable
+                          key={opt.value}
+                          onPress={() => setVisibility(opt.value)}
                           style={[
-                            styles.visChipText,
+                            styles.visChip,
                             {
-                              color: active
-                                ? colors.primaryForeground
-                                : colors.mutedForeground,
+                              backgroundColor: active ? colors.primary : colors.card,
+                              borderColor: active ? colors.primary : colors.border,
+                              borderRadius: colors.radius,
                             },
                           ]}
                         >
-                          {opt.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                          <Feather
+                            name={opt.icon}
+                            size={12}
+                            color={
+                              active ? colors.primaryForeground : colors.mutedForeground
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.visChipText,
+                              {
+                                color: active
+                                  ? colors.primaryForeground
+                                  : colors.mutedForeground,
+                              },
+                            ]}
+                          >
+                            {opt.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                 </View>
+                <SpoilerCheckbox
+                  active={containsSpoilers}
+                  onToggle={() => setContainsSpoilers((prev) => !prev)}
+                />
                 <View style={styles.inputRow}>
                   <TextInput
                     style={[
@@ -637,6 +1147,12 @@ export function CommentSheet({ visible, quoteId, quoteText, onClose, onCommentSa
           )}
         </Animated.View>
       </KeyboardAvoidingView>
+      <EditCommentModal
+        comment={editingComment}
+        saving={updateComment.isPending}
+        onClose={() => setEditingComment(null)}
+        onSave={handleSaveEdit}
+      />
     </Modal>
   );
 }
@@ -646,6 +1162,38 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.6)",
   },
+  editOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.62)",
+    justifyContent: "center",
+    padding: 24,
+  },
+  editCard: {
+    borderWidth: 1,
+    padding: 18,
+    gap: 14,
+  },
+  editHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  editTitle: { fontSize: 17, fontWeight: "700" },
+  editInput: {
+    minHeight: 120,
+    maxHeight: 220,
+    borderWidth: 1,
+    padding: 12,
+    fontSize: 15,
+    lineHeight: 21,
+    textAlignVertical: "top",
+  },
+  editSave: {
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editSaveText: { fontSize: 14, fontWeight: "700" },
   kvWrapper: {
     flex: 1,
     justifyContent: "flex-end",
@@ -723,6 +1271,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  spoilerCheckRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "flex-start",
+  },
+  spoilerCheckBox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  spoilerCheckLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -795,6 +1361,41 @@ const styles = StyleSheet.create({
   },
   mentionChipText: {
     fontSize: 12,
+    fontWeight: "600",
+  },
+  mentionChipSub: {
+    fontSize: 10,
+    marginTop: 1,
+  },
+  parentUserRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  spoilerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  spoilerBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  spoilerCover: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  spoilerCoverText: {
+    fontSize: 13,
     fontWeight: "600",
   },
 });

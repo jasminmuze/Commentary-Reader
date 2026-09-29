@@ -15,6 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { setBaseUrl } from "@workspace/api-client-react";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PushTokenRegistrar } from "@/components/PushTokenRegistrar";
 import { UserProvider } from "@/context/UserContext";
 
 // Configure base URL for API calls from Expo (which runs outside the web proxy)
@@ -33,9 +34,14 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="book/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="read/[libraryId]" options={{ headerShown: false }} />
+      <Stack.Screen name="readium/[libraryId]" options={{ headerShown: false }} />
       <Stack.Screen name="match/[libraryId]" options={{ headerShown: false }} />
       <Stack.Screen name="user/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="records/index" options={{ headerShown: false }} />
+      <Stack.Screen name="notification-settings" options={{ headerShown: false }} />
+      <Stack.Screen name="records/[bookId]" options={{ headerShown: false }} />
+      <Stack.Screen name="room/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="room/create" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -63,6 +69,7 @@ export default function RootLayout() {
           <GestureHandlerRootView>
             <KeyboardProvider>
               <UserProvider>
+                <PushTokenRegistrar />
                 <RootLayoutNav />
               </UserProvider>
             </KeyboardProvider>

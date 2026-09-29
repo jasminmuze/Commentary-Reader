@@ -12,6 +12,14 @@ expo-env.d.ts
 # Native
 ios/
 android/
+!native/
+!native/readium-host/
+!native/readium-host/android/
+!native/readium-host/android/*.kt
+!native/readium-host/ios/
+!native/readium-host/ios/*.swift
+!native/readium-host/ios/*.m
+!native/readium-host/ios/*.podspec
 *.orig.*
 *.jks
 *.p8
@@ -39,3 +47,6 @@ yarn-error.*
 .vercel
 
 .env
+
+# expo static production build output
+static-build/

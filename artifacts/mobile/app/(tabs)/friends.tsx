@@ -13,11 +13,14 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
+import { router } from "expo-router";
 import {
   useGetFriends,
   useSearchUsers,
   useAddFriend,
   useRemoveFriend,
+  useSendFriendRequest,
+  useAcceptFriendRequest,
   getGetFriendsQueryKey,
   getSearchUsersQueryKey,
 } from "@workspace/api-client-react";
@@ -40,43 +43,61 @@ export default function FriendsScreen() {
   });
 
   const { data: searchResults, isLoading: loadingSearch } = useSearchUsers(
-    { q: query, userId: user?.id },
+    { q: query },
     {
       query: {
         enabled: query.length >= 2,
-        queryKey: getSearchUsersQueryKey({ q: query, userId: user?.id }),
+        queryKey: getSearchUsersQueryKey({ q: query }),
       },
     }
   );
 
   const addFriend = useAddFriend();
   const removeFriend = useRemoveFriend();
+  const sendFriendRequest = useSendFriendRequest();
+  const acceptFriendRequest = useAcceptFriendRequest();
+
+  // Refresh both the Following list and the current search results so
+  // buttons flip to Following / Requested immediately after a press.
+  const invalidateLists = useCallback(() => {
+    if (!user) return;
+    queryClient.invalidateQueries({ queryKey: getGetFriendsQueryKey(user.id) });
+    queryClient.invalidateQueries({ queryKey: getSearchUsersQueryKey({ q: query }) });
+  }, [user, queryClient, query]);
 
   const handleAdd = useCallback((friendId: number) => {
     if (!user) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     addFriend.mutate(
       { userId: user.id, data: { friendId } },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetFriendsQueryKey(user.id) });
-        },
-      }
+      { onSuccess: invalidateLists }
     );
-  }, [user, addFriend, queryClient]);
+  }, [user, addFriend, invalidateLists]);
 
   const handleRemove = useCallback((friendId: number) => {
     if (!user) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     removeFriend.mutate(
       { userId: user.id, friendId },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetFriendsQueryKey(user.id) });
-        },
-      }
+      { onSuccess: invalidateLists }
     );
-  }, [user, removeFriend, queryClient]);
+  }, [user, removeFriend, invalidateLists]);
+
+  const handleFriendRequest = useCallback((targetId: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    sendFriendRequest.mutate(
+      { data: { recipientId: targetId } },
+      { onSuccess: invalidateLists }
+    );
+  }, [sendFriendRequest, invalidateLists]);
+
+  const handleAcceptRequest = useCallback((targetId: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    acceptFriendRequest.mutate(
+      { requesterId: targetId },
+      { onSuccess: invalidateLists, onError: invalidateLists }
+    );
+  }, [acceptFriendRequest, invalidateLists]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -96,7 +117,7 @@ export default function FriendsScreen() {
         <Feather name="search" size={16} color={colors.mutedForeground} />
         <TextInput
           style={[styles.searchInput, { color: colors.foreground }]}
-          placeholder="Search readers by username..."
+          placeholder="Search readers by username or nickname..."
           placeholderTextColor={colors.mutedForeground}
           value={query}
           onChangeText={setQuery}
@@ -115,33 +136,97 @@ export default function FriendsScreen() {
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>SEARCH RESULTS</Text>
           <FlatList<UserWithFriendStatus>
             data={searchResults ?? []}
-            keyExtractor={(item) => String(item.id)}
-            renderItem={({ item }) => (
-              <View style={[styles.userRow, { borderColor: colors.border }]}>
-                <UserAvatar username={item.username} avatarColor={item.avatarColor} size={42} />
-                <Text style={[styles.userName, { color: colors.foreground }]}>{item.username}</Text>
+            keyExtractor={(item, index) => String(item.id ?? index)}
+            renderItem={({ item }) => {
+              const following = item.isFollowing ?? item.isFriend;
+              const friendLabel =
+                item.friendStatus === "friends"
+                  ? "Friends"
+                  : item.friendStatus === "requested"
+                    ? "Requested"
+                    : item.friendStatus === "incoming"
+                      ? "Accept"
+                      : "Friend";
+              const friendDisabled =
+                item.friendStatus === "friends" || item.friendStatus === "requested";
+              return (
                 <Pressable
                   style={({ pressed }) => [
-                    styles.actionBtn,
-                    {
-                      backgroundColor: item.isFriend ? colors.muted : colors.primary,
-                      borderRadius: colors.radius,
-                      opacity: pressed ? 0.8 : 1,
-                    },
+                    styles.userRow,
+                    { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
                   ]}
-                  onPress={() => item.isFriend ? handleRemove(item.id) : handleAdd(item.id)}
+                  onPress={() => router.push(`/user/${item.id}`)}
                 >
-                  <Text style={[styles.actionBtnText, { color: item.isFriend ? colors.mutedForeground : colors.primaryForeground }]}>
-                    {item.isFriend ? "Following" : "Follow"}
-                  </Text>
+                  <UserAvatar
+                    username={item.username}
+                    nickname={item.nickname}
+                    avatarUrl={item.avatarUrl}
+                    avatarColor={item.avatarColor}
+                    size={42}
+                  />
+                  <View style={styles.nameCol}>
+                    <Text style={[styles.userName, { color: colors.foreground }]} numberOfLines={1}>
+                      {item.nickname?.trim() || item.username}
+                    </Text>
+                    <Text style={[styles.userHandle, { color: colors.mutedForeground }]} numberOfLines={1}>
+                      @{item.username}
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      {
+                        backgroundColor: following ? colors.muted : colors.primary,
+                        borderRadius: colors.radius,
+                        opacity: pressed ? 0.8 : 1,
+                      },
+                    ]}
+                    onPress={() => (following ? handleRemove(item.id) : handleAdd(item.id))}
+                  >
+                    <Text
+                      style={[
+                        styles.actionBtnText,
+                        { color: following ? colors.mutedForeground : colors.primaryForeground },
+                      ]}
+                    >
+                      {following ? "Following" : "Follow"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={friendDisabled}
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      {
+                        backgroundColor: friendDisabled ? colors.muted : colors.card,
+                        borderWidth: friendDisabled ? 0 : 1,
+                        borderColor: colors.primary,
+                        borderRadius: colors.radius,
+                        opacity: pressed ? 0.8 : 1,
+                      },
+                    ]}
+                    onPress={() =>
+                      item.friendStatus === "incoming"
+                        ? handleAcceptRequest(item.id)
+                        : handleFriendRequest(item.id)
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.actionBtnText,
+                        { color: friendDisabled ? colors.mutedForeground : colors.primary },
+                      ]}
+                    >
+                      {friendLabel}
+                    </Text>
+                  </Pressable>
                 </Pressable>
-              </View>
-            )}
+              );
+            }}
             ListEmptyComponent={
               loadingSearch ? (
                 <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
               ) : (
-                <EmptyState icon="search" title="No readers found" subtitle={`No one with username matching "${query}"`} />
+                <EmptyState icon="search" title="No readers found" subtitle={`No one matching "${query}"`} />
               )
             }
             contentContainerStyle={[styles.list, { paddingBottom: bottomPad + 80 }]}
@@ -152,11 +237,19 @@ export default function FriendsScreen() {
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>FOLLOWING</Text>
           <FlatList<User>
             data={friends ?? []}
-            keyExtractor={(item) => String(item.id)}
+            keyExtractor={(item, index) => String(item.id ?? index)}
             renderItem={({ item }) => (
               <View style={[styles.userRow, { borderColor: colors.border }]}>
-                <UserAvatar username={item.username} avatarColor={item.avatarColor} size={42} />
-                <Text style={[styles.userName, { color: colors.foreground }]}>{item.username}</Text>
+                <UserAvatar
+                  username={item.username}
+                  nickname={item.nickname}
+                  avatarUrl={item.avatarUrl}
+                  avatarColor={item.avatarColor}
+                  size={42}
+                />
+                <Text style={[styles.userName, { color: colors.foreground }]}>
+                  {item.nickname?.trim() || item.username}
+                </Text>
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionBtn,
@@ -239,6 +332,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: "600",
+  },
+  nameCol: {
+    flex: 1,
+    gap: 1,
+  },
+  userHandle: {
+    fontSize: 12,
   },
   actionBtn: {
     paddingHorizontal: 16,

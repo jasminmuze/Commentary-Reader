@@ -3,13 +3,12 @@ import * as FileSystem from "expo-file-system/legacy";
 import { getAuthToken } from "@workspace/api-client-react";
 
 /**
- * Local re-implementation of `@epubjs-react-native/expo-file-system`'s
- * `useFileSystem`, but importing from `expo-file-system/legacy`.
+ * File-system helpers built on `expo-file-system/legacy` (Expo SDK 54 moved
+ * the classic API behind the `/legacy` entrypoint).
  *
- * Expo SDK 54 moved the classic file-system API behind the `/legacy`
- * entrypoint; the published plugin imports from the package root and crashes at
- * runtime. The `Reader` component calls this hook and uses the returned helpers
- * to download and cache the EPUB locally before rendering it in the WebView.
+ * The Readium reader screen uses these helpers to download and cache the
+ * EPUB locally (with the auth token attached) before handing the file path
+ * to the native reader view.
  */
 export function useFileSystem() {
   const [file, setFile] = useState<string | null>(null);
@@ -56,8 +55,10 @@ export function useFileSystem() {
   }, []);
 
   const readAsStringAsync = useCallback(
-    (fileUri: string, options?: { encoding?: "utf8" | "base64" }) =>
-      FileSystem.readAsStringAsync(fileUri, options as never),
+    (
+      fileUri: string,
+      options?: { encoding?: "utf8" | "base64"; position?: number; length?: number },
+    ) => FileSystem.readAsStringAsync(fileUri, options as never),
     [],
   );
 
@@ -74,6 +75,10 @@ export function useFileSystem() {
     await FileSystem.deleteAsync(fileUri, { idempotent: true });
   }, []);
 
+  const moveAsync = useCallback(async (from: string, to: string) => {
+    await FileSystem.moveAsync({ from, to });
+  }, []);
+
   return {
     file,
     progress,
@@ -87,6 +92,7 @@ export function useFileSystem() {
     readAsStringAsync,
     writeAsStringAsync,
     deleteAsync,
+    moveAsync,
     downloadFile,
     getFileInfo,
   };

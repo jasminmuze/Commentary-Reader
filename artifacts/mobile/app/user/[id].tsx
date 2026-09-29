@@ -15,10 +15,15 @@ import * as Haptics from "expo-haptics";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetUserProfile,
+  useGetUserRooms,
   useAddFriend,
   useRemoveFriend,
+  useSendFriendRequest,
+  useAcceptFriendRequest,
   getGetUserProfileQueryKey,
+  getGetUserRoomsQueryKey,
   getGetFriendsQueryKey,
+  getGetNotificationsQueryKey,
 } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
@@ -40,12 +45,24 @@ export default function UserProfileScreen() {
     },
   });
 
+  const { data: userRooms } = useGetUserRooms(profileId, {
+    query: {
+      enabled: validId,
+      queryKey: getGetUserRoomsQueryKey(profileId),
+    },
+  });
+
   const addFriend = useAddFriend();
   const removeFriend = useRemoveFriend();
+  const sendFriendRequest = useSendFriendRequest();
+  const acceptFriendRequest = useAcceptFriendRequest();
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: getGetUserProfileQueryKey(profileId) });
-    if (user) queryClient.invalidateQueries({ queryKey: getGetFriendsQueryKey(user.id) });
+    if (user) {
+      queryClient.invalidateQueries({ queryKey: getGetFriendsQueryKey(user.id) });
+      queryClient.invalidateQueries({ queryKey: getGetNotificationsQueryKey(user.id) });
+    }
   }, [queryClient, profileId, user]);
 
   const handleToggleFollow = useCallback(() => {
@@ -58,10 +75,27 @@ export default function UserProfileScreen() {
     }
   }, [user, profile, addFriend, removeFriend, invalidate]);
 
+  const handleFriendAction = useCallback(() => {
+    if (!user || !profile) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (profile.friendStatus === "none") {
+      sendFriendRequest.mutate(
+        { data: { recipientId: profile.id } },
+        { onSuccess: invalidate },
+      );
+    } else if (profile.friendStatus === "incoming") {
+      acceptFriendRequest.mutate(
+        { requesterId: profile.id },
+        { onSuccess: invalidate, onError: invalidate },
+      );
+    }
+  }, [user, profile, sendFriendRequest, acceptFriendRequest, invalidate]);
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const pending = addFriend.isPending || removeFriend.isPending;
+  const followPending = addFriend.isPending || removeFriend.isPending;
+  const friendPending = sendFriendRequest.isPending || acceptFriendRequest.isPending;
 
   const Header = (
     <View style={[styles.navBar, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
@@ -80,7 +114,7 @@ export default function UserProfileScreen() {
         <View style={styles.center}>
           <Feather name="user-x" size={40} color={colors.mutedForeground} />
           <Text style={[styles.notFound, { color: colors.mutedForeground }]}>
-            This reader could not be found.
+            We couldn't find this user.
           </Text>
         </View>
       </View>
@@ -99,8 +133,8 @@ export default function UserProfileScreen() {
   }
 
   const memberSince = new Date(profile.createdAt).toLocaleDateString("en-US", {
-    month: "long",
     year: "numeric",
+    month: "long",
   });
 
   const followLabel = profile.isFollowedByMe
@@ -108,6 +142,28 @@ export default function UserProfileScreen() {
     : profile.followsMe
       ? "Follow back"
       : "Follow";
+
+  const friendStatus = profile.friendStatus;
+  const friendLabel =
+    friendStatus === "friends"
+      ? "Friends"
+      : friendStatus === "requested"
+        ? "Requested"
+        : friendStatus === "incoming"
+          ? "Accept request"
+          : "Add friend";
+  const friendIcon: React.ComponentProps<typeof Feather>["name"] =
+    friendStatus === "friends"
+      ? "check"
+      : friendStatus === "requested"
+        ? "clock"
+        : friendStatus === "incoming"
+          ? "user-check"
+          : "users";
+  const friendDisabled =
+    friendPending || friendStatus === "friends" || friendStatus === "requested";
+  // Filled style when actionable, muted when resolved/pending.
+  const friendActive = friendStatus === "none" || friendStatus === "incoming";
 
   const stats: { label: string; value: number }[] = [
     { label: "Followers", value: profile.followerCount },
@@ -124,10 +180,21 @@ export default function UserProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.profileSection}>
-          <UserAvatar username={profile.username} avatarColor={profile.avatarColor} size={88} />
-          <Text style={[styles.name, { color: colors.foreground }]}>{profile.username}</Text>
+          <UserAvatar
+            username={profile.username}
+            nickname={profile.nickname}
+            avatarUrl={profile.avatarUrl}
+            avatarColor={profile.avatarColor}
+            size={88}
+          />
+          <Text style={[styles.name, { color: colors.foreground }]}>
+            {profile.nickname?.trim() || profile.username}
+          </Text>
           <Text style={[styles.since, { color: colors.mutedForeground }]}>
-            Member since {memberSince}
+            @{profile.username}
+          </Text>
+          <Text style={[styles.since, { color: colors.mutedForeground }]}>
+            Reading along since {memberSince}
           </Text>
           {profile.followsMe && !profile.isMe ? (
             <View style={[styles.followsBadge, { backgroundColor: colors.muted, borderRadius: colors.radius }]}>
@@ -146,39 +213,113 @@ export default function UserProfileScreen() {
         </View>
 
         {!profile.isMe ? (
-          <Pressable
-            style={({ pressed }) => [
-              styles.followBtn,
-              {
-                backgroundColor: profile.isFollowedByMe ? colors.muted : colors.primary,
-                borderColor: profile.isFollowedByMe ? colors.border : colors.primary,
-                borderRadius: colors.radius,
-                opacity: pressed || pending ? 0.8 : 1,
-              },
-            ]}
-            onPress={handleToggleFollow}
-            disabled={pending}
-          >
-            {pending ? (
-              <ActivityIndicator color={profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground} />
-            ) : (
-              <>
-                <Feather
-                  name={profile.isFollowedByMe ? "user-check" : "user-plus"}
-                  size={16}
-                  color={profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground}
-                />
-                <Text
-                  style={[
-                    styles.followBtnText,
-                    { color: profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground },
-                  ]}
-                >
-                  {followLabel}
+          <View style={styles.actionRow}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionBtn,
+                {
+                  backgroundColor: profile.isFollowedByMe ? colors.muted : colors.primary,
+                  borderColor: profile.isFollowedByMe ? colors.border : colors.primary,
+                  borderRadius: colors.radius,
+                  opacity: pressed || followPending ? 0.8 : 1,
+                },
+              ]}
+              onPress={handleToggleFollow}
+              disabled={followPending}
+            >
+              {followPending ? (
+                <ActivityIndicator color={profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground} />
+              ) : (
+                <>
+                  <Feather
+                    name={profile.isFollowedByMe ? "user-check" : "user-plus"}
+                    size={16}
+                    color={profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.actionBtnText,
+                      { color: profile.isFollowedByMe ? colors.mutedForeground : colors.primaryForeground },
+                    ]}
+                  >
+                    {followLabel}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionBtn,
+                {
+                  backgroundColor: friendActive ? colors.card : colors.muted,
+                  borderColor: friendActive ? colors.primary : colors.border,
+                  borderRadius: colors.radius,
+                  opacity: pressed || friendPending ? 0.8 : 1,
+                },
+              ]}
+              onPress={handleFriendAction}
+              disabled={friendDisabled}
+            >
+              {friendPending ? (
+                <ActivityIndicator color={colors.mutedForeground} />
+              ) : (
+                <>
+                  <Feather
+                    name={friendIcon}
+                    size={16}
+                    color={friendActive ? colors.primary : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.actionBtnText,
+                      { color: friendActive ? colors.primary : colors.mutedForeground },
+                    ]}
+                  >
+                    {friendLabel}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* Rooms section — only show if the user belongs to any public rooms */}
+        {userRooms && userRooms.length > 0 ? (
+          <View style={styles.roomsSection}>
+            <Text style={[styles.roomsSectionTitle, { color: colors.mutedForeground }]}>
+              READING ROOMS
+            </Text>
+            {userRooms.map((room) => (
+              <Pressable
+                key={room.id}
+                onPress={() => router.push(`/room/${room.id}`)}
+                style={({ pressed }) => [
+                  styles.roomRow,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    borderRadius: colors.radius,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <View style={[styles.roomDot, { backgroundColor: room.coverColor }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.roomName, { color: colors.foreground }]} numberOfLines={1}>
+                    {room.name}
+                  </Text>
+                  <Text style={[styles.roomBook, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    {room.bookTitle}
+                  </Text>
+                </View>
+                <Text style={[styles.roomCount, { color: colors.mutedForeground }]}>
+                  {room.memberCount} {room.memberCount === 1 ? "member" : "members"}
                 </Text>
-              </>
-            )}
-          </Pressable>
+                <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
+              </Pressable>
+            ))}
+          </View>
         ) : null}
       </ScrollView>
     </View>
@@ -257,18 +398,59 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
   },
-  followBtn: {
+  actionRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 24,
+  },
+  actionBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     height: 48,
-    marginHorizontal: 16,
-    marginTop: 24,
     borderWidth: 1,
   },
-  followBtnText: {
+  actionBtnText: {
     fontSize: 15,
     fontWeight: "700",
+  },
+  roomsSection: {
+    marginHorizontal: 16,
+    marginTop: 28,
+    gap: 8,
+  },
+  roomsSectionTitle: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  roomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+  },
+  roomDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  roomName: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  roomBook: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  roomCount: {
+    fontSize: 12,
   },
 });

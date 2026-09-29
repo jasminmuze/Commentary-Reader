@@ -1,24 +1,33 @@
 {
   "expo": {
-    "name": "Bookmarks",
+    "name": "Shelfmates",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "shelfmates",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0E1117"
+      "backgroundColor": "#F9F6F0"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "app.shelfmates",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Shelfmates uses your photo library so you can pick a profile photo.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
-    "android": {},
+    "android": {
+      "package": "app.shelfmates",
+      "versionCode": 1
+    },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       [
@@ -28,11 +37,19 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-notifications",
+      "expo-web-browser",
+      "./plugins/withReadium.js"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a284d87c-da56-4e0d-9d2c-a3a6c87456ef"
+      }
+    },
+    "owner": "jasminmuze"
   }
 }

@@ -1,13 +1,15 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,7 +27,7 @@ import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { EmptyState } from "@/components/EmptyState";
 import { BookCardShimmer } from "@/components/LoadingShimmer";
-import { uploadEpub } from "@/lib/api";
+import { apiUrl, uploadEpub } from "@/lib/api";
 
 function LibraryCard({ entry, onOpen, onMatch }: {
   entry: LibraryEntry;
@@ -33,9 +35,9 @@ function LibraryCard({ entry, onOpen, onMatch }: {
   onMatch: () => void;
 }) {
   const colors = useColors();
-  const title = entry.book?.title ?? entry.originalTitle ?? "제목 미상";
-  const author = entry.book?.author ?? entry.originalAuthor ?? "저자 미상";
-  const spineColor = entry.book?.coverColor ?? "#3A3F4B";
+  const title = entry.book?.title ?? entry.originalTitle ?? "Untitled";
+  const author = entry.book?.author ?? entry.originalAuthor ?? "Unknown author";
+  const spineColor = entry.book?.coverColor ?? "#A08B76";
   const matched = !!entry.canonicalBookId;
 
   return (
@@ -51,9 +53,17 @@ function LibraryCard({ entry, onOpen, onMatch }: {
       ]}
       onPress={onOpen}
     >
-      <View style={[styles.spine, { backgroundColor: spineColor, borderRadius: colors.radius }]}>
-        <Text style={styles.spineTitle} numberOfLines={6}>{title}</Text>
-      </View>
+      {entry.book?.coverUrl ? (
+        <Image
+          source={{ uri: apiUrl(`/api${entry.book.coverUrl}`) }}
+          style={[styles.coverImage, { borderRadius: colors.radius }]}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.spine, { backgroundColor: spineColor, borderRadius: colors.radius }]}>
+          <Text style={styles.spineTitle} numberOfLines={6}>{title}</Text>
+        </View>
+      )}
       <View style={styles.cardInfo}>
         <Text style={[styles.cardTitle, { color: colors.foreground }]} numberOfLines={2}>{title}</Text>
         <Text style={[styles.cardAuthor, { color: colors.mutedForeground }]} numberOfLines={1}>{author}</Text>
@@ -62,13 +72,13 @@ function LibraryCard({ entry, onOpen, onMatch }: {
           <View style={styles.chipRow}>
             <View style={[styles.chip, { backgroundColor: `${colors.primary}22` }]}>
               <Feather name="check-circle" size={12} color={colors.primary} />
-              <Text style={[styles.chipText, { color: colors.primary }]}>매칭됨 · {entry.book?.highlightCount ?? 0} 하이라이트</Text>
+              <Text style={[styles.chipText, { color: colors.primary }]}>Matched · {entry.book?.highlightCount ?? 0} highlights</Text>
             </View>
           </View>
         ) : (
           <Pressable onPress={onMatch} style={[styles.matchInline, { borderColor: colors.primary }]}>
             <Feather name="link" size={12} color={colors.primary} />
-            <Text style={[styles.chipText, { color: colors.primary }]}>커뮤니티 책과 매칭하기</Text>
+            <Text style={[styles.chipText, { color: colors.primary }]}>Match to a community book</Text>
           </Pressable>
         )}
 
@@ -86,7 +96,7 @@ function LibraryCard({ entry, onOpen, onMatch }: {
               />
             </View>
             <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>
-              {entry.readingProgress}% 읽음
+              {entry.readingProgress}% read
             </Text>
           </View>
         )}
@@ -104,6 +114,7 @@ export default function LibraryScreen() {
   const { user } = useUser();
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
+  const [search, setSearch] = useState("");
 
   const { data: library, isLoading, refetch, isRefetching } = useGetUserLibrary(
     user?.id ?? 0,
@@ -121,7 +132,7 @@ export default function LibraryScreen() {
       if (picked.canceled || !picked.assets?.[0]) return;
       const asset = picked.assets[0];
       if (!/\.epub$/i.test(asset.name ?? "")) {
-        Alert.alert("EPUB 파일만 가능해요", "확장자가 .epub인 파일을 선택해 주세요.");
+        Alert.alert("EPUB files only", "Please choose a file with the .epub extension.");
         return;
       }
       setUploading(true);
@@ -132,25 +143,39 @@ export default function LibraryScreen() {
           onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: getGetUserLibraryQueryKey(user.id) });
             if (data.match.status === "matched") {
-              router.push(`/read/${data.entry.id}`);
+              router.push(`/readium/${data.entry.id}`);
             } else {
               router.push(`/match/${data.entry.id}`);
             }
           },
           onError: () => {
-            Alert.alert("업로드 실패", "라이브러리에 추가하지 못했어요. 다시 시도해 주세요.");
+            Alert.alert("Upload failed", "Couldn't add this to your library. Please try again.");
           },
           onSettled: () => setUploading(false),
         }
       );
     } catch (e) {
       setUploading(false);
-      Alert.alert("업로드 실패", e instanceof Error ? e.message : "파일을 업로드하지 못했어요.");
+      Alert.alert("Upload failed", e instanceof Error ? e.message : "Couldn't upload the file.");
     }
   }, [user, uploading, createLibraryEntry, queryClient]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const trimmedSearch = search.trim().toLowerCase();
+  const filteredLibrary = useMemo(() => {
+    const entries = library ?? [];
+    if (!trimmedSearch) return entries;
+    return entries.filter((entry) => {
+      const title = entry.book?.title ?? entry.originalTitle ?? "";
+      const author = entry.book?.author ?? entry.originalAuthor ?? "";
+      return (
+        title.toLowerCase().includes(trimmedSearch) ||
+        author.toLowerCase().includes(trimmedSearch)
+      );
+    });
+  }, [library, trimmedSearch]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -158,7 +183,7 @@ export default function LibraryScreen() {
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
         <View>
           <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Good reading,</Text>
-          <Text style={[styles.username, { color: colors.foreground }]}>{user?.username ?? "Reader"}</Text>
+          <Text style={[styles.username, { color: colors.foreground }]}>{user?.nickname?.trim() || user?.username || "Reader"}</Text>
         </View>
         <Pressable
           style={({ pressed }) => [styles.uploadBtn, { backgroundColor: colors.primary, opacity: pressed || uploading ? 0.8 : 1 }]}
@@ -173,15 +198,34 @@ export default function LibraryScreen() {
         </Pressable>
       </View>
 
+      <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+        <Feather name="search" size={18} color={colors.mutedForeground} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.foreground }]}
+          placeholder="Search your library by title or author"
+          placeholderTextColor={colors.mutedForeground}
+          value={search}
+          onChangeText={setSearch}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+        {search.length > 0 ? (
+          <Pressable onPress={() => setSearch("")} hitSlop={8}>
+            <Feather name="x-circle" size={18} color={colors.mutedForeground} />
+          </Pressable>
+        ) : null}
+      </View>
+
       <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>MY LIBRARY</Text>
 
       <FlatList<LibraryEntry>
-        data={library ?? []}
-        keyExtractor={(item) => String(item.id)}
+        data={filteredLibrary}
+        keyExtractor={(item, index) => String(item.id ?? index)}
         renderItem={({ item }) => (
           <LibraryCard
             entry={item}
-            onOpen={() => router.push(`/read/${item.id}`)}
+            onOpen={() => router.push(`/readium/${item.id}`)}
             onMatch={() => router.push(`/match/${item.id}`)}
           />
         )}
@@ -190,11 +234,17 @@ export default function LibraryScreen() {
             <View>
               {[1, 2, 3].map((i) => <BookCardShimmer key={i} />)}
             </View>
+          ) : trimmedSearch ? (
+            <EmptyState
+              icon="search"
+              title="No books found"
+              subtitle="No books in your library match that search"
+            />
           ) : (
             <EmptyState
               icon="upload"
-              title="라이브러리가 비어 있어요"
-              subtitle="오른쪽 위 + 버튼을 눌러 EPUB 파일을 업로드하고 읽기를 시작하세요"
+              title="Your library is empty"
+              subtitle="Tap the + button in the top right to upload an EPUB and start reading"
             />
           )
         }
@@ -235,6 +285,17 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 8,
   },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    height: 46,
+    borderWidth: 1,
+    marginHorizontal: 16,
+    marginTop: 16,
+  },
+  searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
   list: { flexGrow: 1 },
   card: {
     flexDirection: "row",
@@ -243,6 +304,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginHorizontal: 16,
     marginVertical: 6,
+  },
+  coverImage: {
+    width: 64,
+    minHeight: 92,
+    alignSelf: "stretch",
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
   },
   spine: {
     width: 64,

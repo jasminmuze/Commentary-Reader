@@ -8,27 +8,33 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { Section } from "@epubjs-react-native/core";
 import { useColors } from "@/hooks/useColors";
+
+export interface TocSection {
+  id: string;
+  label: string;
+  href: string;
+  subitems: TocSection[];
+}
 
 interface Props {
   visible: boolean;
-  toc: Section[];
+  toc: TocSection[];
   onSelect: (href: string) => void;
   onClose: () => void;
 }
 
 interface FlatItem {
-  item: Section;
+  item: TocSection;
   depth: number;
 }
 
-function flattenToc(items: Section[], depth = 0): FlatItem[] {
+function flattenToc(items: TocSection[], depth = 0): FlatItem[] {
   const result: FlatItem[] = [];
   for (const item of items) {
     result.push({ item, depth });
-    if (Array.isArray(item.subitems) && item.subitems.length > 0) {
-      result.push(...flattenToc(item.subitems as Section[], depth + 1));
+    if (item.subitems.length > 0) {
+      result.push(...flattenToc(item.subitems, depth + 1));
     }
   }
   return result;
@@ -60,18 +66,18 @@ export function TocPanel({ visible, toc, onSelect, onClose }: Props) {
       >
         <View style={[styles.header, { borderBottomColor: colors.border + "80" }]}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            목차
+            Contents
           </Text>
           <Pressable onPress={onClose} hitSlop={16} style={styles.closeBtn}>
             <Text style={[styles.closeTxt, { color: colors.mutedForeground }]}>
-              닫기
+              Close
             </Text>
           </Pressable>
         </View>
 
         {flatItems.length === 0 ? (
           <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-            목차 정보가 없어요
+            No table of contents available
           </Text>
         ) : (
           <FlatList

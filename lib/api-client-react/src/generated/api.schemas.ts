@@ -15,6 +15,11 @@ export interface Book {
   author: string;
   description: string;
   coverColor: string;
+  /**
+     * Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
+     * @nullable
+     */
+  coverUrl: string | null;
   quoteCount: number;
   commentCount: number;
   highlightCount: number;
@@ -33,16 +38,30 @@ export interface Quote {
   highlightedByMe?: boolean;
 }
 
+export interface QuoteReaderContext {
+  quoteId: number;
+  canonicalBookId: number;
+  quoteText: string;
+  /** Distinctive leading substring used to locate the quote in an EPUB */
+  searchText: string;
+  /**
+     * The viewer's library entry for this book, or null if not in their library
+     * @nullable
+     */
+  libraryId: number | null;
+}
+
 /**
- * Who can see a comment or highlight — public, friends (mutual follows), or private (author only)
+ * Who can see a comment or highlight — public, friends (mutual follows), private (author only), or room (members of its reading room only; requires roomId)
  */
-export type Visibility = typeof Visibility[keyof typeof Visibility];
+export type ContentVisibility = typeof ContentVisibility[keyof typeof ContentVisibility];
 
 
-export const Visibility = {
+export const ContentVisibility = {
   public: 'public',
   friends: 'friends',
   private: 'private',
+  room: 'room',
 } as const;
 
 export interface Comment {
@@ -50,9 +69,13 @@ export interface Comment {
   quoteId: number;
   userId: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   text: string;
-  visibility: Visibility;
+  visibility: ContentVisibility;
   quoteText?: string;
   likeCount: number;
   likedByMe: boolean;
@@ -64,6 +87,18 @@ export interface Comment {
      * @nullable
      */
   parentId?: number | null;
+  /** Author-flagged spoiler; clients blur the text for other users until tapped */
+  containsSpoilers: boolean;
+  /**
+     * Non-null when the comment is scoped to a reading room (members only)
+     * @nullable
+     */
+  roomId: number | null;
+  /**
+     * Author's reading progress (0-100) when writing; null when unknown or not room-scoped
+     * @nullable
+     */
+  authorProgress: number | null;
   createdAt: string;
 }
 
@@ -73,6 +108,11 @@ export interface BookDetail {
   author: string;
   description: string;
   coverColor: string;
+  /**
+     * Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
+     * @nullable
+     */
+  coverUrl: string | null;
   quoteCount: number;
   commentCount: number;
   highlightCount: number;
@@ -83,7 +123,27 @@ export interface BookDetail {
 export interface CommentInput {
   /** @minLength 1 */
   text: string;
-  visibility?: Visibility;
+  visibility?: ContentVisibility;
+  /** Mark this comment as containing spoilers (default false) */
+  containsSpoilers?: boolean;
+  /** Scope this comment to a reading room (author must be a member) */
+  roomId?: number;
+  /**
+     * Author's reading progress when writing (room spoiler guard)
+     * @minimum 0
+     * @maximum 100
+     */
+  authorProgress?: number;
+}
+
+export interface UpdateCommentInput {
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  text: string;
+  visibility: ContentVisibility;
+  containsSpoilers: boolean;
 }
 
 export interface CreateQuoteInput {
@@ -97,7 +157,15 @@ export interface CreateQuoteInput {
 export interface HighlightInput {
   userLibraryId?: number;
   cfiRange?: string;
-  visibility?: Visibility;
+  visibility?: ContentVisibility;
+  /** Scope this highlight to a reading room (author must be a member) */
+  roomId?: number;
+  /**
+     * Author's reading progress when highlighting (room spoiler guard)
+     * @minimum 0
+     * @maximum 100
+     */
+  authorProgress?: number;
 }
 
 export interface HighlightResult {
@@ -191,19 +259,65 @@ export interface UserRef {
   userId: number;
 }
 
+/**
+ * Default visibility for new comments/highlights — public, friends (mutual follows), or private (author only)
+ */
+export type Visibility = typeof Visibility[keyof typeof Visibility];
+
+
+export const Visibility = {
+  public: 'public',
+  friends: 'friends',
+  private: 'private',
+} as const;
+
 export interface User {
   id: number;
   username: string;
+  /**
+     * Display name shown instead of the username; null falls back to username
+     * @nullable
+     */
+  nickname: string | null;
+  /**
+     * Object path of the profile photo (e.g. /public-objects/avatars/...); null falls back to the colored initial avatar
+     * @nullable
+     */
+  avatarUrl: string | null;
+  /**
+     * Only returned for the user themself (signup, login, self lookup); null otherwise or for legacy accounts
+     * @nullable
+     */
+  email: string | null;
+  /** Whether the user confirmed their email; only meaningful in self contexts */
+  emailVerified: boolean;
   avatarColor: string;
   defaultVisibility: Visibility;
   createdAt: string;
-  /** HMAC-signed bearer token — only present in POST /users response */
+  /** HMAC-signed bearer token — only present in POST /users and POST /users/login responses */
   token?: string;
 }
+
+/**
+ * Friend relationship between the viewer and this profile: none = no relationship, requested = viewer sent a pending request, incoming = this profile sent the viewer a pending request, friends = mutual follow (friends). Always "none" on your own profile.
+ */
+export type UserProfileFriendStatus = typeof UserProfileFriendStatus[keyof typeof UserProfileFriendStatus];
+
+
+export const UserProfileFriendStatus = {
+  none: 'none',
+  requested: 'requested',
+  incoming: 'incoming',
+  friends: 'friends',
+} as const;
 
 export interface UserProfile {
   id: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   createdAt: string;
   followerCount: number;
@@ -216,31 +330,140 @@ export interface UserProfile {
   followsMe: boolean;
   /** Whether this profile is the requesting user */
   isMe: boolean;
+  /** Friend relationship between the viewer and this profile: none = no relationship, requested = viewer sent a pending request, incoming = this profile sent the viewer a pending request, friends = mutual follow (friends). Always "none" on your own profile. */
+  friendStatus: UserProfileFriendStatus;
 }
 
 export interface UpdateUserSettings {
-  defaultVisibility: Visibility;
+  defaultVisibility?: Visibility;
+  /**
+     * New display name; null or empty string clears it (falls back to username)
+     * @maxLength 30
+     * @nullable
+     */
+  nickname?: string | null;
 }
+
+export interface VerifyEmailInput {
+  /**
+     * The 6-digit verification code from the email
+     * @minLength 6
+     * @maxLength 6
+     */
+  code: string;
+}
+
+export interface AvatarUploadUrl {
+  /** Presigned PUT URL for uploading the avatar image */
+  uploadURL: string;
+}
+
+export interface SetAvatarInput {
+  /** The presigned upload URL (or object path) returned after upload */
+  uploadURL: string;
+}
+
+export interface NotificationSettings {
+  /** Notify on reading-room invites */
+  rooms: boolean;
+  /** Notify when someone likes my highlight or comment */
+  likes: boolean;
+  /** Notify when someone replies to my comment */
+  replies: boolean;
+  /** Notify when someone @mentions me */
+  mentions: boolean;
+  /** Notify on friend requests and accepts */
+  friends: boolean;
+}
+
+/**
+ * Friend relationship between the viewer and this user (friends = mutual follow).
+ */
+export type UserWithFriendStatusFriendStatus = typeof UserWithFriendStatusFriendStatus[keyof typeof UserWithFriendStatusFriendStatus];
+
+
+export const UserWithFriendStatusFriendStatus = {
+  none: 'none',
+  requested: 'requested',
+  incoming: 'incoming',
+  friends: 'friends',
+} as const;
 
 export interface UserWithFriendStatus {
   id: number;
   username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
   avatarColor: string;
   createdAt: string;
+  /** Deprecated alias of isFollowing (kept for older clients). */
   isFriend: boolean;
+  /** True when the viewer already follows this user. */
+  isFollowing: boolean;
+  /** Friend relationship between the viewer and this user (friends = mutual follow). */
+  friendStatus: UserWithFriendStatusFriendStatus;
+}
+
+export interface PasswordResetRequestInput {
+  /**
+     * The email address associated with the account
+     * @maxLength 254
+     */
+  email: string;
+}
+
+export interface PasswordResetConfirmInput {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * The 6-digit code from the reset email
+     * @minLength 6
+     * @maxLength 6
+     */
+  code: string;
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  newPassword: string;
 }
 
 export interface UserInput {
   /** @minLength 2 */
   username: string;
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * Optional display name shown instead of the username
+     * @minLength 1
+     * @maxLength 30
+     */
+  nickname?: string;
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  password: string;
+}
+
+export interface LoginInput {
+  /** Username or email address (email matched case-insensitively) */
+  identifier: string;
+  password: string;
 }
 
 export interface FriendInput {
   friendId: number;
 }
 
+export interface FriendRequestInput {
+  recipientId: number;
+}
+
 /**
- * reply = someone replied to your comment; mention = you were @mentioned
+ * reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room
  */
 export type NotificationItemType = typeof NotificationItemType[keyof typeof NotificationItemType];
 
@@ -248,19 +471,30 @@ export type NotificationItemType = typeof NotificationItemType[keyof typeof Noti
 export const NotificationItemType = {
   reply: 'reply',
   mention: 'mention',
+  friend_request: 'friend_request',
+  friend_accept: 'friend_accept',
+  highlight_like: 'highlight_like',
+  comment_like: 'comment_like',
+  room_invite: 'room_invite',
 } as const;
 
 export interface NotificationItem {
   id: number;
-  /** reply = someone replied to your comment; mention = you were @mentioned */
+  /** reply = someone replied to your comment; mention = you were @mentioned; friend_request = someone sent you a friend request; friend_accept = your friend request was accepted; highlight_like = someone liked your highlight; comment_like = someone liked your comment; room_invite = you were invited to a reading room */
   type: NotificationItemType;
   actorId: number;
   actorUsername: string;
+  /** @nullable */
+  actorNickname: string | null;
+  /** @nullable */
+  actorAvatarUrl: string | null;
   actorAvatarColor: string;
-  /** The reply comment that triggered the notification */
+  /** The reply comment that triggered the notification (0 for friend_* notifications) */
   commentId: number;
   /** Preview of the reply text */
   commentText: string;
+  /** True when the referenced comment is marked as containing spoilers AND the viewer is not its author — clients should mask commentText behind a spoiler placeholder. Always false for the comment author and for notifications without a comment. */
+  commentContainsSpoilers: boolean;
   /**
      * The original top-level comment (null for mention-only notifications)
      * @nullable
@@ -269,6 +503,13 @@ export interface NotificationItem {
   quoteId: number;
   /** The quote text for navigation context */
   quoteText?: string;
+  /**
+     * The reading room (room_invite notifications only)
+     * @nullable
+     */
+  roomId?: number | null;
+  /** The reading room name (room_invite notifications only) */
+  roomName?: string;
   read: boolean;
   createdAt: string;
 }
@@ -282,12 +523,320 @@ export interface UnreadCount {
   unreadCount: number;
 }
 
+export interface PushTokenInput {
+  /**
+     * Expo push token, e.g. ExponentPushToken[xxxxxxxx]
+     * @minLength 1
+     * @maxLength 4096
+     */
+  token: string;
+}
+
+/**
+ * General feedback or a bug report
+ */
+export type FeedbackInputType = typeof FeedbackInputType[keyof typeof FeedbackInputType];
+
+
+export const FeedbackInputType = {
+  feedback: 'feedback',
+  bug: 'bug',
+} as const;
+
+export interface FeedbackInput {
+  /** General feedback or a bug report */
+  type: FeedbackInputType;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  text: string;
+}
+
+export interface OkResult {
+  ok: boolean;
+}
+
+export interface DeleteAccountInput {
+  /**
+     * Current account password, required to confirm permanent deletion
+     * @minLength 1
+     */
+  password: string;
+}
+
+export interface DeleteAccountResult {
+  ok: true;
+  deleted: true;
+  /** True when account data was deleted but one or more owned storage objects could not be removed */
+  objectCleanupPending: boolean;
+  /**
+     * Number of upload objects retained because another account still references them
+     * @minimum 0
+     */
+  sharedObjectsRetained: number;
+}
+
+export interface UserRecordsBook {
+  bookId: number;
+  title: string;
+  author: string;
+  coverColor: string;
+  /** Number of my highlights in this book */
+  highlightCount: number;
+  /** Number of my comments in this book */
+  commentCount: number;
+  /** Number of comments I saved in this book */
+  savedCount: number;
+}
+
+export interface UserHighlightItem {
+  id: number;
+  quoteId: number;
+  bookId: number;
+  bookTitle: string;
+  bookAuthor: string;
+  coverColor: string;
+  quoteText: string;
+  createdAt: string;
+}
+
+export interface UserBookRecords {
+  book: UserRecordsBook;
+  highlights: UserHighlightItem[];
+  comments: Comment[];
+  savedComments: Comment[];
+}
+
+export type FeedItemType = typeof FeedItemType[keyof typeof FeedItemType];
+
+
+export const FeedItemType = {
+  highlight: 'highlight',
+  comment: 'comment',
+} as const;
+
+export interface FeedItem {
+  type: FeedItemType;
+  /** Highlight id or comment id depending on type */
+  id: number;
+  userId: number;
+  username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
+  avatarColor: string;
+  bookId: number;
+  bookTitle: string;
+  bookAuthor: string;
+  coverColor: string;
+  /**
+     * Public object path of the book cover image, or null for a color cover
+     * @nullable
+     */
+  coverUrl: string | null;
+  quoteId: number;
+  /** Quote text — truncated to a preview length unless the viewer owns the book */
+  quoteText: string;
+  /** Whether quoteText was truncated for copyright protection */
+  quoteTextTruncated: boolean;
+  /** Present only when type is comment */
+  commentText?: string;
+  /** Number of likes on this highlight or comment */
+  likeCount: number;
+  /** Whether the viewer has liked this item */
+  likedByMe: boolean;
+  /** True when a comment item is author-flagged as a spoiler (always false for highlights) */
+  containsSpoilers: boolean;
+  createdAt: string;
+}
+
+export interface FeedPage {
+  items: FeedItem[];
+  /**
+     * Pass as cursor to fetch the next page; null when there are no more items
+     * @nullable
+     */
+  nextCursor: string | null;
+}
+
+export interface CreateRoomInput {
+  canonicalBookId: number;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+  /** @maxLength 500 */
+  description?: string;
+  isPublic: boolean;
+}
+
+export interface UpdateRoomInput {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name?: string;
+  /** @maxLength 500 */
+  description?: string;
+  isPublic?: boolean;
+}
+
+export interface Room {
+  id: number;
+  canonicalBookId: number;
+  name: string;
+  description: string;
+  isPublic: boolean;
+  /**
+     * Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members
+     * @nullable
+     */
+  ownerId: number | null;
+  memberCount: number;
+  bookTitle: string;
+  bookAuthor: string;
+  coverColor: string;
+  /** Whether the viewer is a member of this room */
+  isMember?: boolean;
+  createdAt: string;
+}
+
+export type RoomMemberInfoRole = typeof RoomMemberInfoRole[keyof typeof RoomMemberInfoRole];
+
+
+export const RoomMemberInfoRole = {
+  owner: 'owner',
+  member: 'member',
+} as const;
+
+export interface RoomMemberInfo {
+  userId: number;
+  username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
+  avatarColor: string;
+  role: RoomMemberInfoRole;
+  /**
+     * The member's reading progress (0-100) in this book, or null if unknown
+     * @nullable
+     */
+  readingProgress: number | null;
+}
+
+/**
+ * The viewer's role, or null when not a member
+ * @nullable
+ */
+export type RoomDetailMyRole = typeof RoomDetailMyRole[keyof typeof RoomDetailMyRole] | null;
+
+
+export const RoomDetailMyRole = {
+  owner: 'owner',
+  member: 'member',
+} as const;
+
+export interface RoomDetail {
+  id: number;
+  canonicalBookId: number;
+  name: string;
+  description: string;
+  isPublic: boolean;
+  /**
+     * Current owner account ID, or null when archived after its owner deleted their account; archived rooms cannot accept new members
+     * @nullable
+     */
+  ownerId: number | null;
+  memberCount: number;
+  bookTitle: string;
+  bookAuthor: string;
+  coverColor: string;
+  createdAt: string;
+  members: RoomMemberInfo[];
+  isMember: boolean;
+  /**
+     * The viewer's role, or null when not a member
+     * @nullable
+     */
+  myRole: RoomDetailMyRole;
+  /** Whether the viewer has a pending invite to this room */
+  invitePending: boolean;
+  /**
+     * The viewer's library entry for this book (to open the reader), or null
+     * @nullable
+     */
+  myLibraryId: number | null;
+  /**
+     * The viewer's reading progress (0-100) in this book (spoiler guard), or null
+     * @nullable
+     */
+  myReadingProgress: number | null;
+}
+
+export interface RoomInviteInput {
+  /** The friend to invite */
+  userId: number;
+}
+
+export type RoomFeedItemType = typeof RoomFeedItemType[keyof typeof RoomFeedItemType];
+
+
+export const RoomFeedItemType = {
+  highlight: 'highlight',
+  comment: 'comment',
+} as const;
+
+export interface RoomFeedItem {
+  type: RoomFeedItemType;
+  /** Highlight id or comment id depending on type */
+  id: number;
+  userId: number;
+  username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
+  avatarColor: string;
+  quoteId: number;
+  /** Quote text — truncated to a preview length unless the viewer owns the book */
+  quoteText: string;
+  /** Whether quoteText was truncated for copyright protection */
+  quoteTextTruncated: boolean;
+  /** Present only when type is comment */
+  commentText?: string;
+  likeCount: number;
+  likedByMe: boolean;
+  /** Author-flagged spoiler (comments only) */
+  containsSpoilers: boolean;
+  /**
+     * Author's reading progress (0-100) when posting — blur when greater than the viewer's progress
+     * @nullable
+     */
+  authorProgress: number | null;
+  createdAt: string;
+}
+
 export type ListBooksParams = {
 q?: string;
 };
 
+export type GetBookQuotesParams = {
+/**
+ * Restrict overlay to quotes with activity in this room (viewer must be a member)
+ */
+roomId?: number;
+};
+
 export type GetQuoteCommentsParams = {
 filter?: GetQuoteCommentsFilter;
+/**
+ * Only comments scoped to this room (viewer must be a member)
+ */
+roomId?: number;
 };
 
 export type GetQuoteCommentsFilter = typeof GetQuoteCommentsFilter[keyof typeof GetQuoteCommentsFilter];
@@ -301,6 +850,32 @@ export const GetQuoteCommentsFilter = {
 
 export type SearchUsersParams = {
 q: string;
-userId?: number;
+};
+
+export type GetFeedParams = {
+/**
+ * Restrict the feed to activity in this reading room (viewer must be a member).
+ */
+roomId?: number;
+/**
+ * Opaque cursor from a previous page's nextCursor. Omit for the first page.
+ */
+cursor?: string;
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+};
+
+export type ListRoomsParams = {
+q?: string;
+};
+
+export type GetMyRoomsParams = {
+/**
+ * Only my rooms for this canonical book (reader scope picker)
+ */
+bookId?: number;
 };
 
