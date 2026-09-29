@@ -16,6 +16,9 @@
     },
     "preview": {
       "distribution": "internal",
+      "android": {
+        "image": "latest"
+      },
       "env": {
         "EXPO_PUBLIC_DOMAIN": "859e6eaf-a93c-4212-a1b5-975a030e3ef1-00-2ys75q0qt2dhs.pike.replit.dev"
       }
