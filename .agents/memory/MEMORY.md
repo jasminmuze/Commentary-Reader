@@ -6,3 +6,4 @@
 - [Long-running builds](long-builds-need-workflows.md) — background processes die with agent sessions; run >2min builds via a temporary console workflow, and free port 8081 (mockup-sandbox) for the mobile prod build.
 - [Account deletion and shared rooms](account-deletion-rooms.md) — deletion must always be possible without erasing other authors' content; orphaned rooms need restricted archival.
 - [Public email delivery](public-email-delivery.md) — Resend sandbox sender rejects delivery to ordinary users; public launch needs a verified sender domain.
+- [Android native crash diagnostics](android-native-crash-diagnostics.md) — bug reports expose crashes Metro misses; match Hermes Build ID to Maven prefab symbols, and test release separately from dev.
