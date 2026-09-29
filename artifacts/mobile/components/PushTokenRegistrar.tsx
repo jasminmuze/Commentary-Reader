@@ -20,12 +20,6 @@ export function PushTokenRegistrar() {
   const registeredForUserId = useRef<number | null>(null);
 
   useEffect(() => {
-    // Diagnostic: isolate a possible native notification crash after login.
-    // Keep production registration unchanged while testing the dev client.
-    if (__DEV__) {
-      console.info("[PushTokenRegistrar] automatic registration paused in development");
-      return;
-    }
     if (!user || !isPushSupported()) return;
     if (registeredForUserId.current === user.id) return;
     registeredForUserId.current = user.id;
