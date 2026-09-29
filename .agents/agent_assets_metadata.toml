@@ -26,3 +26,17 @@ mtime_ms = 1790670926476
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:859e6eaf-a93c-4212-a1b5-975a030e3ef1/43f2abad-8931-453f-a631-f7ded70f4b4f/fe54c216-9b45-4627-a7ae-051dc58aa5ad"
 storage_version_token = "1790670944702885"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "oklDa9Opemg2h8Mn7VjU7"
+uri = "file://outputs/shelfmates-development-server.png"
+type = "image"
+title = "Shelfmates 개발 서버 QR 코드"
+description = "휴대폰의 Shelfmates Development Build 화면에서 Scan QR Code를 눌러 이 코드를 스캔하세요. Expo 개발 서버에 연결됩니다."
+logical_id = "e344e08f-c25e-488a-8c8c-b640d7e17cf1"
+content_hash = "sha256:fd7873bdc7e947fb2c5c579fc91089c0c66e591ca66e016b656d15ee595b2403"
+size = 2135
+mtime_ms = 1790672231863
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:859e6eaf-a93c-4212-a1b5-975a030e3ef1/e344e08f-c25e-488a-8c8c-b640d7e17cf1/8a59de78-4615-4760-832f-af79054ac2e9"
+storage_version_token = "1790672244615270"
+content_type = "image/png"
