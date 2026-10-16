@@ -26,6 +26,10 @@
     },
     "production": {
       "autoIncrement": true,
+      "pnpm": "10.26.1",
+      "android": {
+        "image": "latest"
+      },
       "env": {
         "EXPO_PUBLIC_DOMAIN": "shelfmates.replit.app"
       }
