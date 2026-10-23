@@ -43,6 +43,7 @@ RESEND_FROM_EMAIL = "no-reply@getshelfmates.com"
 
 [userenv.production]
 COMMUNITY_CLEANUP_ADMIN_USER_ID = "59"
+COMMUNITY_CLEANUP_APPLY_ENABLED = "false"
 
 [userenv.development]
 COMMUNITY_CLEANUP_ADMIN_USER_ID = "59"
