@@ -4,9 +4,12 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import {
+  AccessibilityInfo,
+  findNodeHandle,
   Platform,
   Pressable,
   StyleSheet,
@@ -89,6 +92,8 @@ function AuthScreen({
   const [password, setPassword] = useState("");
   const [signupStep, setSignupStep] = useState(0);
   const [error, setError] = useState("");
+  const [errorIsForSignupInput, setErrorIsForSignupInput] = useState(false);
+  const signupInputRef = useRef<TextInput>(null);
   const createUser = useCreateUser();
   const loginUser = useLoginUser();
   const sendVerification = useSendVerificationEmail();
@@ -113,6 +118,29 @@ function AuthScreen({
 
   const isPending = createUser.isPending || loginUser.isPending;
 
+  const reportError = useCallback(
+    (message: string, associateWithSignupInput = false) => {
+      const shouldAssociate = mode === "signup" && associateWithSignupInput;
+      setError(message);
+      setErrorIsForSignupInput(shouldAssociate);
+
+      if (shouldAssociate && Platform.OS !== "web") {
+        requestAnimationFrame(() => {
+          const inputTag = findNodeHandle(signupInputRef.current);
+          if (inputTag !== null) AccessibilityInfo.setAccessibilityFocus(inputTag);
+        });
+      } else {
+        AccessibilityInfo.announceForAccessibility(message);
+      }
+    },
+    [mode],
+  );
+
+  const clearError = useCallback(() => {
+    setError("");
+    setErrorIsForSignupInput(false);
+  }, []);
+
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = setTimeout(() => {
@@ -120,6 +148,30 @@ function AuthScreen({
     }, 1000);
     return () => clearTimeout(timer);
   }, [resendCooldown]);
+
+  useEffect(() => {
+    if (mode !== "signup" || resetStep !== null || pendingUser) return;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const screenReaderEnabled = await AccessibilityInfo.isScreenReaderEnabled();
+      if (cancelled || !screenReaderEnabled) return;
+
+      const step = signupSteps[signupStep] ?? signupSteps[0];
+      if (Platform.OS !== "web") {
+        const inputTag = findNodeHandle(signupInputRef.current);
+        if (inputTag !== null) AccessibilityInfo.setAccessibilityFocus(inputTag);
+      }
+      AccessibilityInfo.announceForAccessibility(
+        `Step ${signupStep + 1} of ${signupSteps.length}. ${step.title}. ${step.description}`,
+      );
+    }, 100);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mode, pendingUser, resetStep, signupStep]);
 
   const toCurrentUser = useCallback(
     (user: {
@@ -295,49 +347,49 @@ function AuthScreen({
     const trimmed = username.trim();
     if (mode === "signup") {
       if (trimmed.length < 2) {
-        setError("Username must be at least 2 characters");
+        reportError("Username must be at least 2 characters", true);
         return;
       }
       if (trimmed.length > 30) {
-        setError("Username must be 30 characters or fewer");
+        reportError("Username must be 30 characters or fewer", true);
         return;
       }
       if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-        setError("Only letters, numbers, and underscores (_) are allowed");
+        reportError("Only letters, numbers, and underscores (_) are allowed", true);
         return;
       }
     } else {
       if (trimmed.length === 0) {
-        setError("Please enter your username or email");
+        reportError("Please enter your username or email");
         return;
       }
     }
     const trimmedEmail = email.trim().toLowerCase();
     if (mode === "signup") {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-        setError("Please enter a valid email address");
+        reportError("Please enter a valid email address", true);
         return;
       }
       if (nickname.trim().length > 30) {
-        setError("Nickname must be 30 characters or fewer");
+        reportError("Nickname must be 30 characters or fewer", true);
         return;
       }
     }
     if (mode === "signup" && password.length < 8) {
-      setError("Password must be at least 8 characters");
+      reportError("Password must be at least 8 characters", true);
       return;
     }
     if (mode === "login" && password.length === 0) {
-      setError("Please enter your password");
+      reportError("Please enter your password");
       return;
     }
-    setError("");
+    clearError();
 
     const onError = (err: unknown) => {
       if (err instanceof ApiError) {
         if (err.status === 409) {
           const body = JSON.stringify(err.data ?? "");
-          setError(
+          reportError(
             body.includes("Email")
               ? "That email is already in use. Want to log in instead?"
               : "That username is already taken. Want to log in instead?",
@@ -345,11 +397,11 @@ function AuthScreen({
           return;
         }
         if (err.status === 401) {
-          setError("Incorrect username or password");
+          reportError("Incorrect username or password");
           return;
         }
       }
-      setError("Something went wrong. Please try again in a moment.");
+      reportError("Something went wrong. Please try again in a moment.");
     };
     const onSuccess = (user: Parameters<typeof persistAndComplete>[0]) => {
       void persistAndComplete(user);
@@ -393,54 +445,54 @@ function AuthScreen({
         },
       );
     }
-  }, [username, email, nickname, password, mode, createUser, loginUser, persistAndComplete, startVerificationStep, persistCredentials, toCurrentUser]);
+  }, [username, email, nickname, password, mode, createUser, loginUser, persistAndComplete, startVerificationStep, persistCredentials, toCurrentUser, reportError, clearError]);
 
   const handleSignupNext = useCallback(() => {
     if (signupStep === 0) {
       const trimmedUsername = username.trim();
       if (trimmedUsername.length < 2) {
-        setError("Username must be at least 2 characters");
+        reportError("Username must be at least 2 characters", true);
         return;
       }
       if (trimmedUsername.length > 30) {
-        setError("Username must be 30 characters or fewer");
+        reportError("Username must be 30 characters or fewer", true);
         return;
       }
       if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
-        setError("Only letters, numbers, and underscores (_) are allowed");
+        reportError("Only letters, numbers, and underscores (_) are allowed", true);
         return;
       }
     } else if (signupStep === 1) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim().toLowerCase())) {
-        setError("Please enter a valid email address");
+        reportError("Please enter a valid email address", true);
         return;
       }
     } else if (signupStep === 2 && nickname.trim().length > 30) {
-      setError("Nickname must be 30 characters or fewer");
+      reportError("Nickname must be 30 characters or fewer", true);
       return;
     } else if (signupStep === 3 && password.length < 8) {
-      setError("Password must be at least 8 characters");
+      reportError("Password must be at least 8 characters", true);
       return;
     }
 
-    setError("");
+    clearError();
     if (signupStep < 3) {
       setSignupStep((current) => Math.min(current + 1, 3));
       return;
     }
     void handleSubmit();
-  }, [signupStep, username, email, nickname, password, handleSubmit]);
+  }, [signupStep, username, email, nickname, password, handleSubmit, reportError, clearError]);
 
   const handleSignupBack = useCallback(() => {
-    setError("");
+    clearError();
     setSignupStep((current) => Math.max(current - 1, 0));
-  }, []);
+  }, [clearError]);
 
   const handleSkipNickname = useCallback(() => {
     setNickname("");
-    setError("");
+    clearError();
     setSignupStep(3);
-  }, []);
+  }, [clearError]);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const signupSteps = [
@@ -848,8 +900,14 @@ function AuthScreen({
                 {currentSignupStep.label}
               </Text>
               <TextInput
+                ref={signupInputRef}
                 testID={`signup-step-${signupStep}-input`}
-                accessibilityLabel={currentSignupStep.accessibilityLabel}
+                accessibilityLabel={
+                  error && errorIsForSignupInput
+                    ? `${currentSignupStep.accessibilityLabel}. Error: ${error}`
+                    : currentSignupStep.accessibilityLabel
+                }
+                accessibilityHint={currentSignupStep.description}
                 style={[
                   styles.onboardingInput,
                   {
@@ -875,7 +933,7 @@ function AuthScreen({
                   else if (signupStep === 1) setEmail(text);
                   else if (signupStep === 2) setNickname(text);
                   else setPassword(text);
-                  setError("");
+                  clearError();
                 }}
                 autoCapitalize={signupStep === 2 ? "words" : "none"}
                 autoCorrect={false}
@@ -885,7 +943,11 @@ function AuthScreen({
                 onSubmitEditing={handleSignupNext}
               />
               {error ? (
-                <Text style={[styles.onboardingError, { color: colors.destructive }]}>{error}</Text>
+                <Text
+                  style={[styles.onboardingError, { color: colors.destructive }]}
+                >
+                  {error}
+                </Text>
               ) : null}
 
               {signupStep === 2 ? (
@@ -938,7 +1000,7 @@ function AuthScreen({
                 style={styles.modeToggle}
                 onPress={() => {
                   setMode("login");
-                  setError("");
+                  clearError();
                 }}
               >
                 <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
@@ -964,7 +1026,8 @@ function AuthScreen({
                 placeholder="Username or email"
                 placeholderTextColor={colors.mutedForeground}
                 value={username}
-                onChangeText={(text) => { setUsername(text); setError(""); }}
+                accessibilityLabel="Username or email"
+                onChangeText={(text) => { setUsername(text); clearError(); }}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
@@ -987,7 +1050,8 @@ function AuthScreen({
                 placeholder="Password"
                 placeholderTextColor={colors.mutedForeground}
                 value={password}
-                onChangeText={(text) => { setPassword(text); setError(""); }}
+                accessibilityLabel="Password"
+                onChangeText={(text) => { setPassword(text); clearError(); }}
                 secureTextEntry
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -995,7 +1059,11 @@ function AuthScreen({
                 onSubmitEditing={handleSubmit}
               />
               {error ? (
-                <Text style={[styles.onboardingError, { color: colors.destructive }]}>{error}</Text>
+                <Text
+                  style={[styles.onboardingError, { color: colors.destructive }]}
+                >
+                  {error}
+                </Text>
               ) : null}
 
               <Pressable
@@ -1024,7 +1092,7 @@ function AuthScreen({
                 onPress={() => {
                   setMode("signup");
                   setSignupStep(0);
-                  setError("");
+                  clearError();
                 }}
               >
                 <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>

@@ -9,3 +9,4 @@
 - [Public email delivery](public-email-delivery.md) — Resend sandbox sender rejects delivery to ordinary users; public launch needs a verified sender domain.
 - [Android native crash diagnostics](android-native-crash-diagnostics.md) — bug reports expose crashes Metro misses; match Hermes Build ID to Maven prefab symbols, and test release separately from dev.
 - [Destructive maintenance tests](destructive-maintenance-tests.md) — never weaken protected-account checks for dev fixture gaps; use rollback-only test data.
+- [Native accessibility focus](native-accessibility-focus.md) — guard React Native accessibility focus APIs from web builds; `findNodeHandle` is unsupported on web.
