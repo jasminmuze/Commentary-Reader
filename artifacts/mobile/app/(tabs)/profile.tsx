@@ -24,6 +24,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { FeedbackModal } from "@/components/FeedbackModal";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import {
+  getGetModerationAccessQueryKey,
   useUpdateUserSettings,
   useGetAvatarUploadUrl,
   useSetAvatar,
@@ -31,6 +32,7 @@ import {
   useSendVerificationEmail,
   useConfirmEmailVerification,
   useDeleteUserAccount,
+  useGetModerationAccess,
   ApiError,
 } from "@workspace/api-client-react";
 import type { DeleteAccountInput, Visibility, FeedbackInputType } from "@workspace/api-client-react";
@@ -61,6 +63,12 @@ export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, setUser, logout } = useUser();
+  const moderationAccess = useGetModerationAccess({
+    query: {
+      enabled: Boolean(user),
+      queryKey: getGetModerationAccessQueryKey(),
+    },
+  });
   const queryClient = useQueryClient();
   const updateSettings = useUpdateUserSettings();
   const deleteUserAccount = useDeleteUserAccount();
@@ -928,6 +936,30 @@ export default function ProfileScreen() {
           <Text style={[styles.logoutText, { color: colors.foreground }]}>Blocked accounts</Text>
           <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
         </Pressable>
+        {moderationAccess.data?.isModerator ? (
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="Moderation reports"
+            onPress={() => router.push("/moderation-reports")}
+            style={({ pressed }) => [
+              styles.card,
+              styles.logoutButton,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: colors.radius,
+                opacity: pressed ? 0.6 : 1,
+                marginBottom: 12,
+              },
+            ]}
+          >
+            <Feather name="flag" size={18} color={colors.primary} />
+            <Text style={[styles.logoutText, { color: colors.foreground }]}>
+              Moderation reports
+            </Text>
+            <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="link"
           accessibilityLabel="Privacy policy"

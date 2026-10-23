@@ -929,6 +929,69 @@ export const ReportContentResponse = zod.object({
 
 
 /**
+ * @summary Check whether the authenticated user can moderate reports
+ */
+export const GetModerationAccessResponse = zod.object({
+  "isModerator": zod.boolean()
+})
+
+
+/**
+ * @summary List reports for moderators
+ */
+export const getModerationReportsQueryStatusDefault = `open`;
+export const getModerationReportsQueryLimitDefault = 50;
+export const getModerationReportsQueryLimitMax = 100;
+
+
+
+export const GetModerationReportsQueryParams = zod.object({
+  "status": zod.enum(['open', 'reviewing', 'resolved', 'dismissed']).default(getModerationReportsQueryStatusDefault),
+  "limit": zod.coerce.number().min(1).max(getModerationReportsQueryLimitMax).default(getModerationReportsQueryLimitDefault)
+})
+
+export const GetModerationReportsResponseItem = zod.object({
+  "id": zod.number(),
+  "targetType": zod.enum(['comment', 'highlight', 'user']),
+  "targetId": zod.number(),
+  "reason": zod.enum(['spam', 'harassment', 'hate_or_abusive_content', 'sexual_content', 'copyright', 'other']),
+  "details": zod.string().nullable(),
+  "status": zod.enum(['open', 'reviewing', 'resolved', 'dismissed']),
+  "createdAt": zod.coerce.date(),
+  "reporter": zod.union([zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable()
+}),zod.null()]),
+  "targetAuthor": zod.union([zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable()
+}),zod.null()]),
+  "targetPreview": zod.string().nullable()
+})
+export const GetModerationReportsResponse = zod.array(GetModerationReportsResponseItem)
+
+
+/**
+ * @summary Update a report's moderation status
+ */
+export const UpdateModerationReportParams = zod.object({
+  "reportId": zod.coerce.number()
+})
+
+export const UpdateModerationReportBody = zod.object({
+  "status": zod.enum(['open', 'reviewing', 'resolved', 'dismissed'])
+})
+
+export const UpdateModerationReportResponse = zod.object({
+  "ok": zod.literal(true),
+  "reportId": zod.number(),
+  "status": zod.enum(['open', 'reviewing', 'resolved', 'dismissed'])
+})
+
+
+/**
  * @summary Accept a pending friend request sent to the authenticated user
  */
 export const AcceptFriendRequestParams = zod.object({

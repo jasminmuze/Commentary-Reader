@@ -675,6 +675,93 @@ export interface ReportContentResult {
   alreadyReported: boolean;
 }
 
+export interface ModeratorAccess {
+  isModerator: boolean;
+}
+
+export interface ModerationReportUser {
+  id: number;
+  username: string;
+  /** @nullable */
+  nickname: string | null;
+}
+
+export type ModerationReportTargetType = typeof ModerationReportTargetType[keyof typeof ModerationReportTargetType];
+
+
+export const ModerationReportTargetType = {
+  comment: 'comment',
+  highlight: 'highlight',
+  user: 'user',
+} as const;
+
+export type ModerationReportReason = typeof ModerationReportReason[keyof typeof ModerationReportReason];
+
+
+export const ModerationReportReason = {
+  spam: 'spam',
+  harassment: 'harassment',
+  hate_or_abusive_content: 'hate_or_abusive_content',
+  sexual_content: 'sexual_content',
+  copyright: 'copyright',
+  other: 'other',
+} as const;
+
+export type ModerationReportStatus = typeof ModerationReportStatus[keyof typeof ModerationReportStatus];
+
+
+export const ModerationReportStatus = {
+  open: 'open',
+  reviewing: 'reviewing',
+  resolved: 'resolved',
+  dismissed: 'dismissed',
+} as const;
+
+export interface ModerationReport {
+  id: number;
+  targetType: ModerationReportTargetType;
+  targetId: number;
+  reason: ModerationReportReason;
+  /** @nullable */
+  details: string | null;
+  status: ModerationReportStatus;
+  createdAt: string;
+  reporter: ModerationReportUser | null;
+  targetAuthor: ModerationReportUser | null;
+  /** @nullable */
+  targetPreview: string | null;
+}
+
+export type ModerateReportInputStatus = typeof ModerateReportInputStatus[keyof typeof ModerateReportInputStatus];
+
+
+export const ModerateReportInputStatus = {
+  open: 'open',
+  reviewing: 'reviewing',
+  resolved: 'resolved',
+  dismissed: 'dismissed',
+} as const;
+
+export interface ModerateReportInput {
+  status: ModerateReportInputStatus;
+}
+
+export type ModerateReportResultStatus = typeof ModerateReportResultStatus[keyof typeof ModerateReportResultStatus];
+
+
+export const ModerateReportResultStatus = {
+  open: 'open',
+  reviewing: 'reviewing',
+  resolved: 'resolved',
+  dismissed: 'dismissed',
+} as const;
+
+export interface ModerateReportResult {
+  ok: true;
+  reportId: number;
+  status: ModerateReportResultStatus;
+}
+
 export interface OkResult {
   ok: boolean;
 }
@@ -1017,6 +1104,25 @@ export const GetQuoteCommentsFilter = {
 export type SearchUsersParams = {
 q: string;
 };
+
+export type GetModerationReportsParams = {
+status?: GetModerationReportsStatus;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type GetModerationReportsStatus = typeof GetModerationReportsStatus[keyof typeof GetModerationReportsStatus];
+
+
+export const GetModerationReportsStatus = {
+  open: 'open',
+  reviewing: 'reviewing',
+  resolved: 'resolved',
+  dismissed: 'dismissed',
+} as const;
 
 export type GetFeedParams = {
 /**

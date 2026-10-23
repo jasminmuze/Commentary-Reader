@@ -882,6 +882,81 @@ paths:
         "404":
           description: Content not found or not visible to the reporter
 
+  /moderation/access:
+    get:
+      operationId: getModerationAccess
+      tags: [moderation]
+      summary: Check whether the authenticated user can moderate reports
+      responses:
+        "200":
+          description: Moderation access for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModeratorAccess"
+
+  /moderation/reports:
+    get:
+      operationId: getModerationReports
+      tags: [moderation]
+      summary: List reports for moderators
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, reviewing, resolved, dismissed]
+            default: open
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Reports matching the selected status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ModerationReport"
+        "403":
+          description: Moderator access required
+
+  /moderation/reports/{reportId}:
+    patch:
+      operationId: updateModerationReport
+      tags: [moderation]
+      summary: Update a report's moderation status
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerateReportInput"
+      responses:
+        "200":
+          description: Report status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModerateReportResult"
+        "403":
+          description: Moderator access required
+        "404":
+          description: Report not found
+
   /friend-requests/{requesterId}/accept:
     post:
       operationId: acceptFriendRequest
@@ -2689,6 +2764,78 @@ components:
           enum: [true]
         alreadyReported:
           type: boolean
+
+    ModeratorAccess:
+      type: object
+      required: [isModerator]
+      properties:
+        isModerator:
+          type: boolean
+
+    ModerationReportUser:
+      type: object
+      required: [id, username, nickname]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        nickname:
+          type: [string, "null"]
+
+    ModerationReport:
+      type: object
+      required: [id, targetType, targetId, reason, details, status, createdAt, reporter, targetAuthor, targetPreview]
+      properties:
+        id:
+          type: integer
+        targetType:
+          type: string
+          enum: [comment, highlight, user]
+        targetId:
+          type: integer
+        reason:
+          type: string
+          enum: [spam, harassment, hate_or_abusive_content, sexual_content, copyright, other]
+        details:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [open, reviewing, resolved, dismissed]
+        createdAt:
+          type: string
+          format: date-time
+        reporter:
+          anyOf:
+            - $ref: "#/components/schemas/ModerationReportUser"
+            - type: "null"
+        targetAuthor:
+          anyOf:
+            - $ref: "#/components/schemas/ModerationReportUser"
+            - type: "null"
+        targetPreview:
+          type: [string, "null"]
+
+    ModerateReportInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [open, reviewing, resolved, dismissed]
+
+    ModerateReportResult:
+      type: object
+      required: [ok, reportId, status]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        reportId:
+          type: integer
+        status:
+          type: string
+          enum: [open, reviewing, resolved, dismissed]
 
     OkResult:
       type: object

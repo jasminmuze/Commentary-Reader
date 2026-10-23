@@ -39,6 +39,7 @@ import type {
   FriendRequestInput,
   GetBookQuotesParams,
   GetFeedParams,
+  GetModerationReportsParams,
   GetMyRoomsParams,
   GetQuoteCommentsParams,
   GoogleBookCatalogItem,
@@ -55,6 +56,10 @@ import type {
   ListRoomsParams,
   LoginInput,
   ManualMatchInput,
+  ModerateReportInput,
+  ModerateReportResult,
+  ModerationReport,
+  ModeratorAccess,
   NotificationList,
   NotificationSettings,
   OkResult,
@@ -2941,6 +2946,239 @@ export const useReportContent = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getReportContentMutationOptions(options));
+    }
+
+export const getGetModerationAccessUrl = () => {
+
+
+
+
+  return `/api/moderation/access`
+}
+
+/**
+ * @summary Check whether the authenticated user can moderate reports
+ */
+export const getModerationAccess = async ( options?: RequestInit): Promise<ModeratorAccess> => {
+
+  return customFetch<ModeratorAccess>(getGetModerationAccessUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetModerationAccessQueryKey = () => {
+    return [
+    `/api/moderation/access`
+    ] as const;
+    }
+
+
+export const getGetModerationAccessQueryOptions = <TData = Awaited<ReturnType<typeof getModerationAccess>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModerationAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetModerationAccessQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getModerationAccess>>> = ({ signal }) => getModerationAccess({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getModerationAccess>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetModerationAccessQueryResult = NonNullable<Awaited<ReturnType<typeof getModerationAccess>>>
+export type GetModerationAccessQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Check whether the authenticated user can moderate reports
+ */
+
+export function useGetModerationAccess<TData = Awaited<ReturnType<typeof getModerationAccess>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModerationAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetModerationAccessQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetModerationReportsUrl = (params?: GetModerationReportsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/moderation/reports?${stringifiedParams}` : `/api/moderation/reports`
+}
+
+/**
+ * @summary List reports for moderators
+ */
+export const getModerationReports = async (params?: GetModerationReportsParams, options?: RequestInit): Promise<ModerationReport[]> => {
+
+  return customFetch<ModerationReport[]>(getGetModerationReportsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetModerationReportsQueryKey = (params?: GetModerationReportsParams,) => {
+    return [
+    `/api/moderation/reports`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetModerationReportsQueryOptions = <TData = Awaited<ReturnType<typeof getModerationReports>>, TError = ErrorType<void>>(params?: GetModerationReportsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModerationReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetModerationReportsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getModerationReports>>> = ({ signal }) => getModerationReports(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getModerationReports>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetModerationReportsQueryResult = NonNullable<Awaited<ReturnType<typeof getModerationReports>>>
+export type GetModerationReportsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List reports for moderators
+ */
+
+export function useGetModerationReports<TData = Awaited<ReturnType<typeof getModerationReports>>, TError = ErrorType<void>>(
+ params?: GetModerationReportsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModerationReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetModerationReportsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateModerationReportUrl = (reportId: number,) => {
+
+
+
+
+  return `/api/moderation/reports/${reportId}`
+}
+
+/**
+ * @summary Update a report's moderation status
+ */
+export const updateModerationReport = async (reportId: number,
+    moderateReportInput: ModerateReportInput, options?: RequestInit): Promise<ModerateReportResult> => {
+
+  return customFetch<ModerateReportResult>(getUpdateModerationReportUrl(reportId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      moderateReportInput,)
+  }
+);}
+
+
+
+
+export const getUpdateModerationReportMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateModerationReport>>, TError,{reportId: number;data: BodyType<ModerateReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateModerationReport>>, TError,{reportId: number;data: BodyType<ModerateReportInput>}, TContext> => {
+
+const mutationKey = ['updateModerationReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateModerationReport>>, {reportId: number;data: BodyType<ModerateReportInput>}> = (props) => {
+          const {reportId,data} = props ?? {};
+
+          return  updateModerationReport(reportId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateModerationReportMutationResult = NonNullable<Awaited<ReturnType<typeof updateModerationReport>>>
+    export type UpdateModerationReportMutationBody = BodyType<ModerateReportInput>
+    export type UpdateModerationReportMutationError = ErrorType<void>
+
+    /**
+ * @summary Update a report's moderation status
+ */
+export const useUpdateModerationReport = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateModerationReport>>, TError,{reportId: number;data: BodyType<ModerateReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateModerationReport>>,
+        TError,
+        {reportId: number;data: BodyType<ModerateReportInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateModerationReportMutationOptions(options));
     }
 
 export const getAcceptFriendRequestUrl = (requesterId: number,) => {
