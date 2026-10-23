@@ -15,6 +15,10 @@ import {
 import { authenticate } from "../middlewares/authenticate.js";
 import { sendPushToUsers } from "../lib/push";
 import { getNotificationPrefs } from "../lib/notifications";
+import {
+  friendAcceptPushCopy,
+  friendRequestPushCopy,
+} from "../lib/notificationCopy";
 
 const router: IRouter = Router();
 
@@ -110,8 +114,7 @@ router.post("/friend-requests", authenticate, async (req, res): Promise<void> =>
           .from(usersTable)
           .where(eq(usersTable.id, requesterId));
         await sendPushToUsers([recipientId], {
-          title: `@${requester?.username ?? "누군가"}님이 친구 요청을 보냈어요`,
-          body: "알림에서 바로 수락하거나 거절할 수 있어요.",
+          ...friendRequestPushCopy(requester?.username),
           data: { type: "friend_request", requesterId },
         });
       })();
@@ -190,8 +193,7 @@ async function acceptRequest(
         .from(usersTable)
         .where(eq(usersTable.id, recipientId));
       await sendPushToUsers([requesterId], {
-        title: `@${recipient?.username ?? "누군가"}님이 친구 요청을 수락했어요`,
-        body: "이제 친구 공개 글을 서로 볼 수 있어요.",
+        ...friendAcceptPushCopy(recipient?.username),
         data: { type: "friend_accept", userId: recipientId },
       });
     })();

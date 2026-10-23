@@ -1,9 +1,13 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db, notificationsTable, roomMembersTable, usersTable } from "@workspace/db";
 import { sendPushToUsers } from "./push";
-
-/** Push body shown instead of comment text when the comment is marked as a spoiler. */
-const SPOILER_PUSH_BODY = "스포일러가 포함된 댓글이에요. 앱에서 확인하세요.";
+import {
+  commentPushBody,
+  likePushCopy,
+  mentionPushTitle,
+  replyPushTitle,
+  roomInvitePushCopy,
+} from "./notificationCopy";
 
 /** Extracts @username tokens from comment text (e.g. "nice @jane!" → ["jane"]). */
 export function parseMentionedUsernames(text: string): string[] {
@@ -16,7 +20,7 @@ async function getActorUsername(actorId: number): Promise<string> {
     .select({ username: usersTable.username })
     .from(usersTable)
     .where(eq(usersTable.id, actorId));
-  return actor?.username ?? "누군가";
+  return actor?.username ?? null;
 }
 
 export interface NotificationPrefs {
@@ -84,8 +88,7 @@ export async function createRoomInviteNotification(options: {
   void (async () => {
     const actorUsername = await getActorUsername(inviterId);
     await sendPushToUsers([inviteeId], {
-      title: `@${actorUsername}님이 리딩룸에 초대했어요`,
-      body: roomName,
+      ...roomInvitePushCopy(actorUsername, roomName),
       data: { type: "room_invite", roomId },
     });
   })();
@@ -124,11 +127,7 @@ export async function createLikeNotification(options: {
   void (async () => {
     const actorUsername = await getActorUsername(actorId);
     await sendPushToUsers([recipientId], {
-      title:
-        type === "highlight_like"
-          ? `@${actorUsername}님이 회원님의 하이라이트를 좋아해요`
-          : `@${actorUsername}님이 회원님의 댓글을 좋아해요`,
-      body: previewText,
+      ...likePushCopy(actorUsername, type, previewText),
       data:
         type === "highlight_like"
           ? { type, highlightId }
@@ -205,8 +204,8 @@ export async function createMentionNotifications(options: {
     await sendPushToUsers(
       toNotify.map((u) => u.id),
       {
-        title: `@${actorUsername}님이 회원님을 언급했어요`,
-        body: containsSpoilers ? SPOILER_PUSH_BODY : text,
+        title: mentionPushTitle(actorUsername),
+        body: commentPushBody(text, containsSpoilers),
         data: { type: "mention", commentId },
       },
     );
@@ -229,8 +228,8 @@ export function sendReplyPush(options: {
   void (async () => {
     const actorUsername = await getActorUsername(actorId);
     await sendPushToUsers([recipientId], {
-      title: `@${actorUsername}님이 회원님의 댓글에 답글을 남겼어요`,
-      body: containsSpoilers ? SPOILER_PUSH_BODY : text,
+      title: replyPushTitle(actorUsername),
+      body: commentPushBody(text, containsSpoilers),
       data: { type: "reply", commentId },
     });
   })();
