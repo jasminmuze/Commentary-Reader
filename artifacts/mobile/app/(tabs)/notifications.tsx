@@ -35,6 +35,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { LoadingShimmer } from "@/components/LoadingShimmer";
 import { CommentSheet } from "@/components/CommentSheet";
 import { canUseNativeReader, navigateToQuote } from "@/lib/quoteNavigation";
+import { getNotificationCopy } from "@/lib/notificationCopy";
 import type { Comment, NotificationItem } from "@workspace/api-client-react";
 
 function timeAgo(dateStr: string | Date): string {
@@ -67,26 +68,15 @@ function NotificationCard({
   friendActionPending: boolean;
 }) {
   const colors = useColors();
-  const isReply = item.type === "reply";
   const isFriendRequest = item.type === "friend_request";
   const isFriendAccept = item.type === "friend_accept";
   const isRoomInvite = item.type === "room_invite";
+  const notificationCopy = getNotificationCopy(
+    item.type,
+    item.actorNickname?.trim() || item.actorUsername,
+  );
   const showViewInBook =
     !!onViewInBook && !isFriendRequest && !isFriendAccept && !isRoomInvite && !!item.quoteId;
-
-  const title = isReply
-    ? " replied to your comment"
-    : isFriendRequest
-      ? " sent you a friend request"
-      : isFriendAccept
-        ? " accepted your friend request"
-        : isRoomInvite
-          ? " invited you to a reading room"
-          : item.type === "highlight_like"
-            ? " liked your highlight"
-            : item.type === "comment_like"
-              ? " liked your comment"
-              : " mentioned you";
 
   return (
     <Pressable
@@ -117,8 +107,8 @@ function NotificationCard({
 
         <View style={styles.cardBody}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-            <Text style={styles.bold}>{item.actorNickname?.trim() || item.actorUsername}</Text>
-            {title}
+            <Text style={styles.bold}>{notificationCopy.actorName}</Text>
+            {notificationCopy.action}
           </Text>
 
           {item.commentText ? (
