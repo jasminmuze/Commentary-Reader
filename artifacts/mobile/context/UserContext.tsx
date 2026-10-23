@@ -87,6 +87,7 @@ function AuthScreen({
   const [email, setEmail] = useState("");
   const [nickname, setNickname] = useState("");
   const [password, setPassword] = useState("");
+  const [signupStep, setSignupStep] = useState(0);
   const [error, setError] = useState("");
   const createUser = useCreateUser();
   const loginUser = useLoginUser();
@@ -394,7 +395,85 @@ function AuthScreen({
     }
   }, [username, email, nickname, password, mode, createUser, loginUser, persistAndComplete, startVerificationStep, persistCredentials, toCurrentUser]);
 
+  const handleSignupNext = useCallback(() => {
+    if (signupStep === 0) {
+      const trimmedUsername = username.trim();
+      if (trimmedUsername.length < 2) {
+        setError("Username must be at least 2 characters");
+        return;
+      }
+      if (trimmedUsername.length > 30) {
+        setError("Username must be 30 characters or fewer");
+        return;
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
+        setError("Only letters, numbers, and underscores (_) are allowed");
+        return;
+      }
+    } else if (signupStep === 1) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim().toLowerCase())) {
+        setError("Please enter a valid email address");
+        return;
+      }
+    } else if (signupStep === 2 && nickname.trim().length > 30) {
+      setError("Nickname must be 30 characters or fewer");
+      return;
+    } else if (signupStep === 3 && password.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
+
+    setError("");
+    if (signupStep < 3) {
+      setSignupStep((current) => Math.min(current + 1, 3));
+      return;
+    }
+    void handleSubmit();
+  }, [signupStep, username, email, nickname, password, handleSubmit]);
+
+  const handleSignupBack = useCallback(() => {
+    setError("");
+    setSignupStep((current) => Math.max(current - 1, 0));
+  }, []);
+
+  const handleSkipNickname = useCallback(() => {
+    setNickname("");
+    setError("");
+    setSignupStep(3);
+  }, []);
+
   const topInset = Platform.OS === "web" ? 67 : insets.top;
+  const signupSteps = [
+    {
+      title: "Choose a username",
+      description: "This is how other readers will find you.",
+      label: "Username",
+      placeholder: "e.g. bookworm42",
+      accessibilityLabel: "Username",
+    },
+    {
+      title: "Add your email",
+      description: "We'll send a verification code to this address.",
+      label: "Email",
+      placeholder: "you@example.com",
+      accessibilityLabel: "Email address",
+    },
+    {
+      title: "Choose a nickname",
+      description: "Choose how your name appears to other readers, or skip this step.",
+      label: "Nickname (optional)",
+      placeholder: "How your name appears to others",
+      accessibilityLabel: "Optional nickname",
+    },
+    {
+      title: "Create a password",
+      description: "Use at least 8 characters to keep your account secure.",
+      label: "Password",
+      placeholder: "At least 8 characters",
+      accessibilityLabel: "Password",
+    },
+  ] as const;
+  const currentSignupStep = signupSteps[signupStep] ?? signupSteps[0];
 
   if (resetStep === "request") {
     return (
@@ -735,33 +814,142 @@ function AuthScreen({
         </Text>
 
         <View style={styles.onboardingForm}>
-          <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
-            {mode === "login" ? "Username or email" : "Username"}
-          </Text>
-          <TextInput
-            style={[
-              styles.onboardingInput,
-              {
-                backgroundColor: colors.card,
-                color: colors.foreground,
-                borderColor: error ? colors.destructive : colors.border,
-                borderRadius: colors.radius,
-              },
-            ]}
-            placeholder={mode === "login" ? "Username or email" : "e.g. bookworm42"}
-            placeholderTextColor={colors.mutedForeground}
-            value={username}
-            onChangeText={(t) => { setUsername(t); setError(""); }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType={mode === "login" ? "email-address" : "default"}
-            returnKeyType="next"
-          />
-
           {mode === "signup" ? (
             <>
+              <View
+                accessible
+                accessibilityLabel={`Step ${signupStep + 1} of ${signupSteps.length}`}
+                style={styles.signupProgress}
+              >
+                <Text style={[styles.signupStepText, { color: colors.mutedForeground }]}>
+                  STEP {signupStep + 1} OF {signupSteps.length}
+                </Text>
+                <View style={styles.signupProgressTrack}>
+                  {signupSteps.map((_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.signupProgressSegment,
+                        { backgroundColor: index <= signupStep ? colors.primary : colors.border },
+                      ]}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              <Text style={[styles.signupStepTitle, { color: colors.foreground }]}>
+                {currentSignupStep.title}
+              </Text>
+              <Text style={[styles.signupStepDescription, { color: colors.mutedForeground }]}>
+                {currentSignupStep.description}
+              </Text>
+
               <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
-                Email
+                {currentSignupStep.label}
+              </Text>
+              <TextInput
+                testID={`signup-step-${signupStep}-input`}
+                accessibilityLabel={currentSignupStep.accessibilityLabel}
+                style={[
+                  styles.onboardingInput,
+                  {
+                    backgroundColor: colors.card,
+                    color: colors.foreground,
+                    borderColor: error ? colors.destructive : colors.border,
+                    borderRadius: colors.radius,
+                  },
+                ]}
+                placeholder={currentSignupStep.placeholder}
+                placeholderTextColor={colors.mutedForeground}
+                value={
+                  signupStep === 0
+                    ? username
+                    : signupStep === 1
+                      ? email
+                      : signupStep === 2
+                        ? nickname
+                        : password
+                }
+                onChangeText={(text) => {
+                  if (signupStep === 0) setUsername(text);
+                  else if (signupStep === 1) setEmail(text);
+                  else if (signupStep === 2) setNickname(text);
+                  else setPassword(text);
+                  setError("");
+                }}
+                autoCapitalize={signupStep === 2 ? "words" : "none"}
+                autoCorrect={false}
+                keyboardType={signupStep === 1 ? "email-address" : "default"}
+                secureTextEntry={signupStep === 3}
+                returnKeyType={signupStep === 3 ? "done" : "next"}
+                onSubmitEditing={handleSignupNext}
+              />
+              {error ? (
+                <Text style={[styles.onboardingError, { color: colors.destructive }]}>{error}</Text>
+              ) : null}
+
+              {signupStep === 2 ? (
+                <Pressable
+                  testID="signup-skip-nickname"
+                  style={styles.modeToggle}
+                  onPress={handleSkipNickname}
+                >
+                  <Text style={[styles.modeToggleText, { color: colors.primary }]}>
+                    Skip nickname
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              <Pressable
+                testID={signupStep === 3 ? "signup-submit" : "signup-next"}
+                style={({ pressed }) => [
+                  styles.onboardingButton,
+                  {
+                    backgroundColor: colors.primary,
+                    borderRadius: colors.radius,
+                    opacity: pressed || isPending ? 0.8 : 1,
+                  },
+                ]}
+                onPress={handleSignupNext}
+                disabled={isPending}
+              >
+                {isPending ? (
+                  <ActivityIndicator color={colors.primaryForeground} />
+                ) : (
+                  <Text style={[styles.onboardingButtonText, { color: colors.primaryForeground }]}>
+                    {signupStep === 3 ? "Sign up and start reading" : "Continue"}
+                  </Text>
+                )}
+              </Pressable>
+
+              {signupStep > 0 ? (
+                <Pressable
+                  testID="signup-back"
+                  style={styles.modeToggle}
+                  onPress={handleSignupBack}
+                >
+                  <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
+                    Back
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              <Pressable
+                style={styles.modeToggle}
+                onPress={() => {
+                  setMode("login");
+                  setError("");
+                }}
+              >
+                <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
+                  Already have an account? Log in
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
+                Username or email
               </Text>
               <TextInput
                 style={[
@@ -773,10 +961,10 @@ function AuthScreen({
                     borderRadius: colors.radius,
                   },
                 ]}
-                placeholder="you@example.com"
+                placeholder="Username or email"
                 placeholderTextColor={colors.mutedForeground}
-                value={email}
-                onChangeText={(t) => { setEmail(t); setError(""); }}
+                value={username}
+                onChangeText={(text) => { setUsername(text); setError(""); }}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
@@ -784,7 +972,7 @@ function AuthScreen({
               />
 
               <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
-                Nickname (optional)
+                Password
               </Text>
               <TextInput
                 style={[
@@ -796,94 +984,70 @@ function AuthScreen({
                     borderRadius: colors.radius,
                   },
                 ]}
-                placeholder="How your name appears to others"
+                placeholder="Password"
                 placeholderTextColor={colors.mutedForeground}
-                value={nickname}
-                onChangeText={(t) => { setNickname(t); setError(""); }}
+                value={password}
+                onChangeText={(text) => { setPassword(text); setError(""); }}
+                secureTextEntry
+                autoCapitalize="none"
                 autoCorrect={false}
-                returnKeyType="next"
+                returnKeyType="done"
+                onSubmitEditing={handleSubmit}
               />
+              {error ? (
+                <Text style={[styles.onboardingError, { color: colors.destructive }]}>{error}</Text>
+              ) : null}
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.onboardingButton,
+                  {
+                    backgroundColor: colors.primary,
+                    borderRadius: colors.radius,
+                    opacity: pressed || isPending ? 0.8 : 1,
+                  },
+                ]}
+                onPress={handleSubmit}
+                disabled={isPending}
+              >
+                {isPending ? (
+                  <ActivityIndicator color={colors.primaryForeground} />
+                ) : (
+                  <Text style={[styles.onboardingButtonText, { color: colors.primaryForeground }]}>
+                    Log in
+                  </Text>
+                )}
+              </Pressable>
+
+              <Pressable
+                style={styles.modeToggle}
+                onPress={() => {
+                  setMode("signup");
+                  setSignupStep(0);
+                  setError("");
+                }}
+              >
+                <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
+                  Don&apos;t have an account? Sign up
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.modeToggle}
+                onPress={() => {
+                  setResetStep("request");
+                  setResetMessage(null);
+                  setResetEmail("");
+                  setResetCode("");
+                  setResetNewPassword("");
+                }}
+              >
+                <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
+                  Forgot password?
+                </Text>
+              </Pressable>
             </>
-          ) : null}
-
-          <Text style={[styles.onboardingLabel, { color: colors.mutedForeground }]}>
-            Password
-          </Text>
-          <TextInput
-            style={[
-              styles.onboardingInput,
-              {
-                backgroundColor: colors.card,
-                color: colors.foreground,
-                borderColor: error ? colors.destructive : colors.border,
-                borderRadius: colors.radius,
-              },
-            ]}
-            placeholder={mode === "signup" ? "At least 8 characters" : "Password"}
-            placeholderTextColor={colors.mutedForeground}
-            value={password}
-            onChangeText={(t) => { setPassword(t); setError(""); }}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="done"
-            onSubmitEditing={handleSubmit}
-          />
-          {error ? (
-            <Text style={[styles.onboardingError, { color: colors.destructive }]}>{error}</Text>
-          ) : null}
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.onboardingButton,
-              {
-                backgroundColor: colors.primary,
-                borderRadius: colors.radius,
-                opacity: pressed || isPending ? 0.8 : 1,
-              },
-            ]}
-            onPress={handleSubmit}
-            disabled={isPending}
-          >
-            {isPending ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <Text style={[styles.onboardingButtonText, { color: colors.primaryForeground }]}>
-                {mode === "signup" ? "Sign up and start reading" : "Log in"}
-              </Text>
-            )}
-          </Pressable>
-
-          <Pressable
-            style={styles.modeToggle}
-            onPress={() => {
-              setMode(mode === "signup" ? "login" : "signup");
-              setError("");
-            }}
-          >
-            <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
-              {mode === "signup"
-                ? "Already have an account? Log in"
-                : "Don't have an account? Sign up"}
-            </Text>
-          </Pressable>
-
-          {mode === "login" ? (
-            <Pressable
-              style={styles.modeToggle}
-              onPress={() => {
-                setResetStep("request");
-                setResetMessage(null);
-                setResetEmail("");
-                setResetCode("");
-                setResetNewPassword("");
-              }}
-            >
-              <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
-                Forgot password?
-              </Text>
-            </Pressable>
-          ) : null}
+          )}
         </View>
       </View>
     </KeyboardAwareScrollViewCompat>
@@ -1025,6 +1189,35 @@ const styles = StyleSheet.create({
   onboardingForm: {
     width: "100%",
     gap: 12,
+  },
+  signupProgress: {
+    gap: 10,
+    marginBottom: 8,
+  },
+  signupStepText: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  signupProgressTrack: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  signupProgressSegment: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+  },
+  signupStepTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  signupStepDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 8,
   },
   onboardingLabel: {
     fontSize: 13,
