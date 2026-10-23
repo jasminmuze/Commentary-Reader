@@ -746,7 +746,8 @@ export const DeleteUserAccountParams = zod.object({
 
 
 export const DeleteUserAccountBody = zod.object({
-  "password": zod.string().min(1).describe('Current account password, required to confirm permanent deletion')
+  "password": zod.string().min(1).describe('Current account password, required to confirm permanent deletion'),
+  "reason": zod.enum(['no_longer_use', 'switched_apps', 'privacy_concerns', 'app_issues', 'other']).describe('Anonymous category describing why the account is being deleted')
 })
 
 export const deleteUserAccountResponseSharedObjectsRetainedMin = 0;

@@ -610,12 +610,28 @@ export interface OkResult {
   ok: boolean;
 }
 
+/**
+ * Anonymous category describing why the account is being deleted
+ */
+export type DeleteAccountInputReason = typeof DeleteAccountInputReason[keyof typeof DeleteAccountInputReason];
+
+
+export const DeleteAccountInputReason = {
+  no_longer_use: 'no_longer_use',
+  switched_apps: 'switched_apps',
+  privacy_concerns: 'privacy_concerns',
+  app_issues: 'app_issues',
+  other: 'other',
+} as const;
+
 export interface DeleteAccountInput {
   /**
      * Current account password, required to confirm permanent deletion
      * @minLength 1
      */
   password: string;
+  /** Anonymous category describing why the account is being deleted */
+  reason: DeleteAccountInputReason;
 }
 
 export interface DeleteAccountResult {

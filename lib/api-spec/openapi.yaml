@@ -2473,12 +2473,16 @@ components:
 
     DeleteAccountInput:
       type: object
-      required: [password]
+      required: [password, reason]
       properties:
         password:
           type: string
           minLength: 1
           description: Current account password, required to confirm permanent deletion
+        reason:
+          type: string
+          enum: [no_longer_use, switched_apps, privacy_concerns, app_issues, other]
+          description: Anonymous category describing why the account is being deleted
 
     DeleteAccountResult:
       type: object

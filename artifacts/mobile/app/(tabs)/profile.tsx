@@ -33,7 +33,7 @@ import {
   useDeleteUserAccount,
   ApiError,
 } from "@workspace/api-client-react";
-import type { Visibility, FeedbackInputType } from "@workspace/api-client-react";
+import type { DeleteAccountInput, Visibility, FeedbackInputType } from "@workspace/api-client-react";
 
 const VISIBILITY_SETTINGS: {
   value: Visibility;
@@ -46,6 +46,17 @@ const VISIBILITY_SETTINGS: {
   { value: "private", label: "Private", description: "Only you can see them", icon: "lock" },
 ];
 
+const ACCOUNT_DELETION_REASONS: {
+  value: DeleteAccountInput["reason"];
+  label: string;
+}[] = [
+  { value: "no_longer_use", label: "I no longer use Shelfmates" },
+  { value: "switched_apps", label: "I switched to another app" },
+  { value: "privacy_concerns", label: "Privacy concerns" },
+  { value: "app_issues", label: "I'm having trouble using the app" },
+  { value: "other", label: "Other" },
+];
+
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -55,8 +66,10 @@ export default function ProfileScreen() {
   const deleteUserAccount = useDeleteUserAccount();
   const [loggingOut, setLoggingOut] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteEntryExpanded, setDeleteEntryExpanded] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [deleteReason, setDeleteReason] = useState<DeleteAccountInput["reason"] | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
   const getUploadUrl = useGetAvatarUploadUrl();
@@ -269,18 +282,28 @@ export default function ProfileScreen() {
   const openDeleteAccount = () => {
     setDeletePassword("");
     setDeleteConfirmed(false);
+    setDeleteReason(null);
     setDeleteError("");
     setDeleteModalVisible(true);
   };
 
+  const closeDeleteAccount = () => {
+    if (deleteUserAccount.isPending) return;
+    setDeletePassword("");
+    setDeleteConfirmed(false);
+    setDeleteReason(null);
+    setDeleteError("");
+    setDeleteModalVisible(false);
+  };
+
   const handleDeleteAccount = async () => {
-    if (!user || !deletePassword || !deleteConfirmed || deleteUserAccount.isPending) return;
+    if (!user || !deletePassword || !deleteConfirmed || !deleteReason || deleteUserAccount.isPending) return;
     setDeleteError("");
     let objectCleanupPending = false;
     try {
       const result = await deleteUserAccount.mutateAsync({
         userId: user.id,
-        data: { password: deletePassword },
+        data: { password: deletePassword, reason: deleteReason },
       });
       objectCleanupPending = result.objectCleanupPending;
     } catch (error) {
@@ -730,9 +753,7 @@ export default function ProfileScreen() {
         visible={deleteModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => {
-          if (!deleteUserAccount.isPending) setDeleteModalVisible(false);
-        }}
+        onRequestClose={closeDeleteAccount}
       >
         <View style={[styles.deleteOverlay, { backgroundColor: "rgba(0, 0, 0, 0.55)" }]}>
           <KeyboardAwareScrollViewCompat
@@ -759,6 +780,40 @@ export default function ProfileScreen() {
               <Text style={[styles.deleteModalText, { color: colors.mutedForeground }]}>
                 This is irreversible. Your account and associated content will be permanently deleted and cannot be restored.
               </Text>
+              <Text style={[styles.deleteModalLabel, { color: colors.foreground }]}>
+                Why are you deleting your account? (Required)
+              </Text>
+              <Text style={[styles.deleteReasonPrivacyNote, { color: colors.mutedForeground }]}>
+                Your answer is saved without identifying information.
+              </Text>
+              <View accessibilityRole="radiogroup" accessibilityLabel="Account deletion reason">
+                {ACCOUNT_DELETION_REASONS.map((option) => {
+                  const selected = deleteReason === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      accessibilityRole="radio"
+                      accessibilityLabel={option.label}
+                      accessibilityState={{ checked: selected, disabled: deleteUserAccount.isPending }}
+                      onPress={() => setDeleteReason(option.value)}
+                      disabled={deleteUserAccount.isPending}
+                      style={styles.deleteReasonRow}
+                    >
+                      <View
+                        style={[
+                          styles.deleteRadio,
+                          { borderColor: selected ? colors.primary : colors.border },
+                        ]}
+                      >
+                        {selected ? (
+                          <View style={[styles.deleteRadioSelected, { backgroundColor: colors.primary }]} />
+                        ) : null}
+                      </View>
+                      <Text style={[styles.deleteReasonText, { color: colors.foreground }]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
               <Text style={[styles.deleteModalLabel, { color: colors.foreground }]}>
                 Enter your password to continue
               </Text>
@@ -818,14 +873,14 @@ export default function ProfileScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Permanently delete my account"
-                disabled={!deletePassword || !deleteConfirmed || deleteUserAccount.isPending}
+                disabled={!deleteReason || !deletePassword || !deleteConfirmed || deleteUserAccount.isPending}
                 onPress={() => void handleDeleteAccount()}
                 style={({ pressed }) => [
                   styles.deleteActionButton,
                   {
                     backgroundColor: colors.destructive,
                     borderRadius: colors.radius,
-                    opacity: pressed || !deletePassword || !deleteConfirmed || deleteUserAccount.isPending ? 0.65 : 1,
+                    opacity: pressed || !deleteReason || !deletePassword || !deleteConfirmed || deleteUserAccount.isPending ? 0.65 : 1,
                   },
                 ]}
               >
@@ -839,10 +894,7 @@ export default function ProfileScreen() {
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                onPress={() => {
-                  setDeletePassword("");
-                  setDeleteModalVisible(false);
-                }}
+                onPress={closeDeleteAccount}
                 disabled={deleteUserAccount.isPending}
                 style={styles.deleteCancelButton}
               >
@@ -907,21 +959,32 @@ export default function ProfileScreen() {
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Delete account"
-            onPress={openDeleteAccount}
+            accessibilityLabel="Show account deletion options"
+            onPress={() => setDeleteEntryExpanded(true)}
             disabled={deleteUserAccount.isPending}
-            style={({ pressed }) => [
-              styles.deleteEntryButton,
-              {
-                backgroundColor: colors.destructive,
-                borderRadius: colors.radius,
-                opacity: pressed || deleteUserAccount.isPending ? 0.65 : 1,
-              },
-            ]}
+            style={({ pressed }) => [styles.deleteEntryTextControl, { opacity: pressed ? 0.6 : 1 }]}
           >
-            <Feather name="trash-2" size={16} color={colors.primaryForeground} />
-            <Text style={[styles.deleteActionText, { color: colors.primaryForeground }]}>Delete account</Text>
+            <Text style={[styles.deleteEntryText, { color: colors.destructive }]}>Delete account</Text>
           </Pressable>
+          {deleteEntryExpanded ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Continue to account deletion confirmation"
+              onPress={openDeleteAccount}
+              disabled={deleteUserAccount.isPending}
+              style={({ pressed }) => [
+                styles.deleteEntryButton,
+                {
+                  backgroundColor: colors.destructive,
+                  borderRadius: colors.radius,
+                  opacity: pressed || deleteUserAccount.isPending ? 0.65 : 1,
+                },
+              ]}
+            >
+              <Feather name="trash-2" size={16} color={colors.primaryForeground} />
+              <Text style={[styles.deleteActionText, { color: colors.primaryForeground }]}>Delete account</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </ScrollView>
@@ -1137,6 +1200,33 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 2,
   },
+  deleteReasonPrivacyNote: {
+    fontSize: 12,
+    marginTop: -4,
+  },
+  deleteReasonRow: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  deleteRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteRadioSelected: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  deleteReasonText: {
+    flex: 1,
+    fontSize: 14,
+  },
   deletePasswordInput: {
     height: 48,
     paddingHorizontal: 12,
@@ -1172,6 +1262,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     paddingHorizontal: 14,
+  },
+  deleteEntryTextControl: {
+    alignSelf: "flex-start",
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  deleteEntryText: {
+    fontSize: 12,
+    textDecorationLine: "underline",
   },
   deleteActionButton: {
     minHeight: 48,

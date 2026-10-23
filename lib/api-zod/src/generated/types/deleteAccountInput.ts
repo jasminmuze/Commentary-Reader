@@ -5,6 +5,7 @@
  * Bookmarks - Social Ebook Reader API
  * OpenAPI spec version: 0.1.0
  */
+import type { DeleteAccountInputReason } from './deleteAccountInputReason';
 
 export interface DeleteAccountInput {
   /**
@@ -12,4 +13,6 @@ export interface DeleteAccountInput {
      * @minLength 1
      */
   password: string;
+  /** Anonymous category describing why the account is being deleted */
+  reason: DeleteAccountInputReason;
 }

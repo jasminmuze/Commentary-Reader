@@ -15,6 +15,7 @@ import {
   userLibraryTable,
   pushTokensTable,
   feedbackTable,
+  accountDeletionFeedbackTable,
   booksTable,
   readingRoomsTable,
   roomMembersTable,
@@ -1269,6 +1270,9 @@ router.delete("/users/:userId", authenticate, async (req, res): Promise<void> =>
         .delete(userObjectUploadsTable)
         .where(eq(userObjectUploadsTable.userId, user.id));
       await tx.delete(usersTable).where(eq(usersTable.id, user.id));
+      await tx.insert(accountDeletionFeedbackTable).values({
+        reason: body.data.reason,
+      });
     });
   } catch (err) {
     await restoreAccountAfterFailure();

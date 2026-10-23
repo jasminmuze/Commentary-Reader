@@ -59,6 +59,40 @@
         font-size: 14px;
         font-weight: 650;
       }
+      fieldset {
+        margin: 0;
+        padding: 12px;
+        border: 1px solid #cfc8c1;
+        border-radius: 8px;
+      }
+      legend {
+        padding: 0 4px;
+        font-size: 14px;
+        font-weight: 650;
+      }
+      .reason-note {
+        margin: 0 0 10px;
+        color: #5f5954;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .reason-choice {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 9px;
+        font-weight: 450;
+      }
+      .reason-choice input {
+        width: 18px;
+        min-height: 18px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        accent-color: #ff3c00;
+      }
       input {
         width: 100%;
         min-height: 46px;
@@ -194,8 +228,17 @@
           people and shared room content may remain. You will not be able to
           restore your account or its deleted content.
         </div>
+        <fieldset>
+          <legend>Why are you deleting your account? (Required)</legend>
+          <p class="reason-note">Your answer is saved without identifying information.</p>
+          <label class="reason-choice"><input type="radio" name="reason" value="no_longer_use" required /> I no longer use Shelfmates</label>
+          <label class="reason-choice"><input type="radio" name="reason" value="switched_apps" required /> I switched to another app</label>
+          <label class="reason-choice"><input type="radio" name="reason" value="privacy_concerns" required /> Privacy concerns</label>
+          <label class="reason-choice"><input type="radio" name="reason" value="app_issues" required /> I'm having trouble using the app</label>
+          <label class="reason-choice"><input type="radio" name="reason" value="other" required /> Other</label>
+        </fieldset>
         <div class="actions">
-          <button id="delete-button" type="button">
+          <button id="delete-button" type="button" disabled>
             Permanently delete my account
           </button>
           <button id="cancel-button" class="secondary" type="button">
@@ -219,6 +262,7 @@
         const confirmation = document.getElementById("confirmation");
         const deleteButton = document.getElementById("delete-button");
         const cancelButton = document.getElementById("cancel-button");
+        const reasonInputs = Array.from(document.querySelectorAll('input[name="reason"]'));
         const message = document.getElementById("message");
         const cleanupNotice = document.getElementById("cleanup-notice");
 
@@ -226,6 +270,21 @@
         let bearerToken = null;
         let pendingPassword = null;
         let busy = false;
+
+        function clearReason() {
+          reasonInputs.forEach(function (input) {
+            input.checked = false;
+          });
+          deleteButton.disabled = true;
+        }
+
+        reasonInputs.forEach(function (input) {
+          input.addEventListener("change", function () {
+            deleteButton.disabled = !reasonInputs.some(function (choice) {
+              return choice.checked;
+            });
+          });
+        });
 
         function showMessage(text, isSuccess) {
           message.textContent = text;
@@ -279,6 +338,7 @@
             accountId = user.id;
             bearerToken = user.token;
             pendingPassword = password;
+            clearReason();
             loginForm.hidden = true;
             confirmation.hidden = false;
             document.getElementById("page-title").textContent =
@@ -303,7 +363,10 @@
         });
 
         deleteButton.addEventListener("click", async function () {
-          if (busy || !accountId || !bearerToken || pendingPassword === null) {
+          const selectedReason = reasonInputs.find(function (choice) {
+            return choice.checked;
+          });
+          if (busy || !accountId || !bearerToken || pendingPassword === null || !selectedReason) {
             return;
           }
 
@@ -322,7 +385,7 @@
                   authorization: "Bearer " + bearerToken,
                   "content-type": "application/json",
                 },
-                body: JSON.stringify({ password: pendingPassword }),
+                body: JSON.stringify({ password: pendingPassword, reason: selectedReason.value }),
               },
             );
             if (!response.ok) {
@@ -338,6 +401,7 @@
             accountId = null;
             bearerToken = null;
             pendingPassword = null;
+            clearReason();
             confirmation.hidden = true;
             document.getElementById("page-title").textContent =
               "Account deleted";
@@ -372,6 +436,7 @@
           accountId = null;
           bearerToken = null;
           pendingPassword = null;
+          clearReason();
           confirmation.hidden = true;
           loginForm.hidden = false;
           passwordInput.value = "";
@@ -385,6 +450,7 @@
           accountId = null;
           bearerToken = null;
           pendingPassword = null;
+          clearReason();
           passwordInput.value = "";
         });
       })();
