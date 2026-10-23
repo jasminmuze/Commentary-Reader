@@ -30,6 +30,11 @@ const PRIVACY_POLICY_TEMPLATE_PATH = path.resolve(
   "templates",
   "privacy-policy.html",
 );
+const SUPPORT_TEMPLATE_PATH = path.resolve(
+  __dirname,
+  "templates",
+  "support.html",
+);
 const basePath = (process.env.BASE_PATH || "/").replace(/\/+$/, "");
 const CURRENT_EAS_ANDROID_SIGNING_SHA256 =
   "5E:29:DB:42:43:B6:7B:F7:49:47:BE:3B:24:1B:80:76:8B:A4:15:8A:68:FA:2F:4B:5C:BA:C1:AE:51:B9:7D:AF";
@@ -288,6 +293,7 @@ const privacyPolicyTemplate = fs.readFileSync(
   PRIVACY_POLICY_TEMPLATE_PATH,
   "utf-8",
 );
+const supportTemplate = fs.readFileSync(SUPPORT_TEMPLATE_PATH, "utf-8");
 const appName = getAppName();
 
 const server = http.createServer((req, res) => {
@@ -303,6 +309,9 @@ const server = http.createServer((req, res) => {
   }
   if (pathname.replace(/\/+$/, "") === "/privacy-policy") {
     return serveAccountDeletionPage(req, res, privacyPolicyTemplate);
+  }
+  if (pathname.replace(/\/+$/, "") === "/support") {
+    return serveAccountDeletionPage(req, res, supportTemplate);
   }
   if (pathname === "/.well-known/apple-app-site-association") {
     return serveAppleAppSiteAssociation(req, res);
