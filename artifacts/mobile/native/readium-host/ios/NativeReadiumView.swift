@@ -74,7 +74,11 @@ class NativeReadiumView: UIView {
     private var listenedGroups = Set<String>()
     private var scrollModeEnabled = false
     private var observedScrollViews: [ObjectIdentifier: UIScrollView] = [:]
+    private var originalBounceSettings: [ObjectIdentifier: (bounces: Bool, vertical: Bool)] = [:]
     private var observerRefreshGeneration = 0
+    private weak var pullScrollView: UIScrollView?
+    private var pullNavigationPending = false
+    private var pullNavigationGeneration = 0
     private var pullGestureActive = false
     private var pullInProgress = false
     private var pullCandidateActive = false
@@ -244,9 +248,9 @@ class NativeReadiumView: UIView {
             config: EPUBNavigatorViewController.Configuration(
                 preferences: preferences,
                 editingActions: editingActions,
-                // Scroll-mode chapter changes are provided by the observe-only
-                // vertical overscroll detector below.
-                disablePageTurnsWhileScrolling: true
+                // Keep the existing escape route until chapter pulls have been
+                // verified in an iPhone build (including short chapters).
+                disablePageTurnsWhileScrolling: false
             ),
             httpServer: ReadiumContext.shared.httpServer
         )
@@ -263,6 +267,7 @@ class NativeReadiumView: UIView {
 
         scrollModeEnabled = isScrollModeEnabled()
         refreshChapterPullObservers()
+        scheduleChapterPullObserverRefreshes()
         sendOpened(publication)
     }
 
@@ -274,11 +279,10 @@ class NativeReadiumView: UIView {
             return
         }
         settingsJson = newSettingsJson as NSString
+        pullNavigationGeneration += 1
+        cancelChapterPull()
         navigator.submitPreferences(ReaderPreferencesMapper.parse(json: newSettingsJson))
         scrollModeEnabled = isScrollModeEnabled()
-        if !scrollModeEnabled {
-            cancelChapterPull()
-        }
         refreshChapterPullObservers()
         scheduleChapterPullObserverRefreshes()
         resolve(true)
@@ -550,6 +554,7 @@ class NativeReadiumView: UIView {
     func dispose() {
         guard !disposed else { return }
         disposed = true
+        pullNavigationGeneration += 1
         removeChapterPullObservers()
         if libId >= 0 {
             NativeReadiumViewRegistry.unregister(libId, self)
@@ -601,12 +606,35 @@ class NativeReadiumView: UIView {
 
         let removed = observedScrollViews.filter { current[$0.key] == nil }
         for (identifier, scrollView) in removed {
+            if pullScrollView === scrollView { cancelChapterPull() }
             scrollView.panGestureRecognizer.removeTarget(self, action: #selector(observeChapterPullPan(_:)))
+            restoreChapterPullBounceSettings(scrollView)
             observedScrollViews.removeValue(forKey: identifier)
         }
         for (identifier, scrollView) in current where observedScrollViews[identifier] == nil {
             scrollView.panGestureRecognizer.addTarget(self, action: #selector(observeChapterPullPan(_:)))
             observedScrollViews[identifier] = scrollView
+        }
+        for (identifier, scrollView) in current {
+            if scrollModeEnabled {
+                if originalBounceSettings[identifier] == nil {
+                    originalBounceSettings[identifier] = (scrollView.bounces, scrollView.alwaysBounceVertical)
+                }
+                // Readium 3.1 disables bouncing. Without alwaysBounceVertical,
+                // a resource shorter than the viewport may never recognize a
+                // vertical pan, leaving the observer with no events at all.
+                scrollView.bounces = true
+                scrollView.alwaysBounceVertical = true
+            } else {
+                restoreChapterPullBounceSettings(scrollView)
+            }
+        }
+    }
+
+    private func restoreChapterPullBounceSettings(_ scrollView: UIScrollView) {
+        if let original = originalBounceSettings.removeValue(forKey: ObjectIdentifier(scrollView)) {
+            scrollView.bounces = original.bounces
+            scrollView.alwaysBounceVertical = original.vertical
         }
     }
 
@@ -632,26 +660,31 @@ class NativeReadiumView: UIView {
         observerRefreshGeneration += 1
         for scrollView in observedScrollViews.values {
             scrollView.panGestureRecognizer.removeTarget(self, action: #selector(observeChapterPullPan(_:)))
+            restoreChapterPullBounceSettings(scrollView)
         }
         observedScrollViews.removeAll()
         cancelChapterPull()
     }
 
     @objc private func observeChapterPullPan(_ recognizer: UIPanGestureRecognizer) {
-        guard let scrollView = recognizer.view as? UIScrollView,
-              scrollModeEnabled,
+        guard let scrollView = recognizer.view as? UIScrollView else { return }
+        // Adjacent/preloaded WebViews must not cancel another view's gesture.
+        guard pullScrollView == nil || pullScrollView === scrollView else { return }
+        guard !disposed, scrollModeEnabled,
               isVisibleChapterScrollView(scrollView)
         else {
-            if pullInProgress { cancelChapterPull() }
+            if pullScrollView === scrollView { cancelChapterPull() }
             return
         }
 
         switch recognizer.state {
         case .began:
-            resetChapterPullGesture()
+            cancelChapterPull()
+            pullScrollView = scrollView
             pullLastTranslation = recognizer.translation(in: scrollView)
             pullLastContentOffsetY = scrollView.contentOffset.y
             pullGestureActive = Date().timeIntervalSince1970 - lastChapterJumpAt > Self.chapterJumpCooldown
+                && !pullNavigationPending
                 && navigator?.currentSelection == nil
                 && recognizer.numberOfTouches <= 1
         case .changed:
@@ -664,7 +697,8 @@ class NativeReadiumView: UIView {
             }
             updateChapterPull(scrollView, translation: recognizer.translation(in: scrollView))
         case .ended:
-            guard pullGestureActive else {
+            guard pullGestureActive, navigator?.currentSelection == nil else {
+                if pullInProgress { cancelChapterPull() }
                 resetChapterPullGesture()
                 return
             }
@@ -825,26 +859,39 @@ class NativeReadiumView: UIView {
     }
 
     private func commitChapterPull() {
-        guard let publication = publication,
+        guard !pullNavigationPending,
+              let publication = publication,
               let navigator = navigator,
-              publication.readingOrder.indices.contains(pullTargetIndex)
-        else { return }
+              publication.readingOrder.indices.contains(pullTargetIndex),
+              adjacentChapter(direction: pullDirection)?.index == pullTargetIndex
+        else {
+            cancelChapterPull()
+            return
+        }
 
+        pullNavigationPending = true
+        let generation = pullNavigationGeneration
+        let targetIndex = pullTargetIndex
         let link = publication.readingOrder[pullTargetIndex]
         let direction = pullDirection
         let title = pullTargetTitle
 
         Task { [weak self] in
+            guard let self = self else { return }
+            defer { self.pullNavigationPending = false }
+            guard !self.disposed, self.pullNavigationGeneration == generation else {
+                self.sendChapterPull("cancel", direction: direction, progress: 0, title: title)
+                return
+            }
             var destinationLink = link
             if direction < 0 {
                 // Readium's locator service may honor a fragment on the link.
                 // Backward chapter pulls need the resource end, not that anchor.
                 destinationLink.href = Self.hrefWithoutFragment(destinationLink.href)
             }
-            guard let self = self, !self.disposed,
-                  var locator = await publication.locate(destinationLink)
+            guard var locator = await publication.locate(destinationLink)
             else {
-                self?.sendChapterPull("cancel", direction: direction, progress: 0, title: title)
+                self.sendChapterPull("cancel", direction: direction, progress: 0, title: title)
                 return
             }
             if direction < 0 {
@@ -853,7 +900,14 @@ class NativeReadiumView: UIView {
                     locations.progression = 1.0
                 })
             }
-            guard !self.disposed, self.navigator === navigator else { return }
+            guard !self.disposed, self.navigator === navigator,
+                  self.scrollModeEnabled, self.navigator?.currentSelection == nil,
+                  self.pullNavigationGeneration == generation,
+                  self.adjacentChapter(direction: direction)?.index == targetIndex
+            else {
+                self.sendChapterPull("cancel", direction: direction, progress: 0, title: title)
+                return
+            }
             let moved = await navigator.go(to: locator, options: NavigatorGoOptions(animated: true))
             if moved {
                 self.lastChapterJumpAt = Date().timeIntervalSince1970
@@ -871,6 +925,7 @@ class NativeReadiumView: UIView {
     }
 
     private func resetChapterPullGesture() {
+        pullScrollView = nil
         pullGestureActive = false
         pullInProgress = false
         pullCandidateActive = false
