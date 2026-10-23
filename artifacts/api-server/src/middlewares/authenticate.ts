@@ -24,6 +24,28 @@ export async function authenticate(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  await authenticateRequest(req, res, next, true);
+}
+
+/**
+ * Authentication for the one-time community cleanup route. The handler takes
+ * the global exclusive account-write lock itself, so it must not first take
+ * the normal shared lock here.
+ */
+export async function authenticateWithoutAccountLocks(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  await authenticateRequest(req, res, next, false);
+}
+
+async function authenticateRequest(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  lockMutations: boolean,
+): Promise<void> {
   const authHeader = req.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     res.status(401).json({ error: "Unauthorized" });
@@ -39,7 +61,7 @@ export async function authenticate(
     req.path.replace(/\/+$/, "") === `/users/${userId}`;
   const isMutatingRequest = !["GET", "HEAD", "OPTIONS"].includes(req.method);
   let releaseAccountLocks: (() => Promise<void>) | undefined;
-  if (isMutatingRequest) {
+  if (isMutatingRequest && lockMutations) {
     try {
       releaseAccountLocks = await acquireAccountRequestLocks(
         userId,

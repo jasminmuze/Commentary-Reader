@@ -12,6 +12,7 @@ import friendRequestsRouter from "./friendRequests";
 import feedRouter from "./feed";
 import feedbackRouter from "./feedback";
 import roomsRouter from "./rooms";
+import communityCleanupRouter from "./communityCleanup";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(friendRequestsRouter);
 router.use(feedRouter);
 router.use(feedbackRouter);
 router.use(roomsRouter);
+router.use(communityCleanupRouter);
 
 export default router;

@@ -17,3 +17,4 @@ export * from "./roomMembers";
 export * from "./roomInvites";
 export * from "./userObjectUploads";
 export * from "./accountObjectCleanupJobs";
+export * from "./communityCleanupRuns";
