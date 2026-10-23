@@ -1,5 +1,19 @@
-import { db, friendshipsTable, roomMembersTable } from "@workspace/db";
-import { and, eq, inArray, isNull, ne, or, type SQL } from "drizzle-orm";
+import {
+  db,
+  friendshipsTable,
+  roomMembersTable,
+  userBlocksTable,
+} from "@workspace/db";
+import {
+  and,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  type SQL,
+} from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 /**
@@ -37,6 +51,54 @@ export async function getMutualFriendIds(userId: number): Promise<number[]> {
   return following.filter((id) => followerSet.has(id));
 }
 
+/** User IDs blocked by or blocking `userId`; blocks are enforced both ways. */
+export async function getBlockedUserIds(userId: number): Promise<number[]> {
+  const rows = await db
+    .select({
+      blockerId: userBlocksTable.blockerId,
+      blockedId: userBlocksTable.blockedId,
+    })
+    .from(userBlocksTable)
+    .where(
+      or(
+        eq(userBlocksTable.blockerId, userId),
+        eq(userBlocksTable.blockedId, userId),
+      ),
+    );
+
+  return [
+    ...new Set(
+      rows.map((row) =>
+        row.blockerId === userId ? row.blockedId : row.blockerId,
+      ),
+    ),
+  ];
+}
+
+/** Whether either user has blocked the other. */
+export async function isBlockedBetween(
+  firstUserId: number,
+  secondUserId: number,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: userBlocksTable.id })
+    .from(userBlocksTable)
+    .where(
+      or(
+        and(
+          eq(userBlocksTable.blockerId, firstUserId),
+          eq(userBlocksTable.blockedId, secondUserId),
+        ),
+        and(
+          eq(userBlocksTable.blockerId, secondUserId),
+          eq(userBlocksTable.blockedId, firstUserId),
+        ),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
 /** Whether `userId` follows `targetId`. */
 export async function isFollowing(
   userId: number,
@@ -61,6 +123,8 @@ export interface Viewer {
   mutualIds: number[];
   /** Reading rooms the viewer is a member of (for room-scoped content). */
   roomIds: number[];
+  /** User IDs hidden from each other because of a block in either direction. */
+  blockedIds: number[];
 }
 
 /** Reading-room IDs `userId` is a member of. */
@@ -74,11 +138,12 @@ export async function getRoomIds(userId: number): Promise<number[]> {
 
 /** Build a Viewer (with mutual-friend + room-membership sets) for visibility filtering. */
 export async function getViewer(userId: number): Promise<Viewer> {
-  const [mutualIds, roomIds] = await Promise.all([
+  const [mutualIds, roomIds, blockedIds] = await Promise.all([
     getMutualFriendIds(userId),
     getRoomIds(userId),
+    getBlockedUserIds(userId),
   ]);
-  return { userId, mutualIds, roomIds };
+  return { userId, mutualIds, roomIds, blockedIds };
 }
 
 /**
@@ -130,15 +195,21 @@ export function visibilityPredicate(
     communityClause = or(...clauses)!;
   }
 
-  if (!roomIdCol) return communityClause;
-
-  // Community contexts see community rows AND room rows the author explicitly
-  // shared outward (visibility != 'room'); members-only rows stay in-room.
-  const scoped: (SQL | undefined)[] = [
-    and(or(isNull(roomIdCol), ne(visibilityCol, "room")), communityClause),
-  ];
-  if (allowViewerRooms && viewer && viewer.roomIds.length > 0) {
-    scoped.push(inArray(roomIdCol, viewer.roomIds));
+  let visible: SQL;
+  if (!roomIdCol) {
+    visible = communityClause;
+  } else {
+    // Community contexts see community rows AND room rows the author explicitly
+    // shared outward (visibility != 'room'); members-only rows stay in-room.
+    const scoped: (SQL | undefined)[] = [
+      and(or(isNull(roomIdCol), ne(visibilityCol, "room")), communityClause),
+    ];
+    if (allowViewerRooms && viewer && viewer.roomIds.length > 0) {
+      scoped.push(inArray(roomIdCol, viewer.roomIds));
+    }
+    visible = or(...scoped)!;
   }
-  return or(...scoped)!;
+
+  if (!viewer || viewer.blockedIds.length === 0) return visible;
+  return and(visible, notInArray(authorCol, viewer.blockedIds))!;
 }

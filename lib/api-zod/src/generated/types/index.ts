@@ -7,6 +7,8 @@
  */
 
 export * from './avatarUploadUrl';
+export * from './blockedUser';
+export * from './blockUserInput';
 export * from './book';
 export * from './bookDetail';
 export * from './comment';
@@ -57,6 +59,10 @@ export * from './passwordResetRequestInput';
 export * from './pushTokenInput';
 export * from './quote';
 export * from './quoteReaderContext';
+export * from './reportContentInput';
+export * from './reportContentInputReason';
+export * from './reportContentInputTargetType';
+export * from './reportContentResult';
 export * from './room';
 export * from './roomDetail';
 export * from './roomDetailMyRole';

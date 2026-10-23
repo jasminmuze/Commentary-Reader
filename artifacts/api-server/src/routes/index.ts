@@ -13,6 +13,7 @@ import feedRouter from "./feed";
 import feedbackRouter from "./feedback";
 import roomsRouter from "./rooms";
 import communityCleanupRouter from "./communityCleanup";
+import moderationRouter from "./moderation";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(feedRouter);
 router.use(feedbackRouter);
 router.use(roomsRouter);
 router.use(communityCleanupRouter);
+router.use(moderationRouter);
 
 export default router;

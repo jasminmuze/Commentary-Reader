@@ -1,6 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db, notificationsTable, roomMembersTable, usersTable } from "@workspace/db";
 import { sendPushToUsers } from "./push";
+import { getBlockedUserIds } from "./social";
 import {
   commentPushBody,
   likePushCopy,
@@ -167,9 +168,10 @@ export async function createMentionNotifications(options: {
     .select({ id: usersTable.id, notifyMentions: usersTable.notifyMentions })
     .from(usersTable)
     .where(inArray(usersTable.username, mentionedNames));
+  const blockedIds = new Set(await getBlockedUserIds(actorId));
   // Respect each recipient's mention-notification setting (skips in-app AND push).
   let toNotify = mentionedUsers.filter(
-    (u) => !excluded.has(u.id) && u.notifyMentions,
+    (u) => !excluded.has(u.id) && !blockedIds.has(u.id) && u.notifyMentions,
   );
   if (toNotify.length > 0 && restrictToRoomId !== undefined) {
     const memberRows = await db

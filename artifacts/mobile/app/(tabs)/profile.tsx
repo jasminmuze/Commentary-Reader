@@ -910,6 +910,26 @@ export default function ProfileScreen() {
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>ACCOUNT</Text>
         <Pressable
           accessibilityRole="link"
+          accessibilityLabel="Blocked accounts"
+          onPress={() => router.push("/blocked-users")}
+          style={({ pressed }) => [
+            styles.card,
+            styles.logoutButton,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+              opacity: pressed ? 0.6 : 1,
+              marginBottom: 12,
+            },
+          ]}
+        >
+          <Feather name="slash" size={18} color={colors.foreground} />
+          <Text style={[styles.logoutText, { color: colors.foreground }]}>Blocked accounts</Text>
+          <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="link"
           accessibilityLabel="Privacy policy"
           onPress={() => void Linking.openURL(`https://${process.env.EXPO_PUBLIC_DOMAIN}/privacy-policy`)}
           style={({ pressed }) => [

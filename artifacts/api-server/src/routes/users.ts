@@ -16,10 +16,12 @@ import {
   pushTokensTable,
   feedbackTable,
   accountDeletionFeedbackTable,
+  contentReportsTable,
   booksTable,
   readingRoomsTable,
   roomMembersTable,
   roomInvitesTable,
+  userBlocksTable,
   userObjectUploadsTable,
   accountObjectCleanupJobsTable,
 } from "@workspace/db";
@@ -73,7 +75,9 @@ import {
   releaseAccountRequestLocksOnResponse,
 } from "../lib/accountRequestLocks.js";
 import {
+  getBlockedUserIds,
   getViewer,
+  isBlockedBetween,
   isFollowing,
   visibilityPredicate,
 } from "../lib/social";
@@ -724,7 +728,10 @@ router.get("/users/search", authenticate, async (req, res): Promise<void> => {
     .where(or(ilike(usersTable.username, pattern), ilike(usersTable.nickname, pattern)))
     .limit(20);
 
-  const candidates = users.filter((u) => u.id !== userId);
+  const blockedIds = new Set(await getBlockedUserIds(userId));
+  const candidates = users.filter(
+    (u) => u.id !== userId && !blockedIds.has(u.id),
+  );
   const candidateIds = candidates.map((u) => u.id);
 
   // Batch relationship lookups: follows in both directions + pending requests.
@@ -792,6 +799,11 @@ router.get("/users/:userId", authenticate, async (req, res): Promise<void> => {
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, params.data.userId));
   if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  if (req.userId !== user.id && await isBlockedBetween(req.userId, user.id)) {
     res.status(404).json({ error: "User not found" });
     return;
   }
@@ -1153,6 +1165,39 @@ router.delete("/users/:userId", authenticate, async (req, res): Promise<void> =>
       const commentIds = [...removedCommentIds];
       const highlightIdList = [...removedHighlightIds];
 
+      const reportConditions = [
+        eq(contentReportsTable.reporterId, user.id),
+        and(
+          eq(contentReportsTable.targetType, "user"),
+          eq(contentReportsTable.targetId, user.id),
+        ),
+        ...(commentIds.length
+          ? [
+              and(
+                eq(contentReportsTable.targetType, "comment"),
+                inArray(contentReportsTable.targetId, commentIds),
+              ),
+            ]
+          : []),
+        ...(highlightIdList.length
+          ? [
+              and(
+                eq(contentReportsTable.targetType, "highlight"),
+                inArray(contentReportsTable.targetId, highlightIdList),
+              ),
+            ]
+          : []),
+      ];
+      await tx.delete(contentReportsTable).where(or(...reportConditions)!);
+      await tx
+        .delete(userBlocksTable)
+        .where(
+          or(
+            eq(userBlocksTable.blockerId, user.id),
+            eq(userBlocksTable.blockedId, user.id),
+          )!,
+        );
+
       // Preserve the denormalized like counts on comments that remain.
       const survivingCommentLikes = await tx
         .select({ commentId: commentLikesTable.commentId })
@@ -1325,6 +1370,56 @@ router.get("/users/:userId/profile", authenticate, async (req, res): Promise<voi
 
   const viewer = await getViewer(req.userId);
   const isMe = req.userId === targetId;
+  const [ownBlock] = isMe
+    ? []
+    : await db
+        .select({ id: userBlocksTable.id })
+        .from(userBlocksTable)
+        .where(
+          and(
+            eq(userBlocksTable.blockerId, req.userId),
+            eq(userBlocksTable.blockedId, targetId),
+          ),
+        )
+        .limit(1);
+  const [blockByTarget] = isMe
+    ? []
+    : await db
+        .select({ id: userBlocksTable.id })
+        .from(userBlocksTable)
+        .where(
+          and(
+            eq(userBlocksTable.blockerId, targetId),
+            eq(userBlocksTable.blockedId, req.userId),
+          ),
+        )
+        .limit(1);
+
+  if (blockByTarget && !ownBlock) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  if (ownBlock) {
+    res.json({
+      id: user.id,
+      username: user.username,
+      nickname: user.nickname ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+      avatarColor: user.avatarColor,
+      createdAt: user.createdAt.toISOString(),
+      followerCount: 0,
+      followingCount: 0,
+      highlightCount: 0,
+      commentCount: 0,
+      recentActivity: [],
+      isFollowedByMe: false,
+      followsMe: false,
+      isMe: false,
+      isBlockedByMe: true,
+      friendStatus: "none",
+    });
+    return;
+  }
 
   const [followerRow] = await db
     .select({ c: count() })
@@ -1506,6 +1601,7 @@ router.get("/users/:userId/profile", authenticate, async (req, res): Promise<voi
     isFollowedByMe,
     followsMe,
     isMe,
+    isBlockedByMe: false,
     friendStatus,
   });
 });
@@ -1649,6 +1745,7 @@ router.get("/users/:userId/friends", authenticate, async (req, res): Promise<voi
     return;
   }
 
+  const blockedIds = new Set(await getBlockedUserIds(params.data.userId));
   const friendships = await db.select({ friendId: friendshipsTable.friendId }).from(friendshipsTable).where(eq(friendshipsTable.userId, params.data.userId));
   if (friendships.length === 0) {
     res.json([]);
@@ -1657,7 +1754,9 @@ router.get("/users/:userId/friends", authenticate, async (req, res): Promise<voi
 
   const friendIds = friendships.map((f) => f.friendId);
   const friends = await db.select().from(usersTable);
-  const filtered = friends.filter((u) => friendIds.includes(u.id));
+  const filtered = friends.filter(
+    (u) => friendIds.includes(u.id) && !blockedIds.has(u.id),
+  );
   res.json(filtered.map((u) => formatUser(u, { self: false })));
 });
 
@@ -1690,6 +1789,10 @@ router.post("/users/:userId/friends", authenticate, async (req, res): Promise<vo
   const [friend] = await db.select().from(usersTable).where(eq(usersTable.id, friendId));
   if (!friend) {
     res.status(404).json({ error: "Friend not found" });
+    return;
+  }
+  if (await isBlockedBetween(userId, friendId)) {
+    res.status(403).json({ error: "Cannot follow a blocked account" });
     return;
   }
 
@@ -2035,6 +2138,13 @@ router.get("/users/:userId/highlights", authenticate, async (req, res): Promise<
 router.get("/users/:userId/rooms", authenticate, async (req, res): Promise<void> => {
   const params = GetUserRoomsParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: "Invalid userId" }); return; }
+  if (
+    req.userId !== params.data.userId &&
+    await isBlockedBetween(req.userId, params.data.userId)
+  ) {
+    res.json([]);
+    return;
+  }
 
   // Subquery: member count per room
   const memberCountSq = db

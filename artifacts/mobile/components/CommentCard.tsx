@@ -6,6 +6,7 @@ import { router } from "expo-router";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "./UserAvatar";
+import { ReportContentButton } from "./ReportContentButton";
 import type { Comment } from "@workspace/api-client-react";
 
 interface Props {
@@ -155,6 +156,13 @@ export function CommentCard({
           >
             <Feather name="more-horizontal" size={18} color={colors.mutedForeground} />
           </Pressable>
+        ) : null}
+        {!isAuthor ? (
+          <ReportContentButton
+            targetType="comment"
+            targetId={comment.id}
+            targetUserId={comment.userId}
+          />
         ) : null}
       </Pressable>
 

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, count, desc, eq, gte, ilike, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
 import {
   db,
   booksTable,
@@ -41,7 +41,7 @@ import { authenticate } from "../middlewares/authenticate.js";
 import { createRoomShareToken, verifyRoomShareToken } from "../lib/auth.js";
 import { createRoomInviteNotification } from "../lib/notifications";
 import { getOwnedBookIds, truncateQuoteText } from "../lib/contentLimits";
-import { getMutualFriendIds } from "../lib/social";
+import { getBlockedUserIds, getMutualFriendIds, isBlockedBetween } from "../lib/social";
 
 const router: IRouter = Router();
 
@@ -674,6 +674,7 @@ router.post(
         .where(eq(readingRoomsTable.id, candidate.roomId))
         .for("update");
       if (!room || room.ownerId == null || room.isPublic) return null;
+      if (await isBlockedBetween(req.userId, room.ownerId)) return null;
 
       const [activeLink] = await tx
         .select({
@@ -907,6 +908,10 @@ router.post("/rooms/:roomId/invites", authenticate, async (req, res): Promise<vo
     res.status(404).json({ error: "User not found" });
     return;
   }
+  if (await isBlockedBetween(req.userId, inviteeId)) {
+    res.status(403).json({ error: "Cannot invite a blocked account" });
+    return;
+  }
 
   // Invites are limited to friends — mirrors who you can see in the picker.
   const mutualIds = await getMutualFriendIds(req.userId);
@@ -1077,6 +1082,11 @@ router.get("/rooms/:roomId/feed", authenticate, async (req, res): Promise<void> 
     return;
   }
 
+  const blockedIds = await getBlockedUserIds(req.userId);
+  const feedConditions = [eq(commentsTable.roomId, room.id)];
+  if (blockedIds.length > 0) {
+    feedConditions.push(notInArray(commentsTable.userId, blockedIds));
+  }
   const comments = await db
     .select({
       id: commentsTable.id,
@@ -1096,7 +1106,7 @@ router.get("/rooms/:roomId/feed", authenticate, async (req, res): Promise<void> 
     .from(commentsTable)
     .innerJoin(usersTable, eq(commentsTable.userId, usersTable.id))
     .innerJoin(quotesTable, eq(commentsTable.quoteId, quotesTable.id))
-    .where(eq(commentsTable.roomId, room.id))
+    .where(and(...feedConditions))
     .orderBy(desc(commentsTable.createdAt))
     .limit(50);
 

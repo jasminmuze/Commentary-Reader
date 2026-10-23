@@ -29,6 +29,8 @@ export interface UserProfile {
   followsMe: boolean;
   /** Whether this profile is the requesting user */
   isMe: boolean;
+  /** Whether the requesting user has blocked this profile */
+  isBlockedByMe: boolean;
   /** Friend relationship between the viewer and this profile: none = no relationship, requested = viewer sent a pending request, incoming = this profile sent the viewer a pending request, friends = mutual follow (friends). Always "none" on your own profile. */
   friendStatus: UserProfileFriendStatus;
 }

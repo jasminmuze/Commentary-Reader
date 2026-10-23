@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import {
   db,
   friendRequestsTable,
   friendshipsTable,
   notificationsTable,
+  userBlocksTable,
   usersTable,
 } from "@workspace/db";
 import {
@@ -15,6 +16,7 @@ import {
 import { authenticate } from "../middlewares/authenticate.js";
 import { sendPushToUsers } from "../lib/push";
 import { getNotificationPrefs } from "../lib/notifications";
+import { isBlockedBetween } from "../lib/social";
 import {
   friendAcceptPushCopy,
   friendRequestPushCopy,
@@ -46,6 +48,10 @@ router.post("/friend-requests", authenticate, async (req, res): Promise<void> =>
     .where(eq(usersTable.id, recipientId));
   if (!recipient) {
     res.status(404).json({ error: "User not found" });
+    return;
+  }
+  if (await isBlockedBetween(requesterId, recipientId)) {
+    res.status(403).json({ error: "Cannot request a blocked account" });
     return;
   }
 
@@ -139,6 +145,24 @@ async function acceptRequest(
   // not end up in a partial state if any step fails.
   const requesterPrefs = await getNotificationPrefs(requesterId);
   const accepted = await db.transaction(async (tx) => {
+    const [block] = await tx
+      .select({ id: userBlocksTable.id })
+      .from(userBlocksTable)
+      .where(
+        or(
+          and(
+            eq(userBlocksTable.blockerId, requesterId),
+            eq(userBlocksTable.blockedId, recipientId),
+          ),
+          and(
+            eq(userBlocksTable.blockerId, recipientId),
+            eq(userBlocksTable.blockedId, requesterId),
+          ),
+        ),
+      )
+      .limit(1);
+    if (block) return false;
+
     const deleted = await tx
       .delete(friendRequestsTable)
       .where(

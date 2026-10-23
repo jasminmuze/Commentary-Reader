@@ -6,6 +6,8 @@ export * from "./commentLikes";
 export * from "./highlightLikes";
 export * from "./commentSaves";
 export * from "./friendships";
+export * from "./userBlocks";
+export * from "./contentReports";
 export * from "./friendRequests";
 export * from "./userHighlights";
 export * from "./userLibrary";

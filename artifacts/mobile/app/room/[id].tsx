@@ -47,6 +47,7 @@ import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "@/components/UserAvatar";
 import { EmptyState } from "@/components/EmptyState";
 import { CommentSheet } from "@/components/CommentSheet";
+import { ReportContentButton } from "@/components/ReportContentButton";
 import { navigateToQuote } from "@/lib/quoteNavigation";
 
 function timeAgo(dateStr: string): string {
@@ -119,6 +120,11 @@ function FeedRow({
           </Text>
         ) : null}
         <View style={{ flex: 1 }} />
+        <ReportContentButton
+          targetType={item.type}
+          targetId={item.id}
+          targetUserId={item.userId}
+        />
         <Text style={[styles.feedTime, { color: colors.mutedForeground }]}>
           {timeAgo(item.createdAt)}
         </Text>

@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -20,6 +21,8 @@ import {
   useRemoveFriend,
   useSendFriendRequest,
   useAcceptFriendRequest,
+  useBlockUser,
+  useUnblockUser,
   getGetUserProfileQueryKey,
   getGetUserRoomsQueryKey,
   getGetFriendsQueryKey,
@@ -29,6 +32,7 @@ import type { UserPublicActivityItem } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "@/components/UserAvatar";
+import { ReportContentButton } from "@/components/ReportContentButton";
 
 function activityDateLabel(value: string): string {
   const timestamp = new Date(value).getTime();
@@ -46,9 +50,11 @@ function activityDateLabel(value: string): string {
 function PublicActivityCard({
   item,
   isAuthor,
+  authorId,
 }: {
   item: UserPublicActivityItem;
   isAuthor: boolean;
+  authorId: number;
 }) {
   const colors = useColors();
   const [spoilerRevealed, setSpoilerRevealed] = useState(false);
@@ -94,6 +100,13 @@ function PublicActivityCard({
         <Text style={[styles.activityDate, { color: colors.mutedForeground }]}>
           {activityDateLabel(item.createdAt)}
         </Text>
+        {!isAuthor ? (
+          <ReportContentButton
+            targetType={item.kind}
+            targetId={item.id}
+            targetUserId={authorId}
+          />
+        ) : null}
       </View>
 
       <View style={styles.activityBook}>
@@ -202,6 +215,8 @@ export default function UserProfileScreen() {
   const removeFriend = useRemoveFriend();
   const sendFriendRequest = useSendFriendRequest();
   const acceptFriendRequest = useAcceptFriendRequest();
+  const blockUser = useBlockUser();
+  const unblockUser = useUnblockUser();
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: getGetUserProfileQueryKey(profileId) });
@@ -236,6 +251,47 @@ export default function UserProfileScreen() {
       );
     }
   }, [user, profile, sendFriendRequest, acceptFriendRequest, invalidate]);
+
+  const handleBlock = useCallback(() => {
+    if (!user || !profile) return;
+    Alert.alert(
+      `Block ${profile.nickname?.trim() || profile.username}?`,
+      "You won’t see each other’s posts or be able to follow or invite each other to reading rooms. You can unblock this account later in your profile settings.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: () =>
+            blockUser.mutate(
+              { userId: user.id, data: { blockedUserId: profile.id } },
+              {
+                onSuccess: async () => {
+                  await queryClient.invalidateQueries();
+                  router.back();
+                },
+                onError: () =>
+                  Alert.alert("Couldn’t block account", "Please try again."),
+              },
+            ),
+        },
+      ],
+    );
+  }, [user, profile, blockUser, queryClient]);
+
+  const handleUnblock = useCallback(() => {
+    if (!user || !profile) return;
+    unblockUser.mutate(
+      { userId: user.id, blockedUserId: profile.id },
+      {
+        onSuccess: async () => {
+          await queryClient.invalidateQueries();
+        },
+        onError: () =>
+          Alert.alert("Couldn’t unblock account", "Please try again."),
+      },
+    );
+  }, [user, profile, unblockUser, queryClient]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -358,7 +414,7 @@ export default function UserProfileScreen() {
           ))}
         </View>
 
-        {!profile.isMe ? (
+        {!profile.isMe && !profile.isBlockedByMe ? (
           <View style={styles.actionRow}>
             <Pressable
               style={({ pressed }) => [
@@ -430,6 +486,63 @@ export default function UserProfileScreen() {
           </View>
         ) : null}
 
+        {!profile.isMe ? (
+          profile.isBlockedByMe ? (
+            <View style={styles.safetySection}>
+              <Text style={[styles.blockedNotice, { color: colors.mutedForeground }]}>
+                You’ve blocked this account. Its activity is hidden.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleUnblock}
+                disabled={unblockUser.isPending}
+                style={({ pressed }) => [
+                  styles.safetyButton,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    borderRadius: colors.radius,
+                    opacity: pressed || unblockUser.isPending ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Feather name="user-check" size={15} color={colors.foreground} />
+                <Text style={[styles.safetyButtonText, { color: colors.foreground }]}>
+                  {unblockUser.isPending ? "Unblocking…" : "Unblock account"}
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.safetyActions}>
+              <ReportContentButton
+                targetType="user"
+                targetId={profile.id}
+                targetUserId={profile.id}
+                showLabel
+              />
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleBlock}
+                style={({ pressed }) => [
+                  styles.safetyButton,
+                  styles.safetyButtonCompact,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    borderRadius: colors.radius,
+                    opacity: pressed || blockUser.isPending ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Feather name="slash" size={15} color={colors.destructive} />
+                <Text style={[styles.safetyButtonText, { color: colors.destructive }]}>
+                  Block
+                </Text>
+              </Pressable>
+            </View>
+          )
+        ) : null}
+
         <View style={styles.activitySection}>
           <View style={styles.activitySectionHeader}>
             <View>
@@ -461,6 +574,7 @@ export default function UserProfileScreen() {
                   key={`${item.kind}-${item.id}`}
                   item={item}
                   isAuthor={profile.isMe}
+                  authorId={profile.id}
                 />
               ))}
             </View>
@@ -479,10 +593,16 @@ export default function UserProfileScreen() {
                 <Feather name="book-open" size={18} color={colors.mutedForeground} />
               </View>
               <Text style={[styles.activityEmptyTitle, { color: colors.foreground }]}>
-                {profile.isMe ? "Your reading story starts here" : "Their reading story starts here"}
+                {profile.isBlockedByMe
+                  ? "Activity hidden"
+                  : profile.isMe
+                    ? "Your reading story starts here"
+                    : "Their reading story starts here"}
               </Text>
               <Text style={[styles.activityEmptyBody, { color: colors.mutedForeground }]}>
-                Public highlights and comments will show up as they read.
+                {profile.isBlockedByMe
+                  ? "Unblock this account to see its public highlights and comments."
+                  : "Public highlights and comments will show up as they read."}
               </Text>
             </View>
           )}
@@ -619,6 +739,39 @@ const styles = StyleSheet.create({
   },
   actionBtnText: {
     fontSize: 15,
+    fontWeight: "700",
+  },
+  safetyActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+  },
+  safetySection: {
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 10,
+  },
+  blockedNotice: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  safetyButton: {
+    minHeight: 40,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  safetyButtonCompact: {
+    minHeight: 36,
+  },
+  safetyButtonText: {
+    fontSize: 13,
     fontWeight: "700",
   },
   activitySection: {

@@ -840,6 +840,54 @@ export const AddFriendResponse = zod.object({
 
 
 /**
+ * @summary List accounts blocked by the current user
+ */
+export const GetBlockedUsersParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetBlockedUsersResponseItem = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
+  "avatarColor": zod.string(),
+  "blockedAt": zod.coerce.date()
+})
+export const GetBlockedUsersResponse = zod.array(GetBlockedUsersResponseItem)
+
+
+/**
+ * @summary Block an account
+ */
+export const BlockUserParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const BlockUserBody = zod.object({
+  "blockedUserId": zod.number()
+})
+
+export const BlockUserResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "nickname": zod.string().nullable(),
+  "avatarUrl": zod.string().nullable(),
+  "avatarColor": zod.string(),
+  "blockedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Unblock an account
+ */
+export const UnblockUserParams = zod.object({
+  "userId": zod.coerce.number(),
+  "blockedUserId": zod.coerce.number()
+})
+
+
+/**
  * @summary Remove a friend
  */
 export const RemoveFriendParams = zod.object({
@@ -857,6 +905,26 @@ export const SendFriendRequestBody = zod.object({
 
 export const SendFriendRequestResponse = zod.object({
   "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Report a comment, highlight, or user
+ */
+export const reportContentBodyDetailsMax = 500;
+
+
+
+export const ReportContentBody = zod.object({
+  "targetType": zod.enum(['comment', 'highlight', 'user']),
+  "targetId": zod.number(),
+  "reason": zod.enum(['spam', 'harassment', 'hate_or_abusive_content', 'sexual_content', 'copyright', 'other']),
+  "details": zod.string().max(reportContentBodyDetailsMax).optional()
+})
+
+export const ReportContentResponse = zod.object({
+  "ok": zod.literal(true),
+  "alreadyReported": zod.boolean()
 })
 
 
@@ -1062,6 +1130,7 @@ export const GetUserProfileResponse = zod.object({
   "isFollowedByMe": zod.boolean().describe('Whether the requesting user follows this profile'),
   "followsMe": zod.boolean().describe('Whether this profile follows the requesting user'),
   "isMe": zod.boolean().describe('Whether this profile is the requesting user'),
+  "isBlockedByMe": zod.boolean().describe('Whether the requesting user has blocked this profile'),
   "friendStatus": zod.enum(['none', 'requested', 'incoming', 'friends']).describe('Friend relationship between the viewer and this profile: none = no relationship, requested = viewer sent a pending request, incoming = this profile sent the viewer a pending request, friends = mutual follow (friends). Always \"none\" on your own profile.')
 })
 

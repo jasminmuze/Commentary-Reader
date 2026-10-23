@@ -401,6 +401,8 @@ export interface UserProfile {
   followsMe: boolean;
   /** Whether this profile is the requesting user */
   isMe: boolean;
+  /** Whether the requesting user has blocked this profile */
+  isBlockedByMe: boolean;
   /** Friend relationship between the viewer and this profile: none = no relationship, requested = viewer sent a pending request, incoming = this profile sent the viewer a pending request, friends = mutual follow (friends). Always "none" on your own profile. */
   friendStatus: UserProfileFriendStatus;
 }
@@ -622,6 +624,55 @@ export interface FeedbackInput {
      * @maxLength 2000
      */
   text: string;
+}
+
+export interface BlockUserInput {
+  blockedUserId: number;
+}
+
+export interface BlockedUser {
+  id: number;
+  username: string;
+  /** @nullable */
+  nickname: string | null;
+  /** @nullable */
+  avatarUrl: string | null;
+  avatarColor: string;
+  blockedAt: string;
+}
+
+export type ReportContentInputTargetType = typeof ReportContentInputTargetType[keyof typeof ReportContentInputTargetType];
+
+
+export const ReportContentInputTargetType = {
+  comment: 'comment',
+  highlight: 'highlight',
+  user: 'user',
+} as const;
+
+export type ReportContentInputReason = typeof ReportContentInputReason[keyof typeof ReportContentInputReason];
+
+
+export const ReportContentInputReason = {
+  spam: 'spam',
+  harassment: 'harassment',
+  hate_or_abusive_content: 'hate_or_abusive_content',
+  sexual_content: 'sexual_content',
+  copyright: 'copyright',
+  other: 'other',
+} as const;
+
+export interface ReportContentInput {
+  targetType: ReportContentInputTargetType;
+  targetId: number;
+  reason: ReportContentInputReason;
+  /** @maxLength 500 */
+  details?: string;
+}
+
+export interface ReportContentResult {
+  ok: true;
+  alreadyReported: boolean;
 }
 
 export interface OkResult {

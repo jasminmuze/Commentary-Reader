@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { LoadingShimmer } from "@/components/LoadingShimmer";
 import { navigateToQuote } from "@/lib/quoteNavigation";
 import { apiUrl } from "@/lib/api";
+import { ReportContentButton } from "@/components/ReportContentButton";
 
 const PAGE_SIZE = 20;
 
@@ -103,11 +104,18 @@ function FeedCard({
             {timeAgo(item.createdAt)}
           </Text>
         </View>
-        <Feather
-          name={isComment ? "message-circle" : "edit-3"}
-          size={16}
-          color={colors.mutedForeground}
-        />
+        <View style={styles.cardHeaderActions}>
+          <Feather
+            name={isComment ? "message-circle" : "edit-3"}
+            size={16}
+            color={colors.mutedForeground}
+          />
+          <ReportContentButton
+            targetType={item.type}
+            targetId={item.id}
+            targetUserId={item.userId}
+          />
+        </View>
       </View>
 
       <View style={styles.quoteRow}>
@@ -473,6 +481,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+  },
+  cardHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   headerLine: { fontSize: 13, lineHeight: 18 },
   username: { fontWeight: "700" },

@@ -748,6 +748,76 @@ paths:
               schema:
                 $ref: "#/components/schemas/User"
 
+  /users/{userId}/blocked-users:
+    get:
+      operationId: getBlockedUsers
+      tags: [users]
+      summary: List accounts blocked by the current user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Blocked accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlockedUser"
+
+  /users/{userId}/blocks:
+    post:
+      operationId: blockUser
+      tags: [users]
+      summary: Block an account
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockUserInput"
+      responses:
+        "200":
+          description: Account blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockedUser"
+        "400":
+          description: Cannot block yourself
+        "404":
+          description: User not found
+
+  /users/{userId}/blocks/{blockedUserId}:
+    delete:
+      operationId: unblockUser
+      tags: [users]
+      summary: Unblock an account
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: blockedUserId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Account unblocked
+
   /users/{userId}/friends/{friendId}:
     delete:
       operationId: removeFriend
@@ -790,6 +860,27 @@ paths:
           description: Cannot send a friend request to yourself
         "404":
           description: Recipient not found
+
+  /reports:
+    post:
+      operationId: reportContent
+      tags: [moderation]
+      summary: Report a comment, highlight, or user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportContentInput"
+      responses:
+        "200":
+          description: Report received, including an already-submitted report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportContentResult"
+        "404":
+          description: Content not found or not visible to the reporter
 
   /friend-requests/{requesterId}/accept:
     post:
@@ -2205,6 +2296,7 @@ components:
           isFollowedByMe,
           followsMe,
           isMe,
+          isBlockedByMe,
           friendStatus,
         ]
       properties:
@@ -2243,6 +2335,9 @@ components:
         isMe:
           type: boolean
           description: Whether this profile is the requesting user
+        isBlockedByMe:
+          type: boolean
+          description: Whether the requesting user has blocked this profile
         friendStatus:
           type: string
           enum: [none, requested, incoming, friends]
@@ -2543,6 +2638,57 @@ components:
           type: string
           minLength: 1
           maxLength: 2000
+
+    BlockUserInput:
+      type: object
+      required: [blockedUserId]
+      properties:
+        blockedUserId:
+          type: integer
+
+    BlockedUser:
+      type: object
+      required: [id, username, nickname, avatarUrl, avatarColor, blockedAt]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        nickname:
+          type: [string, "null"]
+        avatarUrl:
+          type: [string, "null"]
+        avatarColor:
+          type: string
+        blockedAt:
+          type: string
+          format: date-time
+
+    ReportContentInput:
+      type: object
+      required: [targetType, targetId, reason]
+      properties:
+        targetType:
+          type: string
+          enum: [comment, highlight, user]
+        targetId:
+          type: integer
+        reason:
+          type: string
+          enum: [spam, harassment, hate_or_abusive_content, sexual_content, copyright, other]
+        details:
+          type: string
+          maxLength: 500
+
+    ReportContentResult:
+      type: object
+      required: [ok, alreadyReported]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        alreadyReported:
+          type: boolean
 
     OkResult:
       type: object
