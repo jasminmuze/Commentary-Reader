@@ -53,6 +53,56 @@ export const CreateBookBody = zod.object({
 
 
 /**
+ * @summary Search the Google Books catalog
+ */
+export const searchGoogleBooksQueryQMin = 2;
+export const searchGoogleBooksQueryQMax = 160;
+
+
+
+export const SearchGoogleBooksQueryParams = zod.object({
+  "q": zod.coerce.string().min(searchGoogleBooksQueryQMin).max(searchGoogleBooksQueryQMax).describe('A title, author, or ISBN search term')
+})
+
+export const SearchGoogleBooksResponseItem = zod.object({
+  "title": zod.string(),
+  "author": zod.string(),
+  "isbn": zod.string().nullable()
+})
+export const SearchGoogleBooksResponse = zod.array(SearchGoogleBooksResponseItem)
+
+
+/**
+ * @summary Reuse or create a canonical book from a Google Books result
+ */
+export const resolveGoogleBookBodyTitleMax = 300;
+
+export const resolveGoogleBookBodyAuthorMax = 300;
+
+export const resolveGoogleBookBodyIsbnMax = 32;
+
+
+
+export const ResolveGoogleBookBody = zod.object({
+  "title": zod.string().min(1).max(resolveGoogleBookBodyTitleMax),
+  "author": zod.string().min(1).max(resolveGoogleBookBodyAuthorMax),
+  "isbn": zod.string().max(resolveGoogleBookBodyIsbnMax).nullish()
+})
+
+export const ResolveGoogleBookResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "author": zod.string(),
+  "description": zod.string(),
+  "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
+  "quoteCount": zod.number(),
+  "commentCount": zod.number(),
+  "highlightCount": zod.number()
+})
+
+
+/**
  * @summary Get a book with its best comments and most-highlighted quotes
  */
 export const GetBookParams = zod.object({

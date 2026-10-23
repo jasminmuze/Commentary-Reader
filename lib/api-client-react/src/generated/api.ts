@@ -39,6 +39,8 @@ import type {
   GetFeedParams,
   GetMyRoomsParams,
   GetQuoteCommentsParams,
+  GoogleBookCatalogItem,
+  GoogleBookSelection,
   HealthStatus,
   HighlightInput,
   HighlightResult,
@@ -62,6 +64,7 @@ import type {
   RoomFeedItem,
   RoomInviteInput,
   SaveResult,
+  SearchGoogleBooksParams,
   SearchUsersParams,
   SetAvatarInput,
   UnreadCount,
@@ -321,6 +324,161 @@ export const useCreateBook = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateBookMutationOptions(options));
+    }
+
+export const getSearchGoogleBooksUrl = (params: SearchGoogleBooksParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/books/google-books?${stringifiedParams}` : `/api/books/google-books`
+}
+
+/**
+ * @summary Search the Google Books catalog
+ */
+export const searchGoogleBooks = async (params: SearchGoogleBooksParams, options?: RequestInit): Promise<GoogleBookCatalogItem[]> => {
+
+  return customFetch<GoogleBookCatalogItem[]>(getSearchGoogleBooksUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchGoogleBooksQueryKey = (params?: SearchGoogleBooksParams,) => {
+    return [
+    `/api/books/google-books`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchGoogleBooksQueryOptions = <TData = Awaited<ReturnType<typeof searchGoogleBooks>>, TError = ErrorType<void>>(params: SearchGoogleBooksParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchGoogleBooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchGoogleBooksQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchGoogleBooks>>> = ({ signal }) => searchGoogleBooks(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchGoogleBooks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchGoogleBooksQueryResult = NonNullable<Awaited<ReturnType<typeof searchGoogleBooks>>>
+export type SearchGoogleBooksQueryError = ErrorType<void>
+
+
+/**
+ * @summary Search the Google Books catalog
+ */
+
+export function useSearchGoogleBooks<TData = Awaited<ReturnType<typeof searchGoogleBooks>>, TError = ErrorType<void>>(
+ params: SearchGoogleBooksParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchGoogleBooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchGoogleBooksQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getResolveGoogleBookUrl = () => {
+
+
+
+
+  return `/api/books/google-books`
+}
+
+/**
+ * @summary Reuse or create a canonical book from a Google Books result
+ */
+export const resolveGoogleBook = async (googleBookSelection: GoogleBookSelection, options?: RequestInit): Promise<Book> => {
+
+  return customFetch<Book>(getResolveGoogleBookUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      googleBookSelection,)
+  }
+);}
+
+
+
+
+export const getResolveGoogleBookMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveGoogleBook>>, TError,{data: BodyType<GoogleBookSelection>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveGoogleBook>>, TError,{data: BodyType<GoogleBookSelection>}, TContext> => {
+
+const mutationKey = ['resolveGoogleBook'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveGoogleBook>>, {data: BodyType<GoogleBookSelection>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  resolveGoogleBook(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveGoogleBookMutationResult = NonNullable<Awaited<ReturnType<typeof resolveGoogleBook>>>
+    export type ResolveGoogleBookMutationBody = BodyType<GoogleBookSelection>
+    export type ResolveGoogleBookMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reuse or create a canonical book from a Google Books result
+ */
+export const useResolveGoogleBook = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveGoogleBook>>, TError,{data: BodyType<GoogleBookSelection>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolveGoogleBook>>,
+        TError,
+        {data: BodyType<GoogleBookSelection>},
+        TContext
+      > => {
+      return useMutation(getResolveGoogleBookMutationOptions(options));
     }
 
 export const getGetBookUrl = (bookId: number,) => {

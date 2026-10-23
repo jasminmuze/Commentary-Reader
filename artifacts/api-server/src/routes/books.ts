@@ -1,10 +1,12 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db, booksTable, quotesTable, commentsTable } from "@workspace/db";
 import {
   ListBooksQueryParams,
   CreateBookBody,
   GetBookParams,
+  SearchGoogleBooksQueryParams,
+  ResolveGoogleBookBody,
 } from "@workspace/api-zod";
 import type { Book, BookDetail, Comment, Quote } from "@workspace/api-zod";
 import {
@@ -17,6 +19,11 @@ import {
   formatComment,
 } from "../lib/queries";
 import { normalizeTitle, normalizeAuthor } from "../lib/text";
+import {
+  fetchGoogleBooksResults,
+  findMatchingCanonicalBook,
+  normalizeIsbn,
+} from "../lib/googleBooksCatalog";
 import { getViewer, visibilityPredicate } from "../lib/social";
 import {
   BOOK_TOP_QUOTES_LIMIT,
@@ -35,6 +42,91 @@ function randomCover(): string {
 }
 
 const router: IRouter = Router();
+
+router.get("/books/google-books", authenticate, async (req, res): Promise<void> => {
+  const parsed = SearchGoogleBooksQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const term = parsed.data.q.trim();
+  if (term.length < 2) {
+    res.status(400).json({ error: "Search term must contain at least 2 characters" });
+    return;
+  }
+  try {
+    res.json(await fetchGoogleBooksResults(term));
+  } catch (err) {
+    req.log.warn({ err }, "Google Books search request failed");
+    res.status(502).json({ error: "Google Books search is temporarily unavailable" });
+  }
+});
+
+router.post("/books/google-books", authenticate, async (req, res): Promise<void> => {
+  const parsed = ResolveGoogleBookBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { title, author, isbn } = parsed.data;
+  const normTitle = normalizeTitle(title);
+  const normAuthor = normalizeAuthor(author);
+  const normIsbn = isbn ? normalizeIsbn(isbn) : "";
+  const lockKeys = [
+    `title-author:${normTitle}:${normAuthor}`,
+    ...(normIsbn ? [`isbn:${normIsbn}`] : []),
+  ].sort();
+
+  const result = await db.transaction(async (tx) => {
+    for (const lockKey of lockKeys) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+    }
+
+    const matchConditions = [
+      and(
+        eq(booksTable.normTitle, normTitle),
+        eq(booksTable.normAuthor, normAuthor),
+      ),
+    ];
+    if (normIsbn) {
+      matchConditions.push(
+        sql`regexp_replace(lower(${booksTable.isbn}), '[^0-9x]', '', 'g') = ${normIsbn}`,
+      );
+    }
+    const candidates = await tx
+      .select()
+      .from(booksTable)
+      .where(or(...matchConditions));
+    const existing = findMatchingCanonicalBook(candidates, {
+      title,
+      author,
+      isbn,
+      normTitle,
+      normAuthor,
+    });
+
+    if (existing) return { book: existing, created: false };
+
+    const [created] = await tx
+      .insert(booksTable)
+      .values({
+        title: title.trim(),
+        author: author.trim(),
+        normTitle,
+        normAuthor,
+        description: "",
+        coverColor: randomCover(),
+        isbn: isbn?.trim() || null,
+      })
+      .returning();
+    return { book: created!, created: true };
+  });
+
+  const formatted = await formatBook(result.book);
+  res.status(result.created ? 201 : 200).json(formatted);
+});
 
 router.get("/books", async (req, res): Promise<void> => {
   const qp = ListBooksQueryParams.safeParse(req.query);

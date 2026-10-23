@@ -74,6 +74,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/Book"
 
+  /books/google-books:
+    get:
+      operationId: searchGoogleBooks
+      tags: [books]
+      summary: Search the Google Books catalog
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 160
+          description: A title, author, or ISBN search term
+      responses:
+        "200":
+          description: Matching catalog editions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GoogleBookCatalogItem"
+        "400":
+          description: Invalid search term
+        "502":
+          description: Google Books is temporarily unavailable
+    post:
+      operationId: resolveGoogleBook
+      tags: [books]
+      summary: Reuse or create a canonical book from a Google Books result
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoogleBookSelection"
+      responses:
+        "200":
+          description: Existing canonical book reused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "201":
+          description: Canonical book created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+
   /books/{bookId}:
     get:
       operationId: getBook
@@ -1672,6 +1723,33 @@ components:
           type: integer
         highlightCount:
           type: integer
+
+    GoogleBookCatalogItem:
+      type: object
+      required: [title, author, isbn]
+      properties:
+        title:
+          type: string
+        author:
+          type: string
+        isbn:
+          type: [string, "null"]
+
+    GoogleBookSelection:
+      type: object
+      required: [title, author]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 300
+        author:
+          type: string
+          minLength: 1
+          maxLength: 300
+        isbn:
+          type: [string, "null"]
+          maxLength: 32
 
     Quote:
       type: object

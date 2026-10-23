@@ -25,6 +25,31 @@ export interface Book {
   highlightCount: number;
 }
 
+export interface GoogleBookCatalogItem {
+  title: string;
+  author: string;
+  /** @nullable */
+  isbn: string | null;
+}
+
+export interface GoogleBookSelection {
+  /**
+     * @minLength 1
+     * @maxLength 300
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 300
+     */
+  author: string;
+  /**
+     * @maxLength 32
+     * @nullable
+     */
+  isbn?: string | null;
+}
+
 export interface Quote {
   id: number;
   canonicalBookId: number;
@@ -822,6 +847,15 @@ export interface RoomFeedItem {
 
 export type ListBooksParams = {
 q?: string;
+};
+
+export type SearchGoogleBooksParams = {
+/**
+ * A title, author, or ISBN search term
+ * @minLength 2
+ * @maxLength 160
+ */
+q: string;
 };
 
 export type GetBookQuotesParams = {
