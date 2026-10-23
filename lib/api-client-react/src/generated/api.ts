@@ -1827,7 +1827,7 @@ export const getCreateUserUrl = () => {
 }
 
 /**
- * @summary Sign up a new user
+ * @summary Sign up a new user; unverified accounts must confirm their email before using the app
  */
 export const createUser = async (userInput: UserInput, options?: RequestInit): Promise<User> => {
 
@@ -1876,7 +1876,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateUserMutationError = ErrorType<void>
 
     /**
- * @summary Sign up a new user
+ * @summary Sign up a new user; unverified accounts must confirm their email before using the app
  */
 export const useCreateUser = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createUser>>, TError,{data: BodyType<UserInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1898,7 +1898,7 @@ export const getLoginUserUrl = () => {
 }
 
 /**
- * @summary Log in with username or email and password
+ * @summary Log in with username or email and password; unverified emails trigger a best-effort verification code send
  */
 export const loginUser = async (loginInput: LoginInput, options?: RequestInit): Promise<User> => {
 
@@ -1947,7 +1947,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type LoginUserMutationError = ErrorType<void>
 
     /**
- * @summary Log in with username or email and password
+ * @summary Log in with username or email and password; unverified emails trigger a best-effort verification code send
  */
 export const useLoginUser = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginUser>>, TError,{data: BodyType<LoginInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

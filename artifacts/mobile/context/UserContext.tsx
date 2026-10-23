@@ -71,7 +71,15 @@ export function useUser() {
 
 type AuthMode = "signup" | "login";
 
-function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void }) {
+function AuthScreen({
+  onComplete,
+  initialPendingUser = null,
+  onLogout,
+}: {
+  onComplete: (user: CurrentUser) => void;
+  initialPendingUser?: CurrentUser | null;
+  onLogout: () => Promise<void>;
+}) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<AuthMode>("signup");
@@ -86,9 +94,10 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
   const confirmVerification = useConfirmEmailVerification();
 
   // After signup we pause on a verification step before entering the app.
-  const [pendingUser, setPendingUser] = useState<CurrentUser | null>(null);
+  const [pendingUser, setPendingUser] = useState<CurrentUser | null>(initialPendingUser);
   const [verifyCode, setVerifyCode] = useState("");
   const [verifyMessage, setVerifyMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const requestReset = useRequestPasswordReset();
   const confirmReset = useConfirmPasswordReset();
@@ -102,6 +111,14 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
   const [resetMessage, setResetMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   const isPending = createUser.isPending || loginUser.isPending;
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => {
+      setResendCooldown((remaining) => Math.max(0, remaining - 1));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   const toCurrentUser = useCallback(
     (user: {
@@ -143,27 +160,19 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
     [onComplete, toCurrentUser, persistCredentials],
   );
 
-  // Signup path: persist credentials, then pause on the email verification
-  // step (auto-sending the code) instead of entering the app immediately.
+  // Signup already triggers a best-effort verification email on the server.
+  // Keep the credentials so the user can verify without leaving this gate.
   const startVerificationStep = useCallback(
     async (user: Parameters<typeof toCurrentUser>[0] & { token?: string }) => {
       await persistCredentials(user.id, user.token);
       const current = toCurrentUser(user);
       setPendingUser(current);
-      sendVerification.mutate(
-        { userId: current.id },
-        {
-          onSuccess: () =>
-            setVerifyMessage({ text: "We emailed you a 6-digit code.", error: false }),
-          onError: () =>
-            setVerifyMessage({
-              text: "Could not send the email right now. You can resend it or skip for now.",
-              error: true,
-            }),
-        },
-      );
+      setVerifyMessage({
+        text: "Enter the 6-digit code sent to your email. If it doesn't arrive, resend it below.",
+        error: false,
+      });
     },
-    [persistCredentials, toCurrentUser, sendVerification],
+    [persistCredentials, toCurrentUser],
   );
 
   const handleVerifyCode = useCallback(() => {
@@ -182,8 +191,11 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
         },
         onError: (err) => {
           if (err instanceof ApiError && err.status === 400) {
+            const errorText = (err.data as { error?: string } | null)?.error ?? "";
             setVerifyMessage({
-              text: "That code is incorrect or expired. Try resending the email.",
+              text: errorText.toLowerCase().includes("expired")
+                ? "That code has expired. Resend a new code and try again."
+                : "That code is incorrect. Check it and try again.",
               error: true,
             });
           } else {
@@ -195,15 +207,18 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
   }, [pendingUser, verifyCode, confirmVerification, onComplete]);
 
   const handleResend = useCallback(() => {
-    if (!pendingUser) return;
+    if (!pendingUser || resendCooldown > 0) return;
     setVerifyMessage(null);
     sendVerification.mutate(
       { userId: pendingUser.id },
       {
-        onSuccess: () =>
-          setVerifyMessage({ text: "Verification email sent. Check your inbox.", error: false }),
+        onSuccess: () => {
+          setResendCooldown(60);
+          setVerifyMessage({ text: "Verification email sent. Check your inbox.", error: false });
+        },
         onError: (err) => {
           if (err instanceof ApiError && err.status === 429) {
+            setResendCooldown(60);
             setVerifyMessage({ text: "Email sent recently — try again in a minute.", error: true });
           } else {
             setVerifyMessage({
@@ -214,7 +229,7 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
         },
       },
     );
-  }, [pendingUser, sendVerification]);
+  }, [pendingUser, resendCooldown, sendVerification]);
 
   const handleRequestReset = useCallback(() => {
     const trimmedEmail = resetEmail.trim().toLowerCase();
@@ -360,10 +375,24 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
     } else {
       loginUser.mutate(
         { data: { identifier: trimmed, password } },
-        { onSuccess, onError },
+        {
+          onSuccess: async (user) => {
+            if (!user.emailVerified && user.email) {
+              await persistCredentials(user.id, user.token);
+              setPendingUser(toCurrentUser(user));
+              setVerifyMessage({
+                text: "Enter the 6-digit code sent to your email. If it doesn't arrive, resend it below.",
+                error: false,
+              });
+              return;
+            }
+            onSuccess(user);
+          },
+          onError,
+        },
       );
     }
-  }, [username, email, nickname, password, mode, createUser, loginUser, persistAndComplete, startVerificationStep]);
+  }, [username, email, nickname, password, mode, createUser, loginUser, persistAndComplete, startVerificationStep, persistCredentials, toCurrentUser]);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
 
@@ -658,21 +687,28 @@ function AuthScreen({ onComplete }: { onComplete: (user: CurrentUser) => void })
             <Pressable
               style={styles.modeToggle}
               onPress={handleResend}
-              disabled={sendVerification.isPending}
+              disabled={sendVerification.isPending || resendCooldown > 0}
             >
               <Text
                 style={[
                   styles.modeToggleText,
-                  { color: colors.primary, opacity: sendVerification.isPending ? 0.5 : 1 },
+                  {
+                    color: colors.primary,
+                    opacity: sendVerification.isPending || resendCooldown > 0 ? 0.5 : 1,
+                  },
                 ]}
               >
-                {sendVerification.isPending ? "Sending..." : "Resend code"}
+                {sendVerification.isPending
+                  ? "Sending..."
+                  : resendCooldown > 0
+                    ? `Resend in ${resendCooldown}s`
+                    : "Resend code"}
               </Text>
             </Pressable>
 
-            <Pressable style={styles.modeToggle} onPress={() => onComplete(pendingUser)}>
+            <Pressable style={styles.modeToggle} onPress={() => void onLogout()}>
               <Text style={[styles.modeToggleText, { color: colors.mutedForeground }]}>
-                Skip for now — verify later in Profile
+                Log out
               </Text>
             </Pressable>
           </View>
@@ -935,8 +971,14 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  if (!user) {
-    return <AuthScreen onComplete={setUser} />;
+  if (!user || (user.email && !user.emailVerified)) {
+    return (
+      <AuthScreen
+        onComplete={setUser}
+        initialPendingUser={user}
+        onLogout={logout}
+      />
+    );
   }
 
   return (

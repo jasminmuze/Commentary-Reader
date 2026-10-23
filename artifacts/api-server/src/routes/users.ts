@@ -224,7 +224,7 @@ router.post("/users", async (req, res): Promise<void> => {
   }
 
   // Best-effort: kick off the verification email. Signup still succeeds if
-  // delivery fails — the user can resend from their profile.
+  // delivery fails — the user can retry from the verification gate.
   issueVerificationCode(user!).catch((err) => {
     req.log.error({ err }, "Failed to send signup verification email");
   });
@@ -291,6 +291,16 @@ router.post("/users/login", async (req, res): Promise<void> => {
   if (!passwordStillMatches) {
     res.status(401).json({ error: "Invalid username or password" });
     return;
+  }
+
+  // Keep login successful if delivery is unavailable. The verification gate
+  // remains active and the user can retry with the rate-limited resend action.
+  if (!currentUser.emailVerifiedAt && currentUser.email) {
+    try {
+      await issueVerificationCode(currentUser, true);
+    } catch (err) {
+      req.log.error({ err, userId: currentUser.id }, "Failed to send login verification email");
+    }
   }
 
   res.json(formatUser(currentUser, { self: true, token: createToken(currentUser.id) }));

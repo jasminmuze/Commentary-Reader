@@ -607,7 +607,7 @@ export const GetUserLibraryResponse = zod.array(GetUserLibraryResponseItem)
 
 
 /**
- * @summary Sign up a new user
+ * @summary Sign up a new user; unverified accounts must confirm their email before using the app
  */
 export const createUserBodyUsernameMin = 2;
 
@@ -642,7 +642,7 @@ export const CreateUserResponse = zod.object({
 
 
 /**
- * @summary Log in with username or email and password
+ * @summary Log in with username or email and password; unverified emails trigger a best-effort verification code send
  */
 export const LoginUserBody = zod.object({
   "identifier": zod.string().describe('Username or email address (email matched case-insensitively)'),

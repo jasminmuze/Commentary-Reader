@@ -537,7 +537,7 @@ paths:
     post:
       operationId: createUser
       tags: [users]
-      summary: Sign up a new user
+      summary: Sign up a new user; unverified accounts must confirm their email before using the app
       requestBody:
         required: true
         content:
@@ -546,7 +546,7 @@ paths:
               $ref: "#/components/schemas/UserInput"
       responses:
         "200":
-          description: User created
+          description: User created; a verification code is sent best-effort when the email is unverified
           content:
             application/json:
               schema:
@@ -558,7 +558,7 @@ paths:
     post:
       operationId: loginUser
       tags: [users]
-      summary: Log in with username or email and password
+      summary: Log in with username or email and password; unverified emails trigger a best-effort verification code send
       requestBody:
         required: true
         content:
@@ -567,7 +567,7 @@ paths:
               $ref: "#/components/schemas/LoginInput"
       responses:
         "200":
-          description: Authenticated user with bearer token
+          description: Authenticated user with bearer token and emailVerified status; a verification code is sent best-effort when emailVerified is false
           content:
             application/json:
               schema:
