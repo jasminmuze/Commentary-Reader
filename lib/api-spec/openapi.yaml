@@ -1501,6 +1501,71 @@ paths:
         "404":
           description: Room not found or archived and no longer joinable
 
+  /rooms/{roomId}/share-link:
+    post:
+      operationId: createRoomShareLink
+      tags: [rooms]
+      summary: Get or create the active private-room share link (members only)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Stable share token for the private room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomShareLink"
+        "403":
+          description: Only a room member can create or retrieve its share link
+        "404":
+          description: Room not found or archived
+    delete:
+      operationId: revokeRoomShareLink
+      tags: [rooms]
+      summary: Revoke the active private-room share link (owner only)
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Share link revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+        "403":
+          description: Only the room owner can revoke its share link
+        "404":
+          description: Room not found
+
+  /rooms/join-by-share-link:
+    post:
+      operationId: joinRoomByShareLink
+      tags: [rooms]
+      summary: Join a private room using its share-link token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinRoomByShareLinkInput"
+      responses:
+        "200":
+          description: Joined the room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinRoomByShareLinkResponse"
+        "404":
+          description: Share link is invalid, revoked, or the room is archived
+
   /rooms/{roomId}/leave:
     post:
       operationId: leaveRoom
@@ -2647,6 +2712,34 @@ components:
           maxLength: 500
         isPublic:
           type: boolean
+
+    RoomShareLink:
+      type: object
+      required: [roomId, token]
+      properties:
+        roomId:
+          type: integer
+        token:
+          type: string
+          description: Signed bearer token. Anyone with this token can join the room until the owner revokes it.
+
+    JoinRoomByShareLinkInput:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 16
+          maxLength: 128
+
+    JoinRoomByShareLinkResponse:
+      type: object
+      required: [ok, roomId]
+      properties:
+        ok:
+          type: boolean
+        roomId:
+          type: integer
 
     UpdateRoomInput:
       type: object

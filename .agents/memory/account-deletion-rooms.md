@@ -8,3 +8,9 @@ Account deletion must remain available even when the person is the only current 
 **Why:** A former member's content can outlive their room membership. Requiring another member to accept ownership would also make self-service account deletion impossible for a sole owner.
 
 **How to apply:** Any change to room membership, private-room access, or deletion policy should check both the authorship of retained content and whether the viewer currently has permission to see it.
+
+Private-room share links are bearer invitations: anyone holding the link may join, and the owner can revoke the active link. Switching a room to public invalidates its existing private share link.
+
+**Why:** The user explicitly chose link-based access for private rooms and accepted that recipients can forward the link.
+
+**How to apply:** Treat possession of the signed link as authorization; verify the active server-side link before adding membership, and do not restrict link recipients to friends or pre-approved accounts.

@@ -742,6 +742,25 @@ export interface CreateRoomInput {
   isPublic: boolean;
 }
 
+export interface RoomShareLink {
+  roomId: number;
+  /** Signed bearer token. Anyone with this token can join the room until the owner revokes it. */
+  token: string;
+}
+
+export interface JoinRoomByShareLinkInput {
+  /**
+     * @minLength 16
+     * @maxLength 128
+     */
+  token: string;
+}
+
+export interface JoinRoomByShareLinkResponse {
+  ok: boolean;
+  roomId: number;
+}
+
 export interface UpdateRoomInput {
   /**
      * @minLength 1

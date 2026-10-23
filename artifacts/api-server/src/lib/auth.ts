@@ -56,3 +56,38 @@ export function verifyToken(token: string): number | null {
     return null;
   }
 }
+
+/**
+ * A stable room-share token. The row ID is public, while the HMAC makes the
+ * token unforgeable; deleting the row revokes every copy of the link.
+ */
+export function createRoomShareToken(linkId: number, roomId: number): string {
+  const payload = `${linkId}.${roomId}`;
+  const signature = crypto
+    .createHmac("sha256", SECRET)
+    .update(`room-share-link:${payload}`)
+    .digest("base64url");
+  return `${linkId}.${signature}`;
+}
+
+export function verifyRoomShareToken(
+  token: string,
+  linkId: number,
+  roomId: number,
+): boolean {
+  try {
+    const [tokenId, signature, extra] = token.split(".");
+    if (extra !== undefined || Number(tokenId) !== linkId || !signature) {
+      return false;
+    }
+    const provided = Buffer.from(signature, "base64url");
+    if (provided.length !== 32) return false;
+    const expected = crypto
+      .createHmac("sha256", SECRET)
+      .update(`room-share-link:${linkId}.${roomId}`)
+      .digest();
+    return crypto.timingSafeEqual(provided, expected);
+  } catch {
+    return false;
+  }
+}

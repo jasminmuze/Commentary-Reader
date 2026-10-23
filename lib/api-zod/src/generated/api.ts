@@ -1608,6 +1608,49 @@ export const JoinRoomResponse = zod.object({
 
 
 /**
+ * @summary Get or create the active private-room share link (members only)
+ */
+export const CreateRoomShareLinkParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const CreateRoomShareLinkResponse = zod.object({
+  "roomId": zod.number(),
+  "token": zod.string().describe('Signed bearer token. Anyone with this token can join the room until the owner revokes it.')
+})
+
+
+/**
+ * @summary Revoke the active private-room share link (owner only)
+ */
+export const RevokeRoomShareLinkParams = zod.object({
+  "roomId": zod.coerce.number()
+})
+
+export const RevokeRoomShareLinkResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Join a private room using its share-link token
+ */
+export const joinRoomByShareLinkBodyTokenMin = 16;
+export const joinRoomByShareLinkBodyTokenMax = 128;
+
+
+
+export const JoinRoomByShareLinkBody = zod.object({
+  "token": zod.string().min(joinRoomByShareLinkBodyTokenMin).max(joinRoomByShareLinkBodyTokenMax)
+})
+
+export const JoinRoomByShareLinkResponse = zod.object({
+  "ok": zod.boolean(),
+  "roomId": zod.number()
+})
+
+
+/**
  * @summary Leave a room (the owner cannot leave their own room)
  */
 export const LeaveRoomParams = zod.object({

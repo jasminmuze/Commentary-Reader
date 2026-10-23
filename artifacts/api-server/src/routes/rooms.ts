@@ -11,6 +11,7 @@ import {
   readingRoomsTable,
   roomInvitesTable,
   roomMembersTable,
+  roomShareLinksTable,
   userHighlightsTable,
   userLibraryTable,
   usersTable,
@@ -27,13 +28,17 @@ import {
   RemoveRoomMemberParams,
   InviteToRoomParams,
   InviteToRoomBody,
+  CreateRoomShareLinkParams,
   AcceptRoomInviteParams,
   DeclineRoomInviteParams,
+  JoinRoomByShareLinkBody,
+  RevokeRoomShareLinkParams,
   GetRoomFeedParams,
   GetBookRoomsParams,
 } from "@workspace/api-zod";
 import type { Room, RoomDetail, RoomFeedItem } from "@workspace/api-zod";
 import { authenticate } from "../middlewares/authenticate.js";
+import { createRoomShareToken, verifyRoomShareToken } from "../lib/auth.js";
 import { createRoomInviteNotification } from "../lib/notifications";
 import { getOwnedBookIds, truncateQuoteText } from "../lib/contentLimits";
 import { getMutualFriendIds } from "../lib/social";
@@ -479,21 +484,231 @@ router.patch("/rooms/:roomId", authenticate, async (req, res): Promise<void> => 
     return;
   }
 
-  const [updated] = await db
-    .update(readingRoomsTable)
-    .set({
-      ...(body.data.name != null ? { name: body.data.name.trim() } : {}),
-      ...(body.data.description != null
-        ? { description: body.data.description.trim() }
-        : {}),
-      ...(body.data.isPublic != null ? { isPublic: body.data.isPublic } : {}),
-    })
-    .where(eq(readingRoomsTable.id, room.id))
-    .returning();
+  const updateResult = await db.transaction(async (tx) => {
+    const [lockedRoom] = await tx
+      .select({ id: readingRoomsTable.id, ownerId: readingRoomsTable.ownerId })
+      .from(readingRoomsTable)
+      .where(eq(readingRoomsTable.id, room.id))
+      .for("update");
+    if (!lockedRoom || lockedRoom.ownerId !== req.userId) {
+      return { kind: "not-owner" as const };
+    }
 
-  const [dto] = await toRoomDtos([updated!], req.userId);
+    const [updated] = await tx
+      .update(readingRoomsTable)
+      .set({
+        ...(body.data.name != null ? { name: body.data.name.trim() } : {}),
+        ...(body.data.description != null
+          ? { description: body.data.description.trim() }
+          : {}),
+        ...(body.data.isPublic != null ? { isPublic: body.data.isPublic } : {}),
+      })
+      .where(eq(readingRoomsTable.id, room.id))
+      .returning();
+
+    if (body.data.isPublic === true) {
+      await tx
+        .delete(roomShareLinksTable)
+        .where(eq(roomShareLinksTable.roomId, room.id));
+    }
+    return { kind: "updated" as const, room: updated! };
+  });
+
+  if (updateResult.kind !== "updated") {
+    res.status(403).json({ error: "Only the owner can update the room" });
+    return;
+  }
+  const [dto] = await toRoomDtos([updateResult.room], req.userId);
   res.json(dto);
 });
+
+// POST /rooms/:roomId/share-link — return the stable, active link for a private
+// room. Any member can share it; the owner can revoke it at any time.
+router.post(
+  "/rooms/:roomId/share-link",
+  authenticate,
+  async (req, res): Promise<void> => {
+    const params = CreateRoomShareLinkParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [room] = await tx
+        .select({
+          id: readingRoomsTable.id,
+          isPublic: readingRoomsTable.isPublic,
+          ownerId: readingRoomsTable.ownerId,
+        })
+        .from(readingRoomsTable)
+        .where(eq(readingRoomsTable.id, params.data.roomId))
+        .for("update");
+      if (!room || room.ownerId == null) return { kind: "missing" as const };
+      if (room.isPublic) return { kind: "public" as const };
+
+      const [membership] = await tx
+        .select({ id: roomMembersTable.id })
+        .from(roomMembersTable)
+        .where(
+          and(
+            eq(roomMembersTable.roomId, room.id),
+            eq(roomMembersTable.userId, req.userId),
+          ),
+        )
+        .limit(1);
+      if (!membership) return { kind: "forbidden" as const };
+
+      let [link] = await tx
+        .select({ id: roomShareLinksTable.id })
+        .from(roomShareLinksTable)
+        .where(eq(roomShareLinksTable.roomId, room.id))
+        .limit(1);
+      if (!link) {
+        [link] = await tx
+          .insert(roomShareLinksTable)
+          .values({ roomId: room.id, createdBy: req.userId })
+          .returning({ id: roomShareLinksTable.id });
+      }
+
+      return {
+        kind: "ok" as const,
+        roomId: room.id,
+        token: createRoomShareToken(link.id, room.id),
+      };
+    });
+
+    if (result.kind === "missing") {
+      res.status(404).json({ error: "Room not found" });
+      return;
+    }
+    if (result.kind === "public") {
+      res.status(400).json({ error: "Public rooms use a regular room link" });
+      return;
+    }
+    if (result.kind === "forbidden") {
+      res.status(403).json({ error: "Only room members can create a share link" });
+      return;
+    }
+    res.json({ roomId: result.roomId, token: result.token });
+  },
+);
+
+// DELETE /rooms/:roomId/share-link — owner-only revocation.
+router.delete(
+  "/rooms/:roomId/share-link",
+  authenticate,
+  async (req, res): Promise<void> => {
+    const params = RevokeRoomShareLinkParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [room] = await tx
+        .select({ id: readingRoomsTable.id, ownerId: readingRoomsTable.ownerId })
+        .from(readingRoomsTable)
+        .where(eq(readingRoomsTable.id, params.data.roomId))
+        .for("update");
+      if (!room || room.ownerId == null) return "missing" as const;
+      if (room.ownerId !== req.userId) return "forbidden" as const;
+      await tx
+        .delete(roomShareLinksTable)
+        .where(eq(roomShareLinksTable.roomId, params.data.roomId));
+      return "ok" as const;
+    });
+    if (result === "missing") {
+      res.status(404).json({ error: "Room not found" });
+      return;
+    }
+    if (result === "forbidden") {
+      res.status(403).json({ error: "Only the room owner can revoke its share link" });
+      return;
+    }
+
+    res.json({ ok: true });
+  },
+);
+
+// POST /rooms/join-by-share-link — a bearer link adds the authenticated user
+// to a private room. Room rows are locked before link rows everywhere to keep
+// concurrent create/join operations in a consistent lock order.
+router.post(
+  "/rooms/join-by-share-link",
+  authenticate,
+  async (req, res): Promise<void> => {
+    const body = JoinRoomByShareLinkBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: body.error.message });
+      return;
+    }
+
+    const tokenMatch = /^([1-9]\d*)\.([A-Za-z0-9_-]{43})$/.exec(body.data.token);
+    const linkId = tokenMatch ? Number(tokenMatch[1]) : NaN;
+    if (!Number.isSafeInteger(linkId)) {
+      res.status(404).json({ error: "Invite link is unavailable" });
+      return;
+    }
+
+    const [candidate] = await db
+      .select({
+        id: roomShareLinksTable.id,
+        roomId: roomShareLinksTable.roomId,
+      })
+      .from(roomShareLinksTable)
+      .where(eq(roomShareLinksTable.id, linkId));
+    if (!candidate) {
+      res.status(404).json({ error: "Invite link is unavailable" });
+      return;
+    }
+
+    const roomId = await db.transaction(async (tx) => {
+      const [room] = await tx
+        .select({
+          id: readingRoomsTable.id,
+          ownerId: readingRoomsTable.ownerId,
+          isPublic: readingRoomsTable.isPublic,
+        })
+        .from(readingRoomsTable)
+        .where(eq(readingRoomsTable.id, candidate.roomId))
+        .for("update");
+      if (!room || room.ownerId == null || room.isPublic) return null;
+
+      const [activeLink] = await tx
+        .select({
+          id: roomShareLinksTable.id,
+          roomId: roomShareLinksTable.roomId,
+        })
+        .from(roomShareLinksTable)
+        .where(
+          and(
+            eq(roomShareLinksTable.id, candidate.id),
+            eq(roomShareLinksTable.roomId, room.id),
+          ),
+        )
+        .for("update");
+      if (
+        !activeLink ||
+        !verifyRoomShareToken(body.data.token, activeLink.id, activeLink.roomId)
+      ) {
+        return null;
+      }
+
+      await tx
+        .insert(roomMembersTable)
+        .values({ roomId: room.id, userId: req.userId, role: "member" })
+        .onConflictDoNothing();
+      return room.id;
+    });
+
+    if (roomId == null) {
+      res.status(404).json({ error: "Invite link is unavailable" });
+      return;
+    }
+    res.json({ ok: true, roomId });
+  },
+);
 
 // POST /rooms/:roomId/join — join a PUBLIC room (idempotent).
 router.post("/rooms/:roomId/join", authenticate, async (req, res): Promise<void> => {

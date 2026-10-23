@@ -20,12 +20,19 @@ const ACCOUNT_DELETION_TEMPLATE_PATH = path.resolve(
   "templates",
   "account-deletion.html",
 );
+const ROOM_INVITE_TEMPLATE_PATH = path.resolve(
+  __dirname,
+  "templates",
+  "room-invite.html",
+);
 const PRIVACY_POLICY_TEMPLATE_PATH = path.resolve(
   __dirname,
   "templates",
   "privacy-policy.html",
 );
 const basePath = (process.env.BASE_PATH || "/").replace(/\/+$/, "");
+const CURRENT_EAS_ANDROID_SIGNING_SHA256 =
+  "5E:29:DB:42:43:B6:7B:F7:49:47:BE:3B:24:1B:80:76:8B:A4:15:8A:68:FA:2F:4B:5C:BA:C1:AE:51:B9:7D:AF";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -111,6 +118,143 @@ function serveAccountDeletionPage(req, res, accountDeletionTemplate) {
   res.end(req.method === "HEAD" ? undefined : accountDeletionTemplate);
 }
 
+function serveRoomInvitePage(req, res, template, url, roomId) {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405, {
+      "content-type": "text/plain; charset=utf-8",
+      allow: "GET, HEAD",
+      "cache-control": "no-store",
+    });
+    res.end("Method Not Allowed");
+    return;
+  }
+
+  const appUrl = `shelfmates:///room/${roomId}${url.search}`;
+  const htmlData = JSON.stringify({
+    appUrl,
+    iosInstallUrl: getVerifiedHttpsUrl(process.env.SHELF_MATES_IOS_INSTALL_URL),
+    androidInstallUrl: getVerifiedHttpsUrl(
+      process.env.SHELF_MATES_ANDROID_INSTALL_URL,
+    ),
+  }).replace(/</g, "\\u003c");
+  const html = template.replace("ROOM_INVITE_DATA", htmlData);
+  res.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "content-security-policy":
+      "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  });
+  res.end(req.method === "HEAD" ? undefined : html);
+}
+
+function getVerifiedHttpsUrl(value) {
+  try {
+    const parsed = new URL(value || "");
+    return parsed.protocol === "https:" ? parsed.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function serveAppleAppSiteAssociation(req, res) {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405, {
+      "content-type": "text/plain; charset=utf-8",
+      allow: "GET, HEAD",
+      "cache-control": "no-store",
+    });
+    res.end("Method Not Allowed");
+    return;
+  }
+
+  const teamId = process.env.IOS_APPLE_TEAM_ID?.trim().toUpperCase() || "";
+  if (!/^[A-Z0-9]{10}$/.test(teamId)) {
+    res.writeHead(503, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    res.end(
+      req.method === "HEAD"
+        ? undefined
+        : JSON.stringify({ error: "Universal Links are not configured" }),
+    );
+    return;
+  }
+
+  const body = JSON.stringify({
+    applinks: {
+      apps: [],
+      details: [{ appID: `${teamId}.app.shelfmates`, paths: ["/room/*"] }],
+    },
+  });
+  res.writeHead(200, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "public, max-age=300",
+    "x-content-type-options": "nosniff",
+  });
+  res.end(req.method === "HEAD" ? undefined : body);
+}
+
+function serveAndroidAssetLinks(req, res) {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405, {
+      "content-type": "text/plain; charset=utf-8",
+      allow: "GET, HEAD",
+      "cache-control": "no-store",
+    });
+    res.end("Method Not Allowed");
+    return;
+  }
+
+  const rawFingerprints =
+    process.env.ANDROID_APP_LINK_SHA256_FINGERPRINTS ??
+    process.env.ANDROID_APP_LINK_SHA256_FINGERPRINT ??
+    CURRENT_EAS_ANDROID_SIGNING_SHA256;
+  const fingerprints = rawFingerprints
+    .split(/[\s,;]+/)
+    .filter(Boolean)
+    .map((fingerprint) => fingerprint.toUpperCase().replace(/:/g, ""));
+  if (
+    fingerprints.length === 0 ||
+    fingerprints.some((fingerprint) => !/^[A-F0-9]{64}$/.test(fingerprint))
+  ) {
+    res.writeHead(503, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    res.end(
+      req.method === "HEAD"
+        ? undefined
+        : JSON.stringify({ error: "Android App Links are not configured" }),
+    );
+    return;
+  }
+
+  const formattedFingerprints = [
+    ...new Set(
+      fingerprints.map((fingerprint) => fingerprint.match(/.{2}/g).join(":")),
+    ),
+  ];
+  const body = JSON.stringify([
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: "app.shelfmates",
+        sha256_cert_fingerprints: formattedFingerprints,
+      },
+    },
+  ]);
+  res.writeHead(200, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "public, max-age=300",
+    "x-content-type-options": "nosniff",
+  });
+  res.end(req.method === "HEAD" ? undefined : body);
+}
+
 function serveStaticFile(urlPath, res) {
   const safePath = path.normalize(urlPath).replace(/^(\.\.(\/|\\|$))+/, "");
   const filePath = path.join(STATIC_ROOT, safePath);
@@ -139,6 +283,7 @@ const accountDeletionTemplate = fs.readFileSync(
   ACCOUNT_DELETION_TEMPLATE_PATH,
   "utf-8",
 );
+const roomInviteTemplate = fs.readFileSync(ROOM_INVITE_TEMPLATE_PATH, "utf-8");
 const privacyPolicyTemplate = fs.readFileSync(
   PRIVACY_POLICY_TEMPLATE_PATH,
   "utf-8",
@@ -158,6 +303,22 @@ const server = http.createServer((req, res) => {
   }
   if (pathname.replace(/\/+$/, "") === "/privacy-policy") {
     return serveAccountDeletionPage(req, res, privacyPolicyTemplate);
+  }
+  if (pathname === "/.well-known/apple-app-site-association") {
+    return serveAppleAppSiteAssociation(req, res);
+  }
+  if (pathname === "/.well-known/assetlinks.json") {
+    return serveAndroidAssetLinks(req, res);
+  }
+  const roomInviteMatch = /^\/room\/([1-9]\d*)\/?$/.exec(pathname);
+  if (roomInviteMatch) {
+    return serveRoomInvitePage(
+      req,
+      res,
+      roomInviteTemplate,
+      url,
+      Number(roomInviteMatch[1]),
+    );
   }
 
   if (pathname === "/" || pathname === "/manifest") {

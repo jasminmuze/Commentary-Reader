@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -27,6 +28,9 @@ import {
   useGetFriends,
   useAcceptRoomInvite,
   useDeclineRoomInvite,
+  useCreateRoomShareLink,
+  useJoinRoomByShareLink,
+  useRevokeRoomShareLink,
   getGetRoomQueryKey,
   getGetRoomFeedQueryKey,
   getGetFriendsQueryKey,
@@ -250,8 +254,13 @@ export default function RoomScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useUser();
   const queryClient = useQueryClient();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, join, shareToken } = useLocalSearchParams<{
+    id: string;
+    join?: string;
+    shareToken?: string;
+  }>();
   const roomId = parseInt(id ?? "0", 10);
+  const privateShareToken = typeof shareToken === "string" ? shareToken : null;
 
   const [inviteVisible, setInviteVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
@@ -259,9 +268,49 @@ export default function RoomScreen() {
   const [editDescription, setEditDescription] = useState("");
   const [editPublic, setEditPublic] = useState(true);
   const [invitedIds, setInvitedIds] = useState<Set<number>>(new Set());
+  const [privateInviteStatus, setPrivateInviteStatus] = useState<
+    "waiting" | "joining" | "joined" | "failed"
+  >(privateShareToken ? "waiting" : "joined");
+  const [publicAutoJoinPending, setPublicAutoJoinPending] = useState(false);
+  const processedPrivateTokens = useRef<Set<string>>(new Set());
+  const processedPublicJoinFor = useRef<string | null>(null);
+  const joinRoom = useJoinRoom();
+  const joinByShareLink = useJoinRoomByShareLink();
+  const createRoomShareLink = useCreateRoomShareLink();
+  const revokeRoomShareLink = useRevokeRoomShareLink();
+
+  useEffect(() => {
+    if (
+      !privateShareToken ||
+      !roomId ||
+      processedPrivateTokens.current.has(privateShareToken)
+    ) {
+      return;
+    }
+    processedPrivateTokens.current.add(privateShareToken);
+    setPrivateInviteStatus("joining");
+    joinByShareLink.mutate(
+      { data: { token: privateShareToken } },
+      {
+        onSuccess: () => {
+          setPrivateInviteStatus("joined");
+          void queryClient.invalidateQueries({ queryKey: getGetRoomQueryKey(roomId) });
+          void queryClient.invalidateQueries({ queryKey: getGetRoomFeedQueryKey(roomId) });
+        },
+        onError: () => setPrivateInviteStatus("failed"),
+      },
+    );
+  }, [joinByShareLink.mutate, privateShareToken, queryClient, roomId]);
 
   const { data: room, isLoading, error } = useGetRoom(roomId, {
-    query: { enabled: !!roomId, queryKey: getGetRoomQueryKey(roomId) },
+    query: {
+      enabled:
+        !!roomId &&
+        (!privateShareToken ||
+          (privateInviteStatus === "joined" &&
+            processedPrivateTokens.current.has(privateShareToken))),
+      queryKey: getGetRoomQueryKey(roomId),
+    },
   });
 
   const isMember = room?.isMember === true;
@@ -336,7 +385,6 @@ export default function RoomScreen() {
     },
   });
 
-  const joinRoom = useJoinRoom();
   const leaveRoom = useLeaveRoom();
   const removeMember = useRemoveRoomMember();
   const inviteToRoom = useInviteToRoom();
@@ -399,6 +447,83 @@ export default function RoomScreen() {
       },
     );
   }, [joinRoom, roomId, invalidateRoom]);
+
+  useEffect(() => {
+    if (
+      join !== "1" ||
+      privateShareToken ||
+      !room ||
+      !room.isPublic ||
+      room.isMember ||
+      processedPublicJoinFor.current === String(roomId)
+    ) {
+      return;
+    }
+    processedPublicJoinFor.current = String(roomId);
+    setPublicAutoJoinPending(true);
+    joinRoom.mutate(
+      { roomId },
+      {
+        onSuccess: () => {
+          setPublicAutoJoinPending(false);
+          invalidateRoom();
+        },
+        onError: () => {
+          setPublicAutoJoinPending(false);
+          Alert.alert("Couldn't join", "Please try again in a moment.");
+        },
+      },
+    );
+  }, [invalidateRoom, join, joinRoom.mutate, privateShareToken, room, roomId]);
+
+  const handleShareRoom = useCallback(async () => {
+    if (!room) return;
+    const configuredDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
+    if (!configuredDomain) {
+      Alert.alert("Couldn't share room", "The app link domain isn't configured yet.");
+      return;
+    }
+    const domain = configuredDomain.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+    let url = `https://${domain}/room/${roomId}?join=1`;
+    try {
+      if (!room.isPublic) {
+        const link = await createRoomShareLink.mutateAsync({ roomId });
+        url += `&shareToken=${encodeURIComponent(link.token)}`;
+      }
+      await Share.share({
+        title: `Join ${room.name}`,
+        message: room.isPublic
+          ? `${room.name} — join me on Shelfmates: ${url}`
+          : `${room.name} — join my private reading room on Shelfmates. Anyone with this link can join: ${url}`,
+        url,
+      });
+    } catch {
+      Alert.alert("Couldn't share room", "Please try again in a moment.");
+    }
+  }, [createRoomShareLink, room, roomId]);
+
+  const handleRevokeShareLink = useCallback(() => {
+    if (!room || !isOwner) return;
+    Alert.alert(
+      "Revoke the room link?",
+      "Anyone holding the current private-room link will no longer be able to join. Current members stay in the room.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Revoke link",
+          style: "destructive",
+          onPress: () =>
+            revokeRoomShareLink.mutate(
+              { roomId },
+              {
+                onSuccess: () => Alert.alert("Link revoked", "Share a new link whenever you're ready."),
+                onError: () => Alert.alert("Couldn't revoke link", "Please try again in a moment."),
+              },
+            ),
+        },
+      ],
+    );
+  }, [isOwner, revokeRoomShareLink, room, roomId]);
 
   const handleLeave = useCallback(() => {
     Alert.alert("Leave this room?", "You can rejoin a public room at any time.", [
@@ -520,6 +645,22 @@ export default function RoomScreen() {
             </Text>
           ) : null}
         </View>
+        {room && (room.isPublic || isMember) ? (
+          <Pressable
+            onPress={handleShareRoom}
+            disabled={createRoomShareLink.isPending}
+            hitSlop={8}
+            style={styles.headerAction}
+            accessibilityRole="button"
+            accessibilityLabel="Share reading room"
+          >
+            {createRoomShareLink.isPending ? (
+              <ActivityIndicator size="small" color={colors.foreground} />
+            ) : (
+              <Feather name="share-2" size={18} color={colors.foreground} />
+            )}
+          </Pressable>
+        ) : null}
         {isOwner ? (
           <Pressable onPress={openEdit} hitSlop={8} style={styles.headerAction}>
             <Feather name="edit-2" size={18} color={colors.foreground} />
@@ -532,7 +673,20 @@ export default function RoomScreen() {
         ) : null}
       </View>
 
-      {isLoading ? (
+      {privateShareToken && privateInviteStatus === "failed" ? (
+        <EmptyState
+          icon="link"
+          title="Invite link unavailable"
+          subtitle="This link may have been revoked. Ask a room member to share a new one."
+        />
+      ) : privateShareToken && privateInviteStatus !== "joined" ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={[styles.emptyLine, { color: colors.mutedForeground }]}>
+            Joining the room…
+          </Text>
+        </View>
+      ) : isLoading || publicAutoJoinPending ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
@@ -912,6 +1066,23 @@ export default function RoomScreen() {
                 Save changes
               </Text>
             </Pressable>
+            {room && !room.isPublic ? (
+              <Pressable
+                onPress={handleRevokeShareLink}
+                disabled={revokeRoomShareLink.isPending}
+                style={styles.revokeLinkButton}
+                accessibilityRole="button"
+              >
+                {revokeRoomShareLink.isPending ? (
+                  <ActivityIndicator size="small" color={colors.destructive} />
+                ) : (
+                  <Feather name="link-2" size={14} color={colors.destructive} />
+                )}
+                <Text style={[styles.revokeLinkText, { color: colors.destructive }]}>
+                  Revoke private room link
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable onPress={() => setEditVisible(false)} style={styles.modalClose}>
               <Text style={[styles.modalCloseText, { color: colors.mutedForeground }]}>Cancel</Text>
             </Pressable>
@@ -1088,4 +1259,13 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   switchLabel: { fontSize: 14, fontWeight: "600" },
+  revokeLinkButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  revokeLinkText: { fontSize: 13, fontWeight: "600" },
 });

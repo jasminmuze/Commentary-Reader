@@ -16,6 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.shelfmates",
+      "associatedDomains": ["applinks:shelfmates.replit.app"],
       "buildNumber": "1",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Shelfmates uses your photo library so you can pick a profile photo.",
@@ -24,7 +25,21 @@
     },
     "android": {
       "package": "app.shelfmates",
-      "versionCode": 1
+      "versionCode": 1,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": [
+            {
+              "scheme": "https",
+              "host": "shelfmates.replit.app",
+              "pathPrefix": "/room/"
+            }
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"

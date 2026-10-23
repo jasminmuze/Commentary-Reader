@@ -44,6 +44,8 @@ import type {
   HealthStatus,
   HighlightInput,
   HighlightResult,
+  JoinRoomByShareLinkInput,
+  JoinRoomByShareLinkResponse,
   LibraryEntry,
   LibraryUploadResult,
   LikeResult,
@@ -63,6 +65,7 @@ import type {
   RoomDetail,
   RoomFeedItem,
   RoomInviteInput,
+  RoomShareLink,
   SaveResult,
   SearchGoogleBooksParams,
   SearchUsersParams,
@@ -5011,6 +5014,217 @@ export const useJoinRoom = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getJoinRoomMutationOptions(options));
+    }
+
+export const getCreateRoomShareLinkUrl = (roomId: number,) => {
+
+
+
+
+  return `/api/rooms/${roomId}/share-link`
+}
+
+/**
+ * @summary Get or create the active private-room share link (members only)
+ */
+export const createRoomShareLink = async (roomId: number, options?: RequestInit): Promise<RoomShareLink> => {
+
+  return customFetch<RoomShareLink>(getCreateRoomShareLinkUrl(roomId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getCreateRoomShareLinkMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRoomShareLink>>, TError,{roomId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRoomShareLink>>, TError,{roomId: number}, TContext> => {
+
+const mutationKey = ['createRoomShareLink'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRoomShareLink>>, {roomId: number}> = (props) => {
+          const {roomId} = props ?? {};
+
+          return  createRoomShareLink(roomId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRoomShareLinkMutationResult = NonNullable<Awaited<ReturnType<typeof createRoomShareLink>>>
+
+    export type CreateRoomShareLinkMutationError = ErrorType<void>
+
+    /**
+ * @summary Get or create the active private-room share link (members only)
+ */
+export const useCreateRoomShareLink = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRoomShareLink>>, TError,{roomId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRoomShareLink>>,
+        TError,
+        {roomId: number},
+        TContext
+      > => {
+      return useMutation(getCreateRoomShareLinkMutationOptions(options));
+    }
+
+export const getRevokeRoomShareLinkUrl = (roomId: number,) => {
+
+
+
+
+  return `/api/rooms/${roomId}/share-link`
+}
+
+/**
+ * @summary Revoke the active private-room share link (owner only)
+ */
+export const revokeRoomShareLink = async (roomId: number, options?: RequestInit): Promise<OkResult> => {
+
+  return customFetch<OkResult>(getRevokeRoomShareLinkUrl(roomId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getRevokeRoomShareLinkMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeRoomShareLink>>, TError,{roomId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeRoomShareLink>>, TError,{roomId: number}, TContext> => {
+
+const mutationKey = ['revokeRoomShareLink'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeRoomShareLink>>, {roomId: number}> = (props) => {
+          const {roomId} = props ?? {};
+
+          return  revokeRoomShareLink(roomId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeRoomShareLinkMutationResult = NonNullable<Awaited<ReturnType<typeof revokeRoomShareLink>>>
+
+    export type RevokeRoomShareLinkMutationError = ErrorType<void>
+
+    /**
+ * @summary Revoke the active private-room share link (owner only)
+ */
+export const useRevokeRoomShareLink = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeRoomShareLink>>, TError,{roomId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeRoomShareLink>>,
+        TError,
+        {roomId: number},
+        TContext
+      > => {
+      return useMutation(getRevokeRoomShareLinkMutationOptions(options));
+    }
+
+export const getJoinRoomByShareLinkUrl = () => {
+
+
+
+
+  return `/api/rooms/join-by-share-link`
+}
+
+/**
+ * @summary Join a private room using its share-link token
+ */
+export const joinRoomByShareLink = async (joinRoomByShareLinkInput: JoinRoomByShareLinkInput, options?: RequestInit): Promise<JoinRoomByShareLinkResponse> => {
+
+  return customFetch<JoinRoomByShareLinkResponse>(getJoinRoomByShareLinkUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      joinRoomByShareLinkInput,)
+  }
+);}
+
+
+
+
+export const getJoinRoomByShareLinkMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinRoomByShareLink>>, TError,{data: BodyType<JoinRoomByShareLinkInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinRoomByShareLink>>, TError,{data: BodyType<JoinRoomByShareLinkInput>}, TContext> => {
+
+const mutationKey = ['joinRoomByShareLink'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinRoomByShareLink>>, {data: BodyType<JoinRoomByShareLinkInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  joinRoomByShareLink(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinRoomByShareLinkMutationResult = NonNullable<Awaited<ReturnType<typeof joinRoomByShareLink>>>
+    export type JoinRoomByShareLinkMutationBody = BodyType<JoinRoomByShareLinkInput>
+    export type JoinRoomByShareLinkMutationError = ErrorType<void>
+
+    /**
+ * @summary Join a private room using its share-link token
+ */
+export const useJoinRoomByShareLink = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinRoomByShareLink>>, TError,{data: BodyType<JoinRoomByShareLinkInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinRoomByShareLink>>,
+        TError,
+        {data: BodyType<JoinRoomByShareLinkInput>},
+        TContext
+      > => {
+      return useMutation(getJoinRoomByShareLinkMutationOptions(options));
     }
 
 export const getLeaveRoomUrl = (roomId: number,) => {
