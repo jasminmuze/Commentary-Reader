@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetLibraryEntry,
-  useListBooks,
   useMatchLibraryEntry,
   useCreateBook,
   useSearchGoogleBooks,
@@ -26,10 +25,9 @@ import {
   getGetUserLibraryQueryKey,
   getGetLibraryEntryQueryKey,
 } from "@workspace/api-client-react";
-import type { Book, GoogleBookCatalogItem } from "@workspace/api-client-react";
+import type { GoogleBookCatalogItem } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
-import { apiUrl } from "@/lib/api";
 
 export default function MatchScreen() {
   const colors = useColors();
@@ -65,9 +63,6 @@ export default function MatchScreen() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const { data: books, isLoading: booksLoading } = useListBooks(
-    query.trim() ? { q: query.trim() } : undefined
-  );
   const googleBooksQuery = useSearchGoogleBooks(
     { q: catalogQuery },
     {
@@ -154,9 +149,9 @@ export default function MatchScreen() {
       {entryLoading ? (
         <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
       ) : (
-        <FlatList<Book>
-          data={books ?? []}
-          keyExtractor={(item, index) => String(item.id ?? index)}
+        <FlatList<GoogleBookCatalogItem>
+          data={catalogQuery === query.trim() ? googleBooksQuery.data ?? [] : []}
+          keyExtractor={(item, index) => `${item.isbn ?? item.title}-${index}`}
           ListHeaderComponent={
             <View>
               <View style={[styles.fileCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
@@ -187,106 +182,97 @@ export default function MatchScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
+                {query.length > 0 ? (
+                  <Pressable
+                    style={styles.clearSearchBtn}
+                    onPress={() => {
+                      setQuery("");
+                      setCatalogQuery("");
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear search"
+                  >
+                    <Feather name="x-circle" size={19} color={colors.mutedForeground} />
+                  </Pressable>
+                ) : null}
               </View>
 
-              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>SHELF MATES CATALOG</Text>
+              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>GOOGLE BOOKS</Text>
             </View>
           }
           renderItem={({ item }) => (
             <Pressable
               style={({ pressed }) => [
-                styles.bookRow,
-                { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius, opacity: pressed ? 0.85 : 1 },
+                styles.externalBookRow,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  borderRadius: colors.radius,
+                  opacity: pressed || busy ? 0.7 : 1,
+                },
               ]}
-              onPress={() => handleMatch(item.id)}
+              onPress={() => handleGoogleBookSelect(item)}
               disabled={busy}
             >
               {item.coverUrl ? (
                 <Image
-                  source={{ uri: apiUrl(`/api${item.coverUrl}`) }}
-                  style={styles.coverThumb}
+                  source={{ uri: item.coverUrl }}
+                  style={styles.googleCover}
                   resizeMode="cover"
                 />
               ) : (
-                <View style={[styles.spine, { backgroundColor: item.coverColor }]} />
+                <View style={[styles.googleCoverPlaceholder, { backgroundColor: colors.primary + "18" }]}>
+                  <Feather name="book-open" size={20} color={colors.primary} />
+                </View>
               )}
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, gap: 2 }}>
                 <Text style={[styles.bookTitle, { color: colors.foreground }]} numberOfLines={2}>{item.title}</Text>
                 <Text style={[styles.bookAuthor, { color: colors.mutedForeground }]} numberOfLines={1}>{item.author}</Text>
-                <Text style={[styles.bookMeta, { color: colors.mutedForeground }]}>
-                  {item.highlightCount} highlights · {item.commentCount} comments
-                </Text>
+                {item.publisher || item.publishedDate || item.pageCount ? (
+                  <Text style={[styles.bookMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    {[item.publisher, item.publishedDate, item.pageCount ? `${item.pageCount} pages` : null].filter(Boolean).join(" · ")}
+                  </Text>
+                ) : null}
+                {item.isbn ? (
+                  <Text style={[styles.bookMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    ISBN {item.isbn}
+                  </Text>
+                ) : null}
+                {item.language ? (
+                  <Text style={[styles.bookMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    {item.language.toUpperCase()}
+                  </Text>
+                ) : null}
+                {item.description ? (
+                  <Text style={[styles.googleDescription, { color: colors.mutedForeground }]} numberOfLines={3}>
+                    {item.description}
+                  </Text>
+                ) : null}
               </View>
-              <Feather name="chevron-right" size={20} color={colors.mutedForeground} />
+              <Feather name="plus" size={19} color={colors.primary} />
             </Pressable>
           )}
           ListEmptyComponent={
-            booksLoading ? (
-              <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
+            catalogQuery !== query.trim() ? (
+              <ActivityIndicator color={colors.primary} style={{ marginVertical: 10 }} />
+            ) : catalogQuery.length < 2 ? (
+              <Text style={[styles.externalStatus, { color: colors.mutedForeground }]}>
+                Enter a title, author, or ISBN to search Google Books.
+              </Text>
+            ) : googleBooksQuery.isLoading ? (
+              <ActivityIndicator color={colors.primary} style={{ marginVertical: 10 }} />
+            ) : googleBooksQuery.isError ? (
+              <Text style={[styles.externalStatus, { color: colors.mutedForeground }]}>
+                Google Books search is unavailable right now. You can still add the book manually or continue without matching.
+              </Text>
             ) : (
-              <Text style={[styles.emptyLine, { color: colors.mutedForeground }]}>
-                No matching books in Shelfmates. Search Google Books or add a new book below.
+              <Text style={[styles.externalStatus, { color: colors.mutedForeground }]}>
+                No Google Books results found. You can still add the book manually or continue without matching.
               </Text>
             )
           }
           ListFooterComponent={
             <View style={styles.footer}>
-              <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 2 }]}>
-                GOOGLE BOOKS EDITIONS
-              </Text>
-              {catalogQuery !== query.trim() ? (
-                <ActivityIndicator color={colors.primary} style={{ marginVertical: 10 }} />
-              ) : catalogQuery.length < 2 ? (
-                <Text style={[styles.externalStatus, { color: colors.mutedForeground }]}>
-                  Enter a title, author, or ISBN to search Google Books.
-                </Text>
-              ) : googleBooksQuery.isLoading ? (
-                <ActivityIndicator color={colors.primary} style={{ marginVertical: 10 }} />
-              ) : googleBooksQuery.isError ? (
-                <Text style={[styles.externalStatus, { color: colors.mutedForeground }]}>
-                  Google Books search is unavailable right now. You can still add the book manually or continue without matching.
-                </Text>
-              ) : googleBooksQuery.data?.length ? (
-                googleBooksQuery.data.map((item, index) => (
-                  <Pressable
-                    key={`${item.isbn ?? item.title}-${index}`}
-                    style={({ pressed }) => [
-                      styles.externalBookRow,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.border,
-                        borderRadius: colors.radius,
-                        opacity: pressed || busy ? 0.7 : 1,
-                      },
-                    ]}
-                    onPress={() => handleGoogleBookSelect(item)}
-                    disabled={busy}
-                  >
-                    <View style={[styles.externalIcon, { backgroundColor: colors.primary + "18" }]}>
-                      <Feather name="book-open" size={18} color={colors.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.bookTitle, { color: colors.foreground }]} numberOfLines={2}>
-                        {item.title}
-                      </Text>
-                      <Text style={[styles.bookAuthor, { color: colors.mutedForeground }]} numberOfLines={1}>
-                        {item.author}
-                      </Text>
-                      {item.isbn ? (
-                        <Text style={[styles.bookMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
-                          ISBN {item.isbn}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Feather name="plus" size={19} color={colors.primary} />
-                  </Pressable>
-                ))
-              ) : (
-                <Text style={[styles.externalStatus, { color: colors.mutedForeground }]}>
-                  No Google Books editions found. You can still add the book manually or continue without matching.
-                </Text>
-              )}
-
               <Pressable
                 style={({ pressed }) => [styles.createBtn, { borderColor: colors.primary, opacity: pressed || busy ? 0.7 : 1 }]}
                 onPress={handleCreate}
@@ -358,6 +344,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
+  clearSearchBtn: { padding: 4 },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "700",
@@ -365,36 +352,32 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 8,
   },
-  bookRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 12,
-    borderWidth: 1,
-    marginBottom: 8,
-  },
-  spine: { width: 8, alignSelf: "stretch", borderRadius: 4 },
-  coverThumb: { width: 34, height: 48, borderRadius: 4 },
   bookTitle: { fontSize: 15, fontWeight: "700", letterSpacing: -0.2 },
   bookAuthor: { fontSize: 13, marginTop: 1 },
   bookMeta: { fontSize: 11, marginTop: 4 },
-  emptyLine: { fontSize: 13, textAlign: "center", marginTop: 16, lineHeight: 19 },
   externalStatus: { fontSize: 13, lineHeight: 19, textAlign: "center", paddingHorizontal: 8, paddingVertical: 8 },
   externalBookRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 12,
     padding: 12,
     borderWidth: 1,
     marginBottom: 8,
   },
-  externalIcon: {
-    width: 38,
-    height: 46,
+  googleCover: {
+    width: 56,
+    height: 80,
+    borderRadius: 4,
+    backgroundColor: "rgba(127,127,127,0.12)",
+  },
+  googleCoverPlaceholder: {
+    width: 56,
+    height: 80,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 6,
   },
+  googleDescription: { fontSize: 12, lineHeight: 17, marginTop: 3 },
   footer: { marginTop: 16, gap: 14 },
   createBtn: {
     flexDirection: "row",

@@ -64,10 +64,19 @@ export const SearchGoogleBooksQueryParams = zod.object({
   "q": zod.coerce.string().min(searchGoogleBooksQueryQMin).max(searchGoogleBooksQueryQMax).describe('A title, author, or ISBN search term')
 })
 
+
+
+
 export const SearchGoogleBooksResponseItem = zod.object({
   "title": zod.string(),
   "author": zod.string(),
-  "isbn": zod.string().nullable()
+  "isbn": zod.string().nullable(),
+  "coverUrl": zod.string().url().nullable().describe('HTTPS cover image URL from the Google Books catalog'),
+  "publisher": zod.string().nullable(),
+  "publishedDate": zod.string().nullable(),
+  "description": zod.string().nullable(),
+  "pageCount": zod.number().min(1).nullable(),
+  "language": zod.string().nullable()
 })
 export const SearchGoogleBooksResponse = zod.array(SearchGoogleBooksResponseItem)
 

@@ -11,4 +11,22 @@ export interface GoogleBookCatalogItem {
   author: string;
   /** @nullable */
   isbn: string | null;
+  /**
+     * HTTPS cover image URL from the Google Books catalog
+     * @nullable
+     */
+  coverUrl: string | null;
+  /** @nullable */
+  publisher: string | null;
+  /** @nullable */
+  publishedDate: string | null;
+  /** @nullable */
+  description: string | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  pageCount: number | null;
+  /** @nullable */
+  language: string | null;
 }

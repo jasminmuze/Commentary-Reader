@@ -2,6 +2,12 @@ export interface GoogleBookCatalogItem {
   title: string;
   author: string;
   isbn: string | null;
+  coverUrl: string | null;
+  publisher: string | null;
+  publishedDate: string | null;
+  description: string | null;
+  pageCount: number | null;
+  language: string | null;
 }
 
 export interface GoogleBookIdentity {
@@ -48,6 +54,43 @@ export function buildGoogleBooksUrl(term: string): URL {
   return url;
 }
 
+function optionalText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLength) : null;
+}
+
+function normalizeCoverUrl(value: unknown): string | null {
+  const text = optionalText(value, 2048);
+  if (!text) return null;
+
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    if (!url.hostname || url.username || url.password) return null;
+    url.protocol = "https:";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeDescription(value: unknown): string | null {
+  const text = optionalText(value, 10000);
+  if (!text) return null;
+  return text
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 4000) || null;
+}
+
 export function mapGoogleBooksPayload(payload: unknown): GoogleBookCatalogItem[] {
   if (!payload || typeof payload !== "object" || !("items" in payload) || !Array.isArray(payload.items)) {
     return [];
@@ -88,11 +131,31 @@ export function mapGoogleBooksPayload(payload: unknown): GoogleBookCatalogItem[]
       selectedIsbn && "identifier" in selectedIsbn && typeof selectedIsbn.identifier === "string"
         ? selectedIsbn.identifier
         : null;
+    const imageLinks = "imageLinks" in info && info.imageLinks && typeof info.imageLinks === "object"
+      ? info.imageLinks
+      : null;
+    const coverUrl = imageLinks
+      ? normalizeCoverUrl("thumbnail" in imageLinks ? imageLinks.thumbnail : null) ??
+        normalizeCoverUrl("smallThumbnail" in imageLinks ? imageLinks.smallThumbnail : null)
+      : null;
+    const pageCount =
+      "pageCount" in info &&
+      typeof info.pageCount === "number" &&
+      Number.isInteger(info.pageCount) &&
+      info.pageCount > 0
+        ? info.pageCount
+        : null;
 
     return [{
       title,
       author: authors.join(", ") || "Unknown",
       isbn,
+      coverUrl,
+      publisher: optionalText("publisher" in info ? info.publisher : null, 300),
+      publishedDate: optionalText("publishedDate" in info ? info.publishedDate : null, 40),
+      description: normalizeDescription("description" in info ? info.description : null),
+      pageCount,
+      language: optionalText("language" in info ? info.language : null, 32),
     }];
   });
 }

@@ -1791,13 +1791,28 @@ components:
 
     GoogleBookCatalogItem:
       type: object
-      required: [title, author, isbn]
+      required: [title, author, isbn, coverUrl, publisher, publishedDate, description, pageCount, language]
       properties:
         title:
           type: string
         author:
           type: string
         isbn:
+          type: [string, "null"]
+        coverUrl:
+          type: [string, "null"]
+          format: uri
+          description: HTTPS cover image URL from the Google Books catalog
+        publisher:
+          type: [string, "null"]
+        publishedDate:
+          type: [string, "null"]
+        description:
+          type: [string, "null"]
+        pageCount:
+          type: [integer, "null"]
+          minimum: 1
+        language:
           type: [string, "null"]
 
     GoogleBookSelection:

@@ -22,6 +22,12 @@ test("catalog mapping keeps edition identifiers and safely handles missing field
           volumeInfo: {
             title: "  A Wizard of Earthsea ",
             authors: ["Ursula K. Le Guin"],
+            publisher: "  Parnassus Press ",
+            publishedDate: "1968",
+            description: "<p>A classic &amp; beloved story.</p>",
+            pageCount: 205,
+            language: "en",
+            imageLinks: { thumbnail: "http://books.google.com/cover.jpg" },
             industryIdentifiers: [
               { type: "ISBN_10", identifier: "0547773749" },
               { type: "ISBN_13", identifier: "9780547773742" },
@@ -34,12 +40,60 @@ test("catalog mapping keeps edition identifiers and safely handles missing field
       ],
     }),
     [
-      { title: "A Wizard of Earthsea", author: "Ursula K. Le Guin", isbn: "9780547773742" },
-      { title: "Untitled metadata", author: "Unknown", isbn: null },
+      {
+        title: "A Wizard of Earthsea",
+        author: "Ursula K. Le Guin",
+        isbn: "9780547773742",
+        coverUrl: "https://books.google.com/cover.jpg",
+        publisher: "Parnassus Press",
+        publishedDate: "1968",
+        description: "A classic & beloved story.",
+        pageCount: 205,
+        language: "en",
+      },
+      {
+        title: "Untitled metadata",
+        author: "Unknown",
+        isbn: null,
+        coverUrl: null,
+        publisher: null,
+        publishedDate: null,
+        description: null,
+        pageCount: null,
+        language: null,
+      },
     ],
   );
   assert.deepEqual(mapGoogleBooksPayload({ totalItems: 0 }), []);
   assert.deepEqual(mapGoogleBooksPayload({ items: [] }), []);
+});
+
+test("catalog mapping rejects unsafe cover URLs and invalid page counts", () => {
+  assert.deepEqual(
+    mapGoogleBooksPayload({
+      items: [
+        {
+          volumeInfo: {
+            title: "A partial record",
+            imageLinks: { thumbnail: "javascript:alert(1)", smallThumbnail: "https://books.google.com/fallback.jpg" },
+            pageCount: -2,
+            description: "  ",
+          },
+        },
+      ],
+    }),
+    [{
+      title: "A partial record",
+      author: "Unknown",
+      isbn: null,
+      coverUrl: "https://books.google.com/fallback.jpg",
+      publisher: null,
+      publishedDate: null,
+      description: null,
+      pageCount: null,
+      language: null,
+    }],
+  );
 });
 
 test("provider failures are surfaced and empty provider results stay empty", async () => {
