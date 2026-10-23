@@ -265,6 +265,8 @@ function EmbeddedReader({
 
   const [chromeVisible, setChromeVisible] = useState(true);
   const [opened, setOpened] = useState(false);
+  const [eventListenersReadyFor, setEventListenersReadyFor] = useState<number | null>(null);
+  const [hasReceivedLocation, setHasReceivedLocation] = useState(false);
   // Cold-start defense: if the native "opened" event never arrives (e.g. it was
   // emitted before the JS listeners were registered, or the native open silently
   // failed), remount the native view to retry, then surface an error screen.
@@ -461,7 +463,7 @@ function EmbeddedReader({
 
   useEffect(() => {
     if (opened) applyAllDecorations();
-  }, [opened, locatedVersion, quotes, applyAllDecorations]);
+  }, [opened, hasReceivedLocation, locatedVersion, quotes, applyAllDecorations]);
 
   // Search this edition for quotes whose position hasn't been found yet.
   // Pass 1: search by the quote's full text so the whole passage gets highlighted.
@@ -713,6 +715,7 @@ function EmbeddedReader({
         "NativeReadiumHost.locationChanged",
         (event: LocationEvent) => {
           if (event.libraryId !== libraryId || !event.location) return;
+          setHasReceivedLocation(true);
           const percent = percentFromProgress(event.progress);
           if (percent !== null) setReadProgress(percent);
           // Debounce: the navigator emits a location on every scroll tick.
@@ -826,10 +829,16 @@ function EmbeddedReader({
         },
       ),
     ];
+    // Mount the native view only after every bridge listener is attached. Android
+    // emits events immediately and does not buffer them like the iOS bridge does.
+    setEventListenersReadyFor(libraryId);
 
     return () => {
       flushLocation();
       subs.forEach((sub) => sub.remove());
+      setEventListenersReadyFor((current) =>
+        current === libraryId ? null : current,
+      );
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [libraryId, onFatalError]);
@@ -872,7 +881,9 @@ function EmbeddedReader({
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {NativeReadiumView && initialSettingsJsonRef.current !== null ? (
+      {NativeReadiumView &&
+      eventListenersReadyFor === libraryId &&
+      initialSettingsJsonRef.current !== null ? (
         <NativeReadiumView
           // Changing the key disposes and recreates the native view, which
           // re-runs the whole native open — this is the retry mechanism.
