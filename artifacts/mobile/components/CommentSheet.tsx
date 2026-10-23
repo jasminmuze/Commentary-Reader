@@ -58,7 +58,7 @@ function completeMentionText(text: string, username: string): string {
 
 type MentionCandidate = { username: string; nickname?: string | null };
 
-/** Candidates whose username or display name starts with the partial query (case-insensitive). */
+/** Candidates whose username or nickname starts with the partial query (case-insensitive). */
 function mentionSuggestions(
   candidates: MentionCandidate[],
   text: string,
@@ -73,8 +73,8 @@ function mentionSuggestions(
     if (!c.username || c.username === selfUsername || seen.has(c.username)) continue;
     const display = (c.nickname?.trim() || c.username).toLowerCase();
     if (
-      (c.username.toLowerCase().startsWith(lower) || display.startsWith(lower)) &&
-      c.username.toLowerCase() !== lower
+      c.username.toLowerCase().startsWith(lower) ||
+      display.startsWith(lower)
     ) {
       seen.add(c.username);
       result.push(c);
@@ -332,7 +332,7 @@ function ReplyThread({
         <View style={styles.parentMeta}>
           <View style={styles.parentUserRow}>
             <Text style={[styles.parentUser, { color: colors.primary }]}>
-              @{parentComment.username}
+              {parentComment.nickname?.trim() || parentComment.username}
             </Text>
             {parentComment.containsSpoilers ? (
               <View
