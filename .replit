@@ -40,6 +40,7 @@ packages = ["eas-cli"]
 
 [userenv.shared]
 RESEND_FROM_EMAIL = "no-reply@getshelfmates.com"
+IOS_APPLE_TEAM_ID = "D7BSH6U6GF"
 
 [userenv.production]
 COMMUNITY_CLEANUP_ADMIN_USER_ID = "59"
