@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -25,9 +25,155 @@ import {
   getGetFriendsQueryKey,
   getGetNotificationsQueryKey,
 } from "@workspace/api-client-react";
+import type { UserPublicActivityItem } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "@/components/UserAvatar";
+
+function activityDateLabel(value: string): string {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "";
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function PublicActivityCard({
+  item,
+  isAuthor,
+}: {
+  item: UserPublicActivityItem;
+  isAuthor: boolean;
+}) {
+  const colors = useColors();
+  const [spoilerRevealed, setSpoilerRevealed] = useState(false);
+  const isComment = item.kind === "comment";
+  const isSpoiler = isComment && item.containsSpoilers === true;
+  const spoilerHidden = isSpoiler && !isAuthor && !spoilerRevealed;
+
+  return (
+    <View
+      style={[
+        styles.activityCard,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          borderRadius: colors.radius + 4,
+        },
+      ]}
+    >
+      <View style={styles.activityHeader}>
+        <View
+          style={[
+            styles.activityKind,
+            {
+              backgroundColor: isComment ? colors.muted : `${colors.primary}18`,
+              borderRadius: colors.radius,
+            },
+          ]}
+        >
+          <Feather
+            name={isComment ? "message-circle" : "bookmark"}
+            size={12}
+            color={isComment ? colors.mutedForeground : colors.primary}
+          />
+          <Text
+            style={[
+              styles.activityKindText,
+              { color: isComment ? colors.mutedForeground : colors.primary },
+            ]}
+          >
+            {isComment ? "COMMENT" : "HIGHLIGHT"}
+          </Text>
+        </View>
+        <Text style={[styles.activityDate, { color: colors.mutedForeground }]}>
+          {activityDateLabel(item.createdAt)}
+        </Text>
+      </View>
+
+      <View style={styles.activityBook}>
+        <View
+          style={[
+            styles.activityBookMark,
+            { backgroundColor: item.coverColor || colors.primary },
+          ]}
+        />
+        <View style={{ flex: 1 }}>
+          <Text
+            style={[styles.activityBookTitle, { color: colors.foreground }]}
+            numberOfLines={1}
+          >
+            {item.bookTitle}
+          </Text>
+          <Text
+            style={[styles.activityBookAuthor, { color: colors.mutedForeground }]}
+            numberOfLines={1}
+          >
+            {item.bookAuthor}
+          </Text>
+        </View>
+      </View>
+
+      {spoilerHidden ? (
+        <Pressable
+          onPress={() => setSpoilerRevealed(true)}
+          style={[
+            styles.activitySpoiler,
+            {
+              backgroundColor: colors.muted,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Spoiler — tap to reveal"
+        >
+          <Feather name="eye-off" size={15} color={colors.mutedForeground} />
+          <Text style={[styles.activitySpoilerText, { color: colors.mutedForeground }]}>
+            Spoiler — tap to reveal
+          </Text>
+        </Pressable>
+      ) : (
+        <View
+          style={[
+            styles.activityTextBlock,
+            {
+              backgroundColor: colors.background,
+              borderLeftColor: isComment ? colors.border : colors.primary,
+              borderRadius: colors.radius,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.activityMainText,
+              {
+                color: colors.foreground,
+                fontStyle: isComment ? "normal" : "italic",
+              },
+            ]}
+            numberOfLines={isComment ? 3 : 4}
+          >
+            {isComment ? item.commentText : `“${item.quoteText}”`}
+          </Text>
+          {isComment ? (
+            <Text
+              style={[styles.activityContext, { color: colors.mutedForeground }]}
+              numberOfLines={2}
+            >
+              On “{item.quoteText}”
+            </Text>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
+}
 
 export default function UserProfileScreen() {
   const colors = useColors();
@@ -284,6 +430,64 @@ export default function UserProfileScreen() {
           </View>
         ) : null}
 
+        <View style={styles.activitySection}>
+          <View style={styles.activitySectionHeader}>
+            <View>
+              <Text style={[styles.activitySectionTitle, { color: colors.foreground }]}>
+                Recent public activity
+              </Text>
+              <Text style={[styles.activitySectionSubtitle, { color: colors.mutedForeground }]}>
+                Highlights and conversation starters
+              </Text>
+            </View>
+            {profile.recentActivity.length > 0 ? (
+              <View
+                style={[
+                  styles.activityCount,
+                  { backgroundColor: colors.muted, borderRadius: colors.radius },
+                ]}
+              >
+                <Text style={[styles.activityCountText, { color: colors.mutedForeground }]}>
+                  {profile.recentActivity.length}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {profile.recentActivity.length > 0 ? (
+            <View style={styles.activityList}>
+              {profile.recentActivity.map((item) => (
+                <PublicActivityCard
+                  key={`${item.kind}-${item.id}`}
+                  item={item}
+                  isAuthor={profile.isMe}
+                />
+              ))}
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.activityEmpty,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  borderRadius: colors.radius + 4,
+                },
+              ]}
+            >
+              <View style={[styles.activityEmptyIcon, { backgroundColor: colors.muted }]}>
+                <Feather name="book-open" size={18} color={colors.mutedForeground} />
+              </View>
+              <Text style={[styles.activityEmptyTitle, { color: colors.foreground }]}>
+                {profile.isMe ? "Your reading story starts here" : "Their reading story starts here"}
+              </Text>
+              <Text style={[styles.activityEmptyBody, { color: colors.mutedForeground }]}>
+                Public highlights and comments will show up as they read.
+              </Text>
+            </View>
+          )}
+        </View>
+
         {/* Rooms section — only show if the user belongs to any public rooms */}
         {userRooms && userRooms.length > 0 ? (
           <View style={styles.roomsSection}>
@@ -416,6 +620,135 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: 15,
     fontWeight: "700",
+  },
+  activitySection: {
+    marginHorizontal: 16,
+    marginTop: 30,
+    gap: 14,
+  },
+  activitySectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  activitySectionTitle: {
+    fontSize: 19,
+    fontWeight: "700",
+    letterSpacing: -0.3,
+  },
+  activitySectionSubtitle: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  activityCount: {
+    minWidth: 28,
+    height: 28,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activityCountText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  activityList: {
+    gap: 10,
+  },
+  activityCard: {
+    borderWidth: 1,
+    padding: 14,
+    gap: 12,
+  },
+  activityHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  activityKind: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  activityKindText: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.55,
+  },
+  activityDate: {
+    fontSize: 11,
+  },
+  activityBook: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  activityBookMark: {
+    width: 4,
+    height: 32,
+    borderRadius: 2,
+  },
+  activityBookTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  activityBookAuthor: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  activityTextBlock: {
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderLeftWidth: 2,
+    gap: 8,
+  },
+  activityMainText: {
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: "500",
+  },
+  activityContext: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  activitySpoiler: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+  },
+  activitySpoilerText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  activityEmpty: {
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    alignItems: "center",
+  },
+  activityEmptyIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  activityEmptyTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  activityEmptyBody: {
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: 5,
+    maxWidth: 250,
   },
   roomsSection: {
     marginHorizontal: 16,

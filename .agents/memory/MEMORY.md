@@ -10,3 +10,4 @@
 - [Android native crash diagnostics](android-native-crash-diagnostics.md) — bug reports expose crashes Metro misses; match Hermes Build ID to Maven prefab symbols, and test release separately from dev.
 - [Destructive maintenance tests](destructive-maintenance-tests.md) — never weaken protected-account checks for dev fixture gaps; use rollback-only test data.
 - [Native accessibility focus](native-accessibility-focus.md) — guard React Native accessibility focus APIs from web builds; `findNodeHandle` is unsupported on web.
+- [Profile public activity](profile-public-activity.md) — show public highlights and top-level comments on profiles; keep replies in their conversation threads.

@@ -58,6 +58,7 @@ import bcrypt from "bcryptjs";
 import { createHash, randomInt } from "crypto";
 import { LoginUserBody } from "@workspace/api-zod";
 import { formatComment } from "../lib/queries";
+import { getOwnedBookIds, truncateQuoteText } from "../lib/contentLimits";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../lib/email";
 import {
   isGeneratedAvatarObjectPath,
@@ -1358,6 +1359,99 @@ router.get("/users/:userId/profile", authenticate, async (req, res): Promise<voi
       ),
     );
 
+  const [recentComments, recentHighlights] = await Promise.all([
+    db
+      .select({
+        id: commentsTable.id,
+        quoteId: quotesTable.id,
+        commentText: commentsTable.text,
+        containsSpoilers: commentsTable.containsSpoilers,
+        createdAt: commentsTable.createdAt,
+        bookId: booksTable.id,
+        bookTitle: booksTable.title,
+        bookAuthor: booksTable.author,
+        coverColor: booksTable.coverColor,
+        quoteText: quotesTable.text,
+      })
+      .from(commentsTable)
+      .innerJoin(quotesTable, eq(commentsTable.quoteId, quotesTable.id))
+      .innerJoin(booksTable, eq(quotesTable.canonicalBookId, booksTable.id))
+      .where(
+        and(
+          eq(commentsTable.userId, targetId),
+          eq(commentsTable.visibility, "public"),
+          isNull(commentsTable.roomId),
+          isNull(commentsTable.parentId),
+        ),
+      )
+      .orderBy(desc(commentsTable.createdAt), desc(commentsTable.id))
+      .limit(6),
+    db
+      .select({
+        id: userHighlightsTable.id,
+        quoteId: quotesTable.id,
+        createdAt: userHighlightsTable.createdAt,
+        bookId: booksTable.id,
+        bookTitle: booksTable.title,
+        bookAuthor: booksTable.author,
+        coverColor: booksTable.coverColor,
+        quoteText: quotesTable.text,
+      })
+      .from(userHighlightsTable)
+      .innerJoin(quotesTable, eq(userHighlightsTable.quoteId, quotesTable.id))
+      .innerJoin(booksTable, eq(quotesTable.canonicalBookId, booksTable.id))
+      .where(
+        and(
+          eq(userHighlightsTable.userId, targetId),
+          eq(userHighlightsTable.visibility, "public"),
+          isNull(userHighlightsTable.roomId),
+        ),
+      )
+      .orderBy(desc(userHighlightsTable.createdAt), desc(userHighlightsTable.id))
+      .limit(6),
+  ]);
+
+  const activityBookIds = [
+    ...new Set([
+      ...recentComments.map((item) => item.bookId),
+      ...recentHighlights.map((item) => item.bookId),
+    ]),
+  ];
+  const ownedActivityBookIds = await getOwnedBookIds(req.userId, activityBookIds);
+  const recentActivity = [
+    ...recentComments.map((item) => ({ ...item, kind: "comment" as const })),
+    ...recentHighlights.map((item) => ({ ...item, kind: "highlight" as const })),
+  ]
+    .sort(
+      (a, b) =>
+        b.createdAt.getTime() - a.createdAt.getTime() ||
+        b.id - a.id,
+    )
+    .slice(0, 6)
+    .map((item) => {
+      const quotePreview = ownedActivityBookIds.has(item.bookId)
+        ? { text: item.quoteText, truncated: false }
+        : truncateQuoteText(item.quoteText);
+      return {
+        kind: item.kind,
+        id: item.id,
+        quoteId: item.quoteId,
+        bookId: item.bookId,
+        bookTitle: item.bookTitle,
+        bookAuthor: item.bookAuthor,
+        coverColor: item.coverColor,
+        quoteText: quotePreview.text,
+        quoteTextTruncated: quotePreview.truncated,
+        createdAt: item.createdAt.toISOString(),
+        ...(item.kind === "comment"
+          ? {
+              commentText: item.commentText,
+              containsSpoilers: item.containsSpoilers,
+            }
+          : {}),
+      };
+    });
+
   const isFollowedByMe = isMe ? false : await isFollowing(req.userId, targetId);
   const followsMe = isMe ? false : await isFollowing(targetId, req.userId);
 
@@ -1404,6 +1498,7 @@ router.get("/users/:userId/profile", authenticate, async (req, res): Promise<voi
     followingCount: Number(followingRow?.c ?? 0),
     highlightCount: Number(highlightRow?.c ?? 0),
     commentCount: Number(commentRow?.c ?? 0),
+    recentActivity,
     isFollowedByMe,
     followsMe,
     isMe,

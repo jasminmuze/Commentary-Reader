@@ -2121,6 +2121,7 @@ components:
           followingCount,
           highlightCount,
           commentCount,
+          recentActivity,
           isFollowedByMe,
           followsMe,
           isMe,
@@ -2148,6 +2149,11 @@ components:
           type: integer
         commentCount:
           type: integer
+        recentActivity:
+          type: array
+          description: The six most recent public highlights and top-level comments; replies and non-public content are excluded.
+          items:
+            $ref: "#/components/schemas/UserPublicActivityItem"
         isFollowedByMe:
           type: boolean
           description: Whether the requesting user follows this profile
@@ -2165,6 +2171,40 @@ components:
             none = no relationship, requested = viewer sent a pending request,
             incoming = this profile sent the viewer a pending request,
             friends = mutual follow (friends). Always "none" on your own profile.
+
+    UserPublicActivityItem:
+      type: object
+      required: [kind, id, quoteId, bookId, bookTitle, bookAuthor, coverColor, quoteText, quoteTextTruncated, createdAt]
+      properties:
+        kind:
+          type: string
+          enum: [comment, highlight]
+        id:
+          type: integer
+        quoteId:
+          type: integer
+        bookId:
+          type: integer
+        bookTitle:
+          type: string
+        bookAuthor:
+          type: string
+        coverColor:
+          type: string
+        quoteText:
+          type: string
+          description: Full text for books owned by the viewer, otherwise a short preview.
+        quoteTextTruncated:
+          type: boolean
+        commentText:
+          type: string
+          description: Present for top-level comment activity only.
+        containsSpoilers:
+          type: boolean
+          description: Present for comment activity; spoiler-marked content should remain hidden until tapped.
+        createdAt:
+          type: string
+          format: date-time
 
     UpdateUserSettings:
       type: object

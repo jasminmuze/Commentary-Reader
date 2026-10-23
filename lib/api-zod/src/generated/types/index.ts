@@ -77,6 +77,8 @@ export * from './userHighlightItem';
 export * from './userInput';
 export * from './userProfile';
 export * from './userProfileFriendStatus';
+export * from './userPublicActivityItem';
+export * from './userPublicActivityItemKind';
 export * from './userRecordsBook';
 export * from './userRef';
 export * from './userWithFriendStatus';

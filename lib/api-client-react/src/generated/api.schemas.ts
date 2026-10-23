@@ -336,6 +336,32 @@ export const UserProfileFriendStatus = {
   friends: 'friends',
 } as const;
 
+export type UserPublicActivityItemKind = typeof UserPublicActivityItemKind[keyof typeof UserPublicActivityItemKind];
+
+
+export const UserPublicActivityItemKind = {
+  comment: 'comment',
+  highlight: 'highlight',
+} as const;
+
+export interface UserPublicActivityItem {
+  kind: UserPublicActivityItemKind;
+  id: number;
+  quoteId: number;
+  bookId: number;
+  bookTitle: string;
+  bookAuthor: string;
+  coverColor: string;
+  /** Full text for books owned by the viewer, otherwise a short preview. */
+  quoteText: string;
+  quoteTextTruncated: boolean;
+  /** Present for top-level comment activity only. */
+  commentText?: string;
+  /** Present for comment activity; spoiler-marked content should remain hidden until tapped. */
+  containsSpoilers?: boolean;
+  createdAt: string;
+}
+
 export interface UserProfile {
   id: number;
   username: string;
@@ -349,6 +375,8 @@ export interface UserProfile {
   followingCount: number;
   highlightCount: number;
   commentCount: number;
+  /** The six most recent public highlights and top-level comments; replies and non-public content are excluded. */
+  recentActivity: UserPublicActivityItem[];
   /** Whether the requesting user follows this profile */
   isFollowedByMe: boolean;
   /** Whether this profile follows the requesting user */

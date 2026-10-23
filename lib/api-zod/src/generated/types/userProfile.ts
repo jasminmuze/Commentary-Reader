@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { UserProfileFriendStatus } from './userProfileFriendStatus';
+import type { UserPublicActivityItem } from './userPublicActivityItem';
 
 export interface UserProfile {
   id: number;
@@ -20,6 +21,8 @@ export interface UserProfile {
   followingCount: number;
   highlightCount: number;
   commentCount: number;
+  /** The six most recent public highlights and top-level comments; replies and non-public content are excluded. */
+  recentActivity: UserPublicActivityItem[];
   /** Whether the requesting user follows this profile */
   isFollowedByMe: boolean;
   /** Whether this profile follows the requesting user */
