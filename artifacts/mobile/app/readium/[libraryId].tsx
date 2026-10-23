@@ -462,6 +462,8 @@ function EmbeddedReader({
   }, [libraryId, nativeReadium, myHighlightStyle]);
 
   useEffect(() => {
+    // Attachment can precede the first reading location. Reapply once that
+    // location arrives as well, without reapplying on every scroll event.
     if (opened) applyAllDecorations();
   }, [opened, hasReceivedLocation, locatedVersion, quotes, applyAllDecorations]);
 

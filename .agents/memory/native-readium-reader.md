@@ -54,3 +54,8 @@ Chapter-pull (scroll mode overscroll → next/prev chapter) is implemented by ov
 ## Untestable-native build loop
 The Replit agent cannot build/run Android (no emulator/APK). Only the user can EAS-build and device-test.
 **How to apply:** Put the ENTIRE native surface in ONE EAS build, defensively coded; then iterate JS-only over Metro (dev-client reloads TS without rebuilds). Add a `NativeReadiumHost.log` DeviceEventEmitter event so native errors surface in Metro (agent has no logcat). The old epub.js/WebView reader and its deps have since been removed — the Readium route is the only reader. Any change to Kotlin under `native/readium-host/` still requires a fresh user-run EAS build before it can be observed.
+
+## Intermittent Android reader failures: keep changes narrow
+For intermittent blank EPUB screens or missing highlights, the user wants the cause investigated and does not want a large, high-risk repair.
+**Why:** The user explicitly prefers not to risk a major refactor for these intermittent symptoms.
+**How to apply:** Prioritize evidence and targeted synchronization fixes; discuss the risk before replacing or substantially restructuring the native reader.
