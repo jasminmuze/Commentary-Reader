@@ -962,6 +962,28 @@ export default function ProfileScreen() {
         ) : null}
         <Pressable
           accessibilityRole="link"
+          accessibilityLabel="Terms of Use"
+          onPress={() => router.push("/terms-of-use")}
+          style={({ pressed }) => [
+            styles.card,
+            styles.logoutButton,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+              opacity: pressed ? 0.6 : 1,
+              marginBottom: 12,
+            },
+          ]}
+        >
+          <Feather name="book-open" size={18} color={colors.foreground} />
+          <Text style={[styles.logoutText, { color: colors.foreground }]}>
+            Terms of Use
+          </Text>
+          <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="link"
           accessibilityLabel="Privacy policy"
           onPress={() => void Linking.openURL(`https://${process.env.EXPO_PUBLIC_DOMAIN}/privacy-policy`)}
           style={({ pressed }) => [

@@ -4,14 +4,17 @@ import {
   Alert,
   FlatList,
   Image,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -28,6 +31,12 @@ import { useUser } from "@/context/UserContext";
 import { EmptyState } from "@/components/EmptyState";
 import { BookCardShimmer } from "@/components/LoadingShimmer";
 import { apiUrl, uploadEpub } from "@/lib/api";
+
+const EPUB_UPLOAD_TERMS_VERSION = "2026-10-24";
+
+function epubUploadConsentKey(userId: number) {
+  return `shelfmates:epub-upload-consent:${userId}:${EPUB_UPLOAD_TERMS_VERSION}`;
+}
 
 function LibraryCard({ entry, onOpen, onMatch }: {
   entry: LibraryEntry;
@@ -121,8 +130,12 @@ export default function LibraryScreen() {
     { query: { enabled: !!user, queryKey: getGetUserLibraryQueryKey(user?.id ?? 0) } }
   );
   const createLibraryEntry = useCreateLibraryEntry();
+  const [showUploadConsent, setShowUploadConsent] = useState(false);
+  const [uploadConsentChecked, setUploadConsentChecked] = useState(false);
+  const [checkingUploadConsent, setCheckingUploadConsent] = useState(false);
+  const [savingUploadConsent, setSavingUploadConsent] = useState(false);
 
-  const handleUpload = useCallback(async () => {
+  const chooseAndUploadEpub = useCallback(async () => {
     if (!user || uploading) return;
     try {
       const picked = await DocumentPicker.getDocumentAsync({
@@ -160,6 +173,47 @@ export default function LibraryScreen() {
     }
   }, [user, uploading, createLibraryEntry, queryClient]);
 
+  const handleUpload = useCallback(async () => {
+    if (!user || uploading || checkingUploadConsent) return;
+    setCheckingUploadConsent(true);
+    try {
+      const acceptedVersion = await AsyncStorage.getItem(epubUploadConsentKey(user.id));
+      if (acceptedVersion === EPUB_UPLOAD_TERMS_VERSION) {
+        await chooseAndUploadEpub();
+      } else {
+        setUploadConsentChecked(false);
+        setShowUploadConsent(true);
+      }
+    } catch {
+      Alert.alert(
+        "Couldn't check upload terms",
+        "Please try again before uploading an EPUB.",
+      );
+    } finally {
+      setCheckingUploadConsent(false);
+    }
+  }, [user, uploading, checkingUploadConsent, chooseAndUploadEpub]);
+
+  const confirmUploadConsent = useCallback(async () => {
+    if (!user || !uploadConsentChecked || savingUploadConsent) return;
+    setSavingUploadConsent(true);
+    try {
+      await AsyncStorage.setItem(
+        epubUploadConsentKey(user.id),
+        EPUB_UPLOAD_TERMS_VERSION,
+      );
+      setShowUploadConsent(false);
+      await chooseAndUploadEpub();
+    } catch {
+      Alert.alert(
+        "Couldn't save your confirmation",
+        "Please try again before uploading an EPUB.",
+      );
+    } finally {
+      setSavingUploadConsent(false);
+    }
+  }, [user, uploadConsentChecked, savingUploadConsent, chooseAndUploadEpub]);
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -188,9 +242,9 @@ export default function LibraryScreen() {
         <Pressable
           style={({ pressed }) => [styles.uploadBtn, { backgroundColor: colors.primary, opacity: pressed || uploading ? 0.8 : 1 }]}
           onPress={handleUpload}
-          disabled={uploading}
+          disabled={uploading || checkingUploadConsent}
         >
-          {uploading ? (
+          {uploading || checkingUploadConsent ? (
             <ActivityIndicator size="small" color={colors.primaryForeground} />
           ) : (
             <Feather name="plus" size={22} color={colors.primaryForeground} />
@@ -254,6 +308,150 @@ export default function LibraryScreen() {
         }
         showsVerticalScrollIndicator={false}
       />
+
+      <Modal
+        visible={showUploadConsent}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setShowUploadConsent(false)}
+      >
+        <View style={styles.consentBackdrop}>
+          <View
+            style={[
+              styles.consentSheet,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderTopLeftRadius: colors.radius + 10,
+                borderTopRightRadius: colors.radius + 10,
+                paddingBottom: Math.max(insets.bottom, 18),
+              },
+            ]}
+            accessibilityViewIsModal
+          >
+            <View style={styles.consentHandleWrap}>
+              <View style={[styles.consentHandle, { backgroundColor: colors.border }]} />
+            </View>
+            <View style={styles.consentHeader}>
+              <View style={[styles.consentIcon, { backgroundColor: `${colors.primary}18` }]}>
+                <Feather name="book-open" size={19} color={colors.primary} />
+              </View>
+              <View style={styles.consentHeaderCopy}>
+                <Text style={[styles.consentTitle, { color: colors.foreground }]}>
+                  Before you upload
+                </Text>
+                <Text style={[styles.consentSubtitle, { color: colors.mutedForeground }]}>
+                  Please review these EPUB sharing rules.
+                </Text>
+              </View>
+            </View>
+
+            <ScrollView
+              style={styles.consentScroll}
+              contentContainerStyle={styles.consentScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={[styles.consentNotice, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Text style={[styles.consentBody, { color: colors.foreground }]}>
+                  Only upload EPUB files you have the rights and permissions to use and allow Shelfmates to store and process.
+                </Text>
+                <Text style={[styles.consentBody, { color: colors.foreground }]}>
+                  Your original EPUB stays private to your account. Extracted book details and covers may appear in shared book information.
+                </Text>
+                <Text style={[styles.consentBody, { color: colors.foreground }]}>
+                  Highlights and comments follow the audience you choose. Only share text you have permission to share.
+                </Text>
+              </View>
+
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => {
+                  setShowUploadConsent(false);
+                  router.push("/terms-of-use");
+                }}
+                style={({ pressed }) => [
+                  styles.termsLink,
+                  { opacity: pressed ? 0.65 : 1 },
+                ]}
+              >
+                <Text style={[styles.termsLinkText, { color: colors.primary }]}>
+                  Read the full Terms of Use
+                </Text>
+                <Feather name="external-link" size={15} color={colors.primary} />
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: uploadConsentChecked }}
+                onPress={() => setUploadConsentChecked((checked) => !checked)}
+                style={styles.consentCheckboxRow}
+              >
+                <View
+                  style={[
+                    styles.consentCheckbox,
+                    {
+                      borderColor: uploadConsentChecked ? colors.primary : colors.mutedForeground,
+                      backgroundColor: uploadConsentChecked ? colors.primary : "transparent",
+                    },
+                  ]}
+                >
+                  {uploadConsentChecked ? (
+                    <Feather name="check" size={14} color={colors.primaryForeground} />
+                  ) : null}
+                </View>
+                <Text style={[styles.consentCheckboxText, { color: colors.foreground }]}>
+                  I confirm that I have these rights and agree to the Terms of Use.
+                </Text>
+              </Pressable>
+            </ScrollView>
+
+            <View style={styles.consentActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowUploadConsent(false)}
+                disabled={savingUploadConsent}
+                style={({ pressed }) => [
+                  styles.consentCancelButton,
+                  {
+                    borderColor: colors.border,
+                    borderRadius: colors.radius,
+                    opacity: pressed || savingUploadConsent ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.consentCancelText, { color: colors.foreground }]}>
+                  Not now
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void confirmUploadConsent()}
+                disabled={!uploadConsentChecked || savingUploadConsent}
+                style={({ pressed }) => [
+                  styles.consentContinueButton,
+                  {
+                    backgroundColor: colors.primary,
+                    borderRadius: colors.radius,
+                    opacity:
+                      !uploadConsentChecked || savingUploadConsent || pressed
+                        ? 0.55
+                        : 1,
+                  },
+                ]}
+              >
+                {savingUploadConsent ? (
+                  <ActivityIndicator size="small" color={colors.primaryForeground} />
+                ) : (
+                  <Text style={[styles.consentContinueText, { color: colors.primaryForeground }]}>
+                    Agree &amp; Continue
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -358,4 +556,88 @@ const styles = StyleSheet.create({
   progressTrack: { height: 3, borderRadius: 2, overflow: "hidden" },
   progressFill: { height: 3, borderRadius: 2 },
   progressLabel: { fontSize: 11, letterSpacing: -0.2 },
+  consentBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(20, 18, 16, 0.46)",
+  },
+  consentSheet: {
+    maxHeight: "92%",
+    borderTopWidth: 1,
+    paddingHorizontal: 22,
+    paddingTop: 8,
+  },
+  consentHandleWrap: { alignItems: "center", paddingVertical: 8 },
+  consentHandle: { width: 38, height: 4, borderRadius: 2 },
+  consentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingTop: 8,
+    paddingBottom: 18,
+  },
+  consentIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  consentHeaderCopy: { flex: 1, gap: 3 },
+  consentTitle: { fontSize: 20, fontWeight: "700", letterSpacing: -0.3 },
+  consentSubtitle: { fontSize: 13, lineHeight: 18 },
+  consentScroll: { flexShrink: 1 },
+  consentScrollContent: { gap: 16, paddingBottom: 12 },
+  consentNotice: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
+  consentBody: { fontSize: 14, lineHeight: 21 },
+  termsLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 7,
+    minHeight: 32,
+  },
+  termsLinkText: { fontSize: 14, fontWeight: "600" },
+  consentCheckboxRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingVertical: 4,
+  },
+  consentCheckbox: {
+    width: 22,
+    height: 22,
+    borderWidth: 1.5,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  consentCheckboxText: { flex: 1, fontSize: 14, lineHeight: 21 },
+  consentActions: {
+    flexDirection: "row",
+    gap: 12,
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+  consentCancelButton: {
+    minHeight: 50,
+    flex: 1,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  consentCancelText: { fontSize: 15, fontWeight: "600" },
+  consentContinueButton: {
+    minHeight: 50,
+    flex: 1.35,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  consentContinueText: { fontSize: 15, fontWeight: "700" },
 });
