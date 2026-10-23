@@ -23,9 +23,21 @@ methods = methods.replace("@objc ", "").replace("private ", "")
 state = state.replace("private ", "")
 fixture = (Path(__file__).with_name("ios-chapter-pull-fixture.swift")).read_text()
 program = fixture.replace("// PRODUCTION_STATE", state).replace("// PRODUCTION_METHODS", methods)
+
+
+def run_check(label, command):
+    print(f"==> {label}", flush=True)
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(
+            f"ERROR: {label} failed with exit code {error.returncode}."
+        ) from error
+
+
 with tempfile.TemporaryDirectory(prefix="ios-chapter-pull-") as directory:
     test = Path(directory) / "main.swift"
     test.write_text(program)
-    subprocess.run([swift, str(test)], check=True)
+    run_check("Chapter-pull production logic tests", [swift, str(test)])
 # Syntax-check the complete iOS file as well. Linux cannot typecheck UIKit.
-subprocess.run([swift, "-frontend", "-parse", str(source)], check=True)
+run_check("Complete iOS host Swift syntax check", [swift, "-frontend", "-parse", str(source)])

@@ -1,0 +1,49 @@
+name: iOS Readium build check
+
+on:
+  pull_request:
+    paths:
+      - "artifacts/mobile/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/ios-readium-build.yml"
+  push:
+    paths:
+      - "artifacts/mobile/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/ios-readium-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-readium-build:
+    name: iOS logic tests and unsigned native build
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install CocoaPods
+        run: sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Run iOS Readium verification
+        run: pnpm --filter @workspace/mobile run test:ios-readium
