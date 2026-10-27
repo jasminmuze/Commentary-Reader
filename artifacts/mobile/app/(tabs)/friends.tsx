@@ -240,16 +240,26 @@ export default function FriendsScreen() {
             keyExtractor={(item, index) => String(item.id ?? index)}
             renderItem={({ item }) => (
               <View style={[styles.userRow, { borderColor: colors.border }]}>
-                <UserAvatar
-                  username={item.username}
-                  nickname={item.nickname}
-                  avatarUrl={item.avatarUrl}
-                  avatarColor={item.avatarColor}
-                  size={42}
-                />
-                <Text style={[styles.userName, { color: colors.foreground }]}>
-                  {item.nickname?.trim() || item.username}
-                </Text>
+                <Pressable
+                  style={styles.friendProfileButton}
+                  onPress={() => router.push(`/user/${item.id}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${item.nickname?.trim() || item.username}'s profile`}
+                >
+                  <UserAvatar
+                    username={item.username}
+                    nickname={item.nickname}
+                    avatarUrl={item.avatarUrl}
+                    avatarColor={item.avatarColor}
+                    size={42}
+                  />
+                  <Text
+                    style={[styles.userName, { color: colors.foreground }]}
+                    numberOfLines={1}
+                  >
+                    {item.nickname?.trim() || item.username}
+                  </Text>
+                </Pressable>
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionBtn,
@@ -336,6 +346,12 @@ const styles = StyleSheet.create({
   nameCol: {
     flex: 1,
     gap: 1,
+  },
+  friendProfileButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   userHandle: {
     fontSize: 12,
