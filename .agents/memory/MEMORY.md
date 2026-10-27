@@ -11,3 +11,4 @@
 - [Destructive maintenance tests](destructive-maintenance-tests.md) — never weaken protected-account checks for dev fixture gaps; use rollback-only test data.
 - [Native accessibility focus](native-accessibility-focus.md) — guard React Native accessibility focus APIs from web builds; `findNodeHandle` is unsupported on web.
 - [Profile public activity](profile-public-activity.md) — show public highlights and top-level comments on profiles; keep replies in their conversation threads.
+- [EPUB picker concurrency](epub-picker-concurrency.md) — serialize iOS document picker launches with a synchronous lock across async consent flows.

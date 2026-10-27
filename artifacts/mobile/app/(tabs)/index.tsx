@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -134,9 +134,12 @@ export default function LibraryScreen() {
   const [uploadConsentChecked, setUploadConsentChecked] = useState(false);
   const [checkingUploadConsent, setCheckingUploadConsent] = useState(false);
   const [savingUploadConsent, setSavingUploadConsent] = useState(false);
+  const [pickingDocument, setPickingDocument] = useState(false);
+  const uploadFlowInProgressRef = useRef(false);
 
   const chooseAndUploadEpub = useCallback(async () => {
     if (!user || uploading) return;
+    setPickingDocument(true);
     try {
       const picked = await DocumentPicker.getDocumentAsync({
         type: ["application/epub+zip", "*/*"],
@@ -169,12 +172,32 @@ export default function LibraryScreen() {
       );
     } catch (e) {
       setUploading(false);
-      Alert.alert("Upload failed", e instanceof Error ? e.message : "Couldn't upload the file.");
+      const message = e instanceof Error ? e.message : "Couldn't upload the file.";
+      if (/different document picking in progress/i.test(message)) {
+        Alert.alert(
+          "File picker already open",
+          "Close the current file picker before starting another upload.",
+        );
+      } else {
+        Alert.alert("Upload failed", message);
+      }
+    } finally {
+      setPickingDocument(false);
     }
   }, [user, uploading, createLibraryEntry, queryClient]);
 
   const handleUpload = useCallback(async () => {
-    if (!user || uploading || checkingUploadConsent) return;
+    if (
+      !user ||
+      uploading ||
+      checkingUploadConsent ||
+      savingUploadConsent ||
+      pickingDocument ||
+      uploadFlowInProgressRef.current
+    ) {
+      return;
+    }
+    uploadFlowInProgressRef.current = true;
     setCheckingUploadConsent(true);
     try {
       const acceptedVersion = await AsyncStorage.getItem(epubUploadConsentKey(user.id));
@@ -191,11 +214,27 @@ export default function LibraryScreen() {
       );
     } finally {
       setCheckingUploadConsent(false);
+      uploadFlowInProgressRef.current = false;
     }
-  }, [user, uploading, checkingUploadConsent, chooseAndUploadEpub]);
+  }, [
+    user,
+    uploading,
+    checkingUploadConsent,
+    savingUploadConsent,
+    pickingDocument,
+    chooseAndUploadEpub,
+  ]);
 
   const confirmUploadConsent = useCallback(async () => {
-    if (!user || !uploadConsentChecked || savingUploadConsent) return;
+    if (
+      !user ||
+      !uploadConsentChecked ||
+      savingUploadConsent ||
+      uploadFlowInProgressRef.current
+    ) {
+      return;
+    }
+    uploadFlowInProgressRef.current = true;
     setSavingUploadConsent(true);
     try {
       await AsyncStorage.setItem(
@@ -211,6 +250,7 @@ export default function LibraryScreen() {
       );
     } finally {
       setSavingUploadConsent(false);
+      uploadFlowInProgressRef.current = false;
     }
   }, [user, uploadConsentChecked, savingUploadConsent, chooseAndUploadEpub]);
 
@@ -240,11 +280,17 @@ export default function LibraryScreen() {
           <Text style={[styles.username, { color: colors.foreground }]}>{user?.nickname?.trim() || user?.username || "Reader"}</Text>
         </View>
         <Pressable
-          style={({ pressed }) => [styles.uploadBtn, { backgroundColor: colors.primary, opacity: pressed || uploading ? 0.8 : 1 }]}
+          style={({ pressed }) => [
+            styles.uploadBtn,
+            {
+              backgroundColor: colors.primary,
+              opacity: pressed || uploading || pickingDocument || checkingUploadConsent || savingUploadConsent ? 0.8 : 1,
+            },
+          ]}
           onPress={handleUpload}
-          disabled={uploading || checkingUploadConsent}
+          disabled={uploading || checkingUploadConsent || savingUploadConsent || pickingDocument}
         >
-          {uploading || checkingUploadConsent ? (
+          {uploading || checkingUploadConsent || savingUploadConsent || pickingDocument ? (
             <ActivityIndicator size="small" color={colors.primaryForeground} />
           ) : (
             <Feather name="plus" size={22} color={colors.primaryForeground} />
