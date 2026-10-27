@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   FlatList,
   Platform,
@@ -92,6 +92,7 @@ export default function DiscoverScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
+  const searchInputRef = useRef<TextInput>(null);
   const trimmed = query.trim();
 
   const { data: books, isLoading } = useListBooks(
@@ -150,6 +151,7 @@ export default function DiscoverScreen() {
         <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
           <Feather name="search" size={18} color={colors.mutedForeground} />
           <TextInput
+            ref={searchInputRef}
             style={[styles.searchInput, { color: colors.foreground }]}
             placeholder="Title, author, or ISBN"
             placeholderTextColor={colors.mutedForeground}
@@ -160,6 +162,20 @@ export default function DiscoverScreen() {
             autoCorrect={false}
             returnKeyType="search"
           />
+          {query.length > 0 ? (
+            <Pressable
+              style={styles.clearSearchBtn}
+              onPress={() => {
+                setQuery("");
+                searchInputRef.current?.focus();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+              testID="discover-clear-search"
+            >
+              <Feather name="x-circle" size={19} color={colors.mutedForeground} />
+            </Pressable>
+          ) : null}
         </View>
       </View>
 
@@ -245,6 +261,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
+  clearSearchBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   catalogSection: { paddingHorizontal: 16, marginTop: 12 },
   list: { paddingTop: 12, flexGrow: 1 },
   roomsSection: { marginBottom: 8 },
