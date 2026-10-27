@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -19,13 +18,12 @@ import {
   useGetLibraryEntry,
   useMatchLibraryEntry,
   useCreateBook,
-  useSearchGoogleBooks,
-  useResolveGoogleBook,
-  getSearchGoogleBooksQueryKey,
+  useResolveCatalogBook,
   getGetUserLibraryQueryKey,
   getGetLibraryEntryQueryKey,
 } from "@workspace/api-client-react";
-import type { GoogleBookCatalogItem } from "@workspace/api-client-react";
+import type { BookCatalogItem } from "@workspace/api-client-react";
+import { useCatalogSearch, CatalogRow, CatalogStatus, CatalogFooter } from "@/components/CatalogBook";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 
@@ -48,7 +46,6 @@ export default function MatchScreen() {
   );
 
   const [query, setQuery] = useState("");
-  const [catalogQuery, setCatalogQuery] = useState("");
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
@@ -58,25 +55,11 @@ export default function MatchScreen() {
     }
   }, [entry, initialized]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setCatalogQuery(query.trim()), 400);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  const googleBooksQuery = useSearchGoogleBooks(
-    { q: catalogQuery },
-    {
-      query: {
-        enabled: catalogQuery.length >= 2,
-        retry: false,
-        queryKey: getSearchGoogleBooksQueryKey({ q: catalogQuery }),
-      },
-    },
-  );
+  const catalog = useCatalogSearch(query);
 
   const matchEntry = useMatchLibraryEntry();
   const createBook = useCreateBook();
-  const resolveGoogleBook = useResolveGoogleBook();
+  const resolveCatalog = useResolveCatalogBook();
 
   const goToReader = () => {
     queryClient.invalidateQueries({ queryKey: getGetLibraryEntryQueryKey(libraryId) });
@@ -116,13 +99,15 @@ export default function MatchScreen() {
     );
   };
 
-  const handleGoogleBookSelect = (item: GoogleBookCatalogItem) => {
-    resolveGoogleBook.mutate(
+  const handleCatalogSelect = (item: BookCatalogItem) => {
+    resolveCatalog.mutate(
       {
         data: {
           title: item.title,
           author: item.author,
           isbn: item.isbn,
+          coverUrl: item.coverUrl,
+          description: item.description,
         },
       },
       {
@@ -134,7 +119,7 @@ export default function MatchScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
-  const busy = matchEntry.isPending || createBook.isPending || resolveGoogleBook.isPending;
+  const busy = matchEntry.isPending || createBook.isPending || resolveCatalog.isPending;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -149,9 +134,9 @@ export default function MatchScreen() {
       {entryLoading ? (
         <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
       ) : (
-        <FlatList<GoogleBookCatalogItem>
-          data={catalogQuery === query.trim() ? googleBooksQuery.data ?? [] : []}
-          keyExtractor={(item, index) => `${item.isbn ?? item.title}-${index}`}
+        <FlatList<BookCatalogItem>
+          data={catalog.items}
+          keyExtractor={(item) => item.catalogId}
           ListHeaderComponent={
             <View>
               <View style={[styles.fileCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
@@ -175,10 +160,11 @@ export default function MatchScreen() {
                 <Feather name="search" size={18} color={colors.mutedForeground} />
                 <TextInput
                   style={[styles.searchInput, { color: colors.foreground }]}
-                  placeholder="Search by title or author"
+                  placeholder="Title, author, or ISBN"
                   placeholderTextColor={colors.mutedForeground}
                   value={query}
                   onChangeText={setQuery}
+                  maxLength={160}
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
@@ -187,7 +173,6 @@ export default function MatchScreen() {
                     style={styles.clearSearchBtn}
                     onPress={() => {
                       setQuery("");
-                      setCatalogQuery("");
                     }}
                     accessibilityRole="button"
                     accessibilityLabel="Clear search"
@@ -197,82 +182,22 @@ export default function MatchScreen() {
                 ) : null}
               </View>
 
-              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>GOOGLE BOOKS</Text>
+              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>BOOK CATALOG</Text>
             </View>
           }
           renderItem={({ item }) => (
-            <Pressable
-              style={({ pressed }) => [
-                styles.externalBookRow,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  borderRadius: colors.radius,
-                  opacity: pressed || busy ? 0.7 : 1,
-                },
-              ]}
-              onPress={() => handleGoogleBookSelect(item)}
-              disabled={busy}
-            >
-              {item.coverUrl ? (
-                <Image
-                  source={{ uri: item.coverUrl }}
-                  style={styles.googleCover}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={[styles.googleCoverPlaceholder, { backgroundColor: colors.primary + "18" }]}>
-                  <Feather name="book-open" size={20} color={colors.primary} />
-                </View>
-              )}
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[styles.bookTitle, { color: colors.foreground }]} numberOfLines={2}>{item.title}</Text>
-                <Text style={[styles.bookAuthor, { color: colors.mutedForeground }]} numberOfLines={1}>{item.author}</Text>
-                {item.publisher || item.publishedDate || item.pageCount ? (
-                  <Text style={[styles.bookMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
-                    {[item.publisher, item.publishedDate, item.pageCount ? `${item.pageCount} pages` : null].filter(Boolean).join(" · ")}
-                  </Text>
-                ) : null}
-                {item.isbn ? (
-                  <Text style={[styles.bookMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
-                    ISBN {item.isbn}
-                  </Text>
-                ) : null}
-                {item.language ? (
-                  <Text style={[styles.bookMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
-                    {item.language.toUpperCase()}
-                  </Text>
-                ) : null}
-                {item.description ? (
-                  <Text style={[styles.googleDescription, { color: colors.mutedForeground }]} numberOfLines={3}>
-                    {item.description}
-                  </Text>
-                ) : null}
-              </View>
-              <Feather name="plus" size={19} color={colors.primary} />
-            </Pressable>
+            <CatalogRow item={item} onPress={() => handleCatalogSelect(item)} actionIcon="link" disabled={busy} />
           )}
           ListEmptyComponent={
-            catalogQuery !== query.trim() ? (
-              <ActivityIndicator color={colors.primary} style={{ marginVertical: 10 }} />
-            ) : catalogQuery.length < 2 ? (
-              <Text style={[styles.externalStatus, { color: colors.mutedForeground }]}>
-                Enter a title, author, or ISBN to search Google Books.
-              </Text>
-            ) : googleBooksQuery.isLoading ? (
-              <ActivityIndicator color={colors.primary} style={{ marginVertical: 10 }} />
-            ) : googleBooksQuery.isError ? (
-              <Text style={[styles.externalStatus, { color: colors.mutedForeground }]}>
-                Google Books search is unavailable right now. You can still add the book manually or continue without matching.
-              </Text>
-            ) : (
-              <Text style={[styles.externalStatus, { color: colors.mutedForeground }]}>
-                No Google Books results found. You can still add the book manually or continue without matching.
-              </Text>
-            )
+            <CatalogStatus
+              search={catalog}
+              colors={colors}
+              emptyHint="No catalog matches. You can still add the book manually or continue without matching."
+            />
           }
           ListFooterComponent={
             <View style={styles.footer}>
+              <CatalogFooter search={catalog} colors={colors} />
               <Pressable
                 style={({ pressed }) => [styles.createBtn, { borderColor: colors.primary, opacity: pressed || busy ? 0.7 : 1 }]}
                 onPress={handleCreate}

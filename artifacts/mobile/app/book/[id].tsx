@@ -28,7 +28,7 @@ import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { CommentSheet } from "@/components/CommentSheet";
 import { CommentCard } from "@/components/CommentCard";
-import { apiUrl } from "@/lib/api";
+import { bookCoverUrl } from "@/lib/api";
 
 function QuoteRow({ quote, onPress, colors }: {
   quote: Quote;
@@ -159,9 +159,9 @@ export default function BookDetailScreen() {
         >
           {/* Cover + stats */}
           <View style={styles.heroRow}>
-            {book.coverUrl ? (
+            {bookCoverUrl(book.coverUrl) ? (
               <Image
-                source={{ uri: apiUrl(`/api${book.coverUrl}`) }}
+                source={{ uri: bookCoverUrl(book.coverUrl) ?? undefined }}
                 style={[styles.coverImage, { borderRadius: colors.radius }]}
                 resizeMode="cover"
               />

@@ -6,7 +6,8 @@ import {
   CreateBookBody,
   GetBookParams,
   SearchGoogleBooksQueryParams,
-  ResolveGoogleBookBody,
+  SearchBookCatalogQueryParams,
+  ResolveCatalogBookBody,
 } from "@workspace/api-zod";
 import type { Book, BookDetail, Comment, Quote } from "@workspace/api-zod";
 import {
@@ -20,7 +21,6 @@ import {
 } from "../lib/queries";
 import { normalizeTitle, normalizeAuthor } from "../lib/text";
 import {
-  fetchGoogleBooksResults,
   findMatchingCanonicalBook,
   normalizeIsbn,
 } from "../lib/googleBooksCatalog";
@@ -31,6 +31,7 @@ import {
   truncateQuoteText,
 } from "../lib/contentLimits";
 import { authenticate } from "../middlewares/authenticate.js";
+import { bookCatalog, catalogCoverPath, isTrustedCatalogCoverUrl } from "../lib/bookCatalog";
 
 const COVER_COLORS = [
   "#8B5E3C", "#1E3A5F", "#4A1942", "#2D4A3E", "#5C3A21",
@@ -43,10 +44,36 @@ function randomCover(): string {
 
 const router: IRouter = Router();
 
+router.get("/catalog-covers", (req, res): void => {
+  const url = req.query.url;
+  if (typeof url !== "string" || url.length > 2048 || !isTrustedCatalogCoverUrl(url)) {
+    res.status(400).json({ error: "Unsupported catalog thumbnail." });
+    return;
+  }
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.redirect(302, url);
+});
+
+router.get("/books/catalog", authenticate, async (req, res): Promise<void> => {
+  const parsed = SearchBookCatalogQueryParams.safeParse(req.query);
+  if (!parsed.success || typeof req.query.q !== "string" ||
+      parsed.data.q.trim().length < 2 || !Number.isInteger(parsed.data.page)) {
+    res.status(400).json({ error: "Enter a title, author, or ISBN of 2 to 160 characters and a valid page." });
+    return;
+  }
+  try {
+    res.json(await bookCatalog.search(parsed.data.q, parsed.data.page ?? 1));
+  } catch (err) {
+    req.log.warn({ err }, "Book catalog search failed");
+    res.status(503).json({ error: "Book search is unavailable. Please try again or use the community search." });
+  }
+});
+
 router.get("/books/google-books", authenticate, async (req, res): Promise<void> => {
   const parsed = SearchGoogleBooksQueryParams.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+  if (!parsed.success || typeof req.query.q !== "string") {
+    res.status(400).json({ error: "Enter a title, author, or ISBN." });
     return;
   }
 
@@ -56,21 +83,30 @@ router.get("/books/google-books", authenticate, async (req, res): Promise<void> 
     return;
   }
   try {
-    res.json(await fetchGoogleBooksResults(term));
+    // Keep older installed app builds working while moving away from the
+    // Google-only endpoint whose anonymous request quota can be zero.
+    res.json((await bookCatalog.search(term.slice(0, 160))).items);
   } catch (err) {
     req.log.warn({ err }, "Google Books search request failed");
     res.status(502).json({ error: "Google Books search is temporarily unavailable" });
   }
 });
 
-router.post("/books/google-books", authenticate, async (req, res): Promise<void> => {
-  const parsed = ResolveGoogleBookBody.safeParse(req.body);
+router.post(["/books/google-books", "/books/catalog"], authenticate, async (req, res): Promise<void> => {
+  const parsed = ResolveCatalogBookBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
 
-  const { title, author, isbn } = parsed.data;
+  const { title, author, isbn, coverUrl, description } = parsed.data;
+  if (coverUrl && !isTrustedCatalogCoverUrl(coverUrl)) {
+    res.status(400).json({ error: "Cover must be an HTTPS thumbnail from a supported catalog." });
+    return;
+  }
+  // Keep Book.coverUrl compatible with existing APK/TestFlight builds.
+  // This public relative URL redirects to the provider; no image is copied.
+  const storedCoverUrl = coverUrl ? catalogCoverPath(coverUrl) : null;
   const normTitle = normalizeTitle(title);
   const normAuthor = normalizeAuthor(author);
   const normIsbn = isbn ? normalizeIsbn(isbn) : "";
@@ -107,7 +143,16 @@ router.post("/books/google-books", authenticate, async (req, res): Promise<void>
       normAuthor,
     });
 
-    if (existing) return { book: existing, created: false };
+    if (existing) {
+      if ((!existing.coverUrl && storedCoverUrl) || (!existing.description && description)) {
+        const [updated] = await tx.update(booksTable).set({
+          ...(!existing.coverUrl && storedCoverUrl ? { coverUrl: storedCoverUrl } : {}),
+          ...(!existing.description && description ? { description } : {}),
+        }).where(eq(booksTable.id, existing.id)).returning();
+        return { book: updated!, created: false };
+      }
+      return { book: existing, created: false };
+    }
 
     const [created] = await tx
       .insert(booksTable)
@@ -116,7 +161,8 @@ router.post("/books/google-books", authenticate, async (req, res): Promise<void>
         author: author.trim(),
         normTitle,
         normAuthor,
-        description: "",
+        description: description ?? "",
+        coverUrl: storedCoverUrl,
         coverColor: randomCover(),
         isbn: isbn?.trim() || null,
       })

@@ -99,3 +99,20 @@ export async function uploadEpub(fileUri: string): Promise<string> {
 
   return uploadURL;
 }
+
+/**
+ * Resolve a Book.coverUrl into a loadable image URI.
+ * Accepts absolute provider URLs (http upgraded to https) or stored object
+ * paths like /public-objects/... (served under /api). Returns null otherwise.
+ */
+export function bookCoverUrl(coverUrl: string | null | undefined): string | null {
+  if (!coverUrl) return null;
+  const value = coverUrl.trim();
+  if (!value) return null;
+  if (/^https:\/\//i.test(value)) return value;
+  if (/^http:\/\//i.test(value)) return value.replace(/^http:/i, "https:");
+  if (value.startsWith("//")) return `https:${value}`;
+  if (value.startsWith("/api/")) return apiUrl(value);
+  if (value.startsWith("/")) return apiUrl(`/api${value}`);
+  return null;
+}

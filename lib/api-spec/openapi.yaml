@@ -74,6 +74,85 @@ paths:
               schema:
                 $ref: "#/components/schemas/Book"
 
+  /catalog-covers:
+    get:
+      operationId: getCatalogCover
+      tags: [books]
+      summary: Redirect a public cover path to a trusted catalog thumbnail
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 2048
+      responses:
+        "302":
+          description: Redirect to the source thumbnail without copying the image
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "400":
+          description: Unsupported thumbnail URL
+
+  /books/catalog:
+    get:
+      operationId: searchBookCatalog
+      tags: [books]
+      summary: Search the wider book catalog with covers and pagination
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 160
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 1
+      responses:
+        "200":
+          description: A page of catalog books
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookCatalogSearchResult"
+        "400":
+          description: Invalid search
+        "503":
+          description: Catalog providers are unavailable
+    post:
+      operationId: resolveCatalogBook
+      tags: [books]
+      summary: Reuse or create a community book from a catalog selection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoogleBookSelection"
+      responses:
+        "200":
+          description: Existing book reused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "201":
+          description: Book created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+
   /books/google-books:
     get:
       operationId: searchGoogleBooks
@@ -1947,7 +2026,7 @@ components:
           type: string
         coverUrl:
           type: [string, "null"]
-          description: Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
+          description: Public object path or HTTPS catalog thumbnail URL, or null when no cover is available
         quoteCount:
           type: integer
         commentCount:
@@ -1981,6 +2060,36 @@ components:
         language:
           type: [string, "null"]
 
+    BookCatalogItem:
+      allOf:
+        - $ref: "#/components/schemas/GoogleBookCatalogItem"
+        - type: object
+          required: [catalogId, infoUrl]
+          properties:
+            catalogId:
+              type: string
+            infoUrl:
+              type: string
+              format: uri
+
+    BookCatalogSearchResult:
+      type: object
+      required: [items, page, hasMore, source, notice]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BookCatalogItem"
+        page:
+          type: integer
+        hasMore:
+          type: boolean
+        source:
+          type: string
+          enum: [open_library, google_books]
+        notice:
+          type: [string, "null"]
+
     GoogleBookSelection:
       type: object
       required: [title, author]
@@ -1996,6 +2105,12 @@ components:
         isbn:
           type: [string, "null"]
           maxLength: 32
+        coverUrl:
+          type: [string, "null"]
+          maxLength: 2048
+        description:
+          type: [string, "null"]
+          maxLength: 4000
 
     Quote:
       type: object

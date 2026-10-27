@@ -30,7 +30,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingShimmer } from "@/components/LoadingShimmer";
 import { navigateToQuote } from "@/lib/quoteNavigation";
-import { apiUrl } from "@/lib/api";
+import { bookCoverUrl } from "@/lib/api";
 import { ReportContentButton } from "@/components/ReportContentButton";
 
 const PAGE_SIZE = 20;
@@ -119,9 +119,9 @@ function FeedCard({
       </View>
 
       <View style={styles.quoteRow}>
-        {item.coverUrl ? (
+        {bookCoverUrl(item.coverUrl) ? (
           <Image
-            source={{ uri: apiUrl(`/api${item.coverUrl}`) }}
+            source={{ uri: bookCoverUrl(item.coverUrl) ?? undefined }}
             style={styles.coverThumb}
             resizeMode="cover"
           />

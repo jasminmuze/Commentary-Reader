@@ -12,3 +12,4 @@
 - [Native accessibility focus](native-accessibility-focus.md) — guard React Native accessibility focus APIs from web builds; `findNodeHandle` is unsupported on web.
 - [Profile public activity](profile-public-activity.md) — show public highlights and top-level comments on profiles; keep replies in their conversation threads.
 - [EPUB picker concurrency](epub-picker-concurrency.md) — serialize iOS document picker launches with a synchronous lock across async consent flows.
+- [Book catalog provider constraints](book-catalog-providers.md) — anonymous Google Books returned daily quota 0; distinguish quota configuration from transient limits and work records from exact editions.

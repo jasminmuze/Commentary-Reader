@@ -16,7 +16,7 @@ export interface Book {
   description: string;
   coverColor: string;
   /**
-     * Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
+     * Public object path or HTTPS catalog thumbnail URL, or null when no cover is available
      * @nullable
      */
   coverUrl: string | null;
@@ -50,6 +50,28 @@ export interface GoogleBookCatalogItem {
   language: string | null;
 }
 
+export type BookCatalogItem = GoogleBookCatalogItem & {
+  catalogId: string;
+  infoUrl: string;
+};
+
+export type BookCatalogSearchResultSource = typeof BookCatalogSearchResultSource[keyof typeof BookCatalogSearchResultSource];
+
+
+export const BookCatalogSearchResultSource = {
+  open_library: 'open_library',
+  google_books: 'google_books',
+} as const;
+
+export interface BookCatalogSearchResult {
+  items: BookCatalogItem[];
+  page: number;
+  hasMore: boolean;
+  source: BookCatalogSearchResultSource;
+  /** @nullable */
+  notice: string | null;
+}
+
 export interface GoogleBookSelection {
   /**
      * @minLength 1
@@ -66,6 +88,16 @@ export interface GoogleBookSelection {
      * @nullable
      */
   isbn?: string | null;
+  /**
+     * @maxLength 2048
+     * @nullable
+     */
+  coverUrl?: string | null;
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
+  description?: string | null;
 }
 
 export interface Quote {
@@ -1066,6 +1098,26 @@ export interface RoomFeedItem {
 
 export type ListBooksParams = {
 q?: string;
+};
+
+export type GetCatalogCoverParams = {
+/**
+ * @maxLength 2048
+ */
+url: string;
+};
+
+export type SearchBookCatalogParams = {
+/**
+ * @minLength 2
+ * @maxLength 160
+ */
+q: string;
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+page?: number;
 };
 
 export type SearchGoogleBooksParams = {

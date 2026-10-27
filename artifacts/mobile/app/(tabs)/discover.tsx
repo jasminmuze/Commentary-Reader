@@ -19,7 +19,17 @@ import {
   getListRoomsQueryKey,
   getGetTrendingRoomsQueryKey,
 } from "@workspace/api-client-react";
+import { Alert } from "react-native";
+import { useResolveCatalogBook } from "@workspace/api-client-react";
+import type { BookCatalogItem } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
+import {
+  useCatalogSearch,
+  CatalogRow,
+  CatalogStatus,
+  CatalogFooter,
+  CatalogDetailSheet,
+} from "@/components/CatalogBook";
 import { BookCard } from "@/components/BookCard";
 import { BookCardShimmer } from "@/components/LoadingShimmer";
 import { EmptyState } from "@/components/EmptyState";
@@ -102,6 +112,31 @@ export default function DiscoverScreen() {
     },
   );
 
+  const catalog = useCatalogSearch(query);
+  const resolveCatalog = useResolveCatalogBook();
+  const [selected, setSelected] = useState<BookCatalogItem | null>(null);
+
+  const openCommunity = (item: BookCatalogItem) => {
+    resolveCatalog.mutate(
+      {
+        data: {
+          title: item.title,
+          author: item.author,
+          isbn: item.isbn,
+          coverUrl: item.coverUrl,
+          description: item.description,
+        },
+      },
+      {
+        onSuccess: (book) => {
+          setSelected(null);
+          router.push(`/book/${book.id}`);
+        },
+        onError: () => Alert.alert("Couldn't open community", "Please try again in a moment."),
+      },
+    );
+  };
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -110,16 +145,17 @@ export default function DiscoverScreen() {
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>Discover</Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          Browse the books the community is reading
+          Find any book, then see who is reading it
         </Text>
         <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
           <Feather name="search" size={18} color={colors.mutedForeground} />
           <TextInput
             style={[styles.searchInput, { color: colors.foreground }]}
-            placeholder="Search books and reading rooms"
+            placeholder="Title, author, or ISBN"
             placeholderTextColor={colors.mutedForeground}
             value={query}
             onChangeText={setQuery}
+            maxLength={160}
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
@@ -134,14 +170,38 @@ export default function DiscoverScreen() {
           <BookCard book={item} onPress={() => router.push(`/book/${item.id}`)} />
         )}
         ListHeaderComponent={
+          <View>
           <RoomStrip
             title={trimmed ? "MATCHING READING ROOMS" : "TRENDING READING ROOMS"}
             rooms={(trimmed ? searchedRooms : trendingRooms) ?? []}
             colors={colors}
           />
+          {trimmed && (books ?? []).length > 0 ? (
+            <Text style={[styles.roomsTitle, { color: colors.mutedForeground }]}>ON SHELFMATES</Text>
+          ) : null}
+          </View>
+        }
+        ListFooterComponent={
+          trimmed ? (
+            <View style={styles.catalogSection}>
+              <Text style={[styles.roomsTitle, { color: colors.mutedForeground, marginHorizontal: 4 }]}>ALL BOOKS</Text>
+              {catalog.items.length > 0 ? (
+                catalog.items.map((item) => (
+                  <CatalogRow key={item.catalogId} item={item} onPress={() => setSelected(item)} />
+                ))
+              ) : (
+                <CatalogStatus
+                  search={catalog}
+                  colors={colors}
+                  emptyHint="No catalog matches. Try another spelling or an ISBN."
+                />
+              )}
+              <CatalogFooter search={catalog} colors={colors} />
+            </View>
+          ) : null
         }
         ListEmptyComponent={
-          isLoading ? (
+          trimmed && !isLoading ? null : isLoading ? (
             <View>{[1, 2, 3].map((i) => <BookCardShimmer key={i} />)}</View>
           ) : (
             <EmptyState
@@ -154,6 +214,14 @@ export default function DiscoverScreen() {
         contentContainerStyle={[styles.list, { paddingBottom: bottomPad + 100 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      />
+      <CatalogDetailSheet
+        item={selected}
+        source={catalog.data?.source}
+        onClose={() => setSelected(null)}
+        onOpenCommunity={openCommunity}
+        opening={resolveCatalog.isPending}
       />
     </View>
   );
@@ -177,6 +245,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
+  catalogSection: { paddingHorizontal: 16, marginTop: 12 },
   list: { paddingTop: 12, flexGrow: 1 },
   roomsSection: { marginBottom: 8 },
   roomsTitle: {

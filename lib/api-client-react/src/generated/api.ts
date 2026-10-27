@@ -24,6 +24,7 @@ import type {
   BlockUserInput,
   BlockedUser,
   Book,
+  BookCatalogSearchResult,
   BookDetail,
   Comment,
   CommentInput,
@@ -38,6 +39,7 @@ import type {
   FriendInput,
   FriendRequestInput,
   GetBookQuotesParams,
+  GetCatalogCoverParams,
   GetFeedParams,
   GetModerationReportsParams,
   GetMyRoomsParams,
@@ -76,6 +78,7 @@ import type {
   RoomInviteInput,
   RoomShareLink,
   SaveResult,
+  SearchBookCatalogParams,
   SearchGoogleBooksParams,
   SearchUsersParams,
   SetAvatarInput,
@@ -336,6 +339,245 @@ export const useCreateBook = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateBookMutationOptions(options));
+    }
+
+export const getGetCatalogCoverUrl = (params: GetCatalogCoverParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/catalog-covers?${stringifiedParams}` : `/api/catalog-covers`
+}
+
+/**
+ * @summary Redirect a public cover path to a trusted catalog thumbnail
+ */
+export const getCatalogCover = async (params: GetCatalogCoverParams, options?: RequestInit): Promise<unknown> => {
+
+  return customFetch<unknown>(getGetCatalogCoverUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCatalogCoverQueryKey = (params?: GetCatalogCoverParams,) => {
+    return [
+    `/api/catalog-covers`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCatalogCoverQueryOptions = <TData = Awaited<ReturnType<typeof getCatalogCover>>, TError = ErrorType<void>>(params: GetCatalogCoverParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCatalogCover>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCatalogCoverQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCatalogCover>>> = ({ signal }) => getCatalogCover(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCatalogCover>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCatalogCoverQueryResult = NonNullable<Awaited<ReturnType<typeof getCatalogCover>>>
+export type GetCatalogCoverQueryError = ErrorType<void>
+
+
+/**
+ * @summary Redirect a public cover path to a trusted catalog thumbnail
+ */
+
+export function useGetCatalogCover<TData = Awaited<ReturnType<typeof getCatalogCover>>, TError = ErrorType<void>>(
+ params: GetCatalogCoverParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCatalogCover>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCatalogCoverQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSearchBookCatalogUrl = (params: SearchBookCatalogParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/books/catalog?${stringifiedParams}` : `/api/books/catalog`
+}
+
+/**
+ * @summary Search the wider book catalog with covers and pagination
+ */
+export const searchBookCatalog = async (params: SearchBookCatalogParams, options?: RequestInit): Promise<BookCatalogSearchResult> => {
+
+  return customFetch<BookCatalogSearchResult>(getSearchBookCatalogUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchBookCatalogQueryKey = (params?: SearchBookCatalogParams,) => {
+    return [
+    `/api/books/catalog`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchBookCatalogQueryOptions = <TData = Awaited<ReturnType<typeof searchBookCatalog>>, TError = ErrorType<void>>(params: SearchBookCatalogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchBookCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchBookCatalogQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchBookCatalog>>> = ({ signal }) => searchBookCatalog(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchBookCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchBookCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof searchBookCatalog>>>
+export type SearchBookCatalogQueryError = ErrorType<void>
+
+
+/**
+ * @summary Search the wider book catalog with covers and pagination
+ */
+
+export function useSearchBookCatalog<TData = Awaited<ReturnType<typeof searchBookCatalog>>, TError = ErrorType<void>>(
+ params: SearchBookCatalogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchBookCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchBookCatalogQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getResolveCatalogBookUrl = () => {
+
+
+
+
+  return `/api/books/catalog`
+}
+
+/**
+ * @summary Reuse or create a community book from a catalog selection
+ */
+export const resolveCatalogBook = async (googleBookSelection: GoogleBookSelection, options?: RequestInit): Promise<Book> => {
+
+  return customFetch<Book>(getResolveCatalogBookUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      googleBookSelection,)
+  }
+);}
+
+
+
+
+export const getResolveCatalogBookMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveCatalogBook>>, TError,{data: BodyType<GoogleBookSelection>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveCatalogBook>>, TError,{data: BodyType<GoogleBookSelection>}, TContext> => {
+
+const mutationKey = ['resolveCatalogBook'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveCatalogBook>>, {data: BodyType<GoogleBookSelection>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  resolveCatalogBook(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveCatalogBookMutationResult = NonNullable<Awaited<ReturnType<typeof resolveCatalogBook>>>
+    export type ResolveCatalogBookMutationBody = BodyType<GoogleBookSelection>
+    export type ResolveCatalogBookMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reuse or create a community book from a catalog selection
+ */
+export const useResolveCatalogBook = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveCatalogBook>>, TError,{data: BodyType<GoogleBookSelection>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolveCatalogBook>>,
+        TError,
+        {data: BodyType<GoogleBookSelection>},
+        TContext
+      > => {
+      return useMutation(getResolveCatalogBookMutationOptions(options));
     }
 
 export const getSearchGoogleBooksUrl = (params: SearchGoogleBooksParams,) => {

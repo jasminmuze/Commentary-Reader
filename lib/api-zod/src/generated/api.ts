@@ -29,7 +29,7 @@ export const ListBooksResponseItem = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
-  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
+  "coverUrl": zod.string().nullable().describe('Public object path or HTTPS catalog thumbnail URL, or null when no cover is available'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -49,6 +49,95 @@ export const CreateBookBody = zod.object({
   "author": zod.string().min(1),
   "description": zod.string().optional(),
   "isbn": zod.string().optional()
+})
+
+
+/**
+ * @summary Redirect a public cover path to a trusted catalog thumbnail
+ */
+export const getCatalogCoverQueryUrlMax = 2048;
+
+
+
+export const GetCatalogCoverQueryParams = zod.object({
+  "url": zod.coerce.string().max(getCatalogCoverQueryUrlMax)
+})
+
+
+/**
+ * @summary Search the wider book catalog with covers and pagination
+ */
+export const searchBookCatalogQueryQMin = 2;
+export const searchBookCatalogQueryQMax = 160;
+
+export const searchBookCatalogQueryPageDefault = 1;
+export const searchBookCatalogQueryPageMax = 50;
+
+
+
+export const SearchBookCatalogQueryParams = zod.object({
+  "q": zod.coerce.string().min(searchBookCatalogQueryQMin).max(searchBookCatalogQueryQMax),
+  "page": zod.coerce.number().min(1).max(searchBookCatalogQueryPageMax).default(searchBookCatalogQueryPageDefault)
+})
+
+
+
+
+export const SearchBookCatalogResponse = zod.object({
+  "items": zod.array(zod.object({
+  "title": zod.string(),
+  "author": zod.string(),
+  "isbn": zod.string().nullable(),
+  "coverUrl": zod.string().url().nullable().describe('HTTPS cover image URL from the Google Books catalog'),
+  "publisher": zod.string().nullable(),
+  "publishedDate": zod.string().nullable(),
+  "description": zod.string().nullable(),
+  "pageCount": zod.number().min(1).nullable(),
+  "language": zod.string().nullable()
+}).and(zod.object({
+  "catalogId": zod.string(),
+  "infoUrl": zod.string().url()
+}))),
+  "page": zod.number(),
+  "hasMore": zod.boolean(),
+  "source": zod.enum(['open_library', 'google_books']),
+  "notice": zod.string().nullable()
+})
+
+
+/**
+ * @summary Reuse or create a community book from a catalog selection
+ */
+export const resolveCatalogBookBodyTitleMax = 300;
+
+export const resolveCatalogBookBodyAuthorMax = 300;
+
+export const resolveCatalogBookBodyIsbnMax = 32;
+
+export const resolveCatalogBookBodyCoverUrlMax = 2048;
+
+export const resolveCatalogBookBodyDescriptionMax = 4000;
+
+
+
+export const ResolveCatalogBookBody = zod.object({
+  "title": zod.string().min(1).max(resolveCatalogBookBodyTitleMax),
+  "author": zod.string().min(1).max(resolveCatalogBookBodyAuthorMax),
+  "isbn": zod.string().max(resolveCatalogBookBodyIsbnMax).nullish(),
+  "coverUrl": zod.string().max(resolveCatalogBookBodyCoverUrlMax).nullish(),
+  "description": zod.string().max(resolveCatalogBookBodyDescriptionMax).nullish()
+})
+
+export const ResolveCatalogBookResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "author": zod.string(),
+  "description": zod.string(),
+  "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public object path or HTTPS catalog thumbnail URL, or null when no cover is available'),
+  "quoteCount": zod.number(),
+  "commentCount": zod.number(),
+  "highlightCount": zod.number()
 })
 
 
@@ -90,12 +179,18 @@ export const resolveGoogleBookBodyAuthorMax = 300;
 
 export const resolveGoogleBookBodyIsbnMax = 32;
 
+export const resolveGoogleBookBodyCoverUrlMax = 2048;
+
+export const resolveGoogleBookBodyDescriptionMax = 4000;
+
 
 
 export const ResolveGoogleBookBody = zod.object({
   "title": zod.string().min(1).max(resolveGoogleBookBodyTitleMax),
   "author": zod.string().min(1).max(resolveGoogleBookBodyAuthorMax),
-  "isbn": zod.string().max(resolveGoogleBookBodyIsbnMax).nullish()
+  "isbn": zod.string().max(resolveGoogleBookBodyIsbnMax).nullish(),
+  "coverUrl": zod.string().max(resolveGoogleBookBodyCoverUrlMax).nullish(),
+  "description": zod.string().max(resolveGoogleBookBodyDescriptionMax).nullish()
 })
 
 export const ResolveGoogleBookResponse = zod.object({
@@ -104,7 +199,7 @@ export const ResolveGoogleBookResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
-  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
+  "coverUrl": zod.string().nullable().describe('Public object path or HTTPS catalog thumbnail URL, or null when no cover is available'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -527,7 +622,7 @@ export const GetLibraryEntryResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
-  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
+  "coverUrl": zod.string().nullable().describe('Public object path or HTTPS catalog thumbnail URL, or null when no cover is available'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -569,7 +664,7 @@ export const MatchLibraryEntryResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
-  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
+  "coverUrl": zod.string().nullable().describe('Public object path or HTTPS catalog thumbnail URL, or null when no cover is available'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -618,7 +713,7 @@ export const UpdateReadingLocationResponse = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
-  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
+  "coverUrl": zod.string().nullable().describe('Public object path or HTTPS catalog thumbnail URL, or null when no cover is available'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()
@@ -656,7 +751,7 @@ export const GetUserLibraryResponseItem = zod.object({
   "author": zod.string(),
   "description": zod.string(),
   "coverColor": zod.string(),
-  "coverUrl": zod.string().nullable().describe('Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover'),
+  "coverUrl": zod.string().nullable().describe('Public object path or HTTPS catalog thumbnail URL, or null when no cover is available'),
   "quoteCount": zod.number(),
   "commentCount": zod.number(),
   "highlightCount": zod.number()

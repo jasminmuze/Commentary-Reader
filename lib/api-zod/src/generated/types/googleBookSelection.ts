@@ -22,4 +22,14 @@ export interface GoogleBookSelection {
      * @nullable
      */
   isbn?: string | null;
+  /**
+     * @maxLength 2048
+     * @nullable
+     */
+  coverUrl?: string | null;
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
+  description?: string | null;
 }

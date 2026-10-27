@@ -30,7 +30,7 @@ import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { EmptyState } from "@/components/EmptyState";
 import { BookCardShimmer } from "@/components/LoadingShimmer";
-import { apiUrl, uploadEpub } from "@/lib/api";
+import { bookCoverUrl, uploadEpub } from "@/lib/api";
 
 const EPUB_UPLOAD_TERMS_VERSION = "2026-10-24";
 
@@ -62,9 +62,9 @@ function LibraryCard({ entry, onOpen, onMatch }: {
       ]}
       onPress={onOpen}
     >
-      {entry.book?.coverUrl ? (
+      {bookCoverUrl(entry.book?.coverUrl) ? (
         <Image
-          source={{ uri: apiUrl(`/api${entry.book.coverUrl}`) }}
+          source={{ uri: bookCoverUrl(entry.book?.coverUrl) ?? undefined }}
           style={[styles.coverImage, { borderRadius: colors.radius }]}
           resizeMode="cover"
         />

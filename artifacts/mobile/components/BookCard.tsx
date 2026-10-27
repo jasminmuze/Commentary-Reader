@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
-import { apiUrl } from "@/lib/api";
+import { bookCoverUrl } from "@/lib/api";
 import type { Book } from "@workspace/api-client-react";
 
 interface Props {
@@ -19,6 +19,8 @@ interface Props {
 
 export function BookCard({ book, onPress }: Props) {
   const colors = useColors();
+  const [coverFailed, setCoverFailed] = React.useState(false);
+  const coverUri = coverFailed ? null : bookCoverUrl(book.coverUrl);
 
   return (
     <Pressable
@@ -33,9 +35,10 @@ export function BookCard({ book, onPress }: Props) {
       ]}
       onPress={onPress}
     >
-      {book.coverUrl ? (
+      {coverUri ? (
         <Image
-          source={{ uri: apiUrl(`/api${book.coverUrl}`) }}
+          source={{ uri: coverUri }}
+          onError={() => setCoverFailed(true)}
           style={styles.coverImage}
           resizeMode="cover"
         />

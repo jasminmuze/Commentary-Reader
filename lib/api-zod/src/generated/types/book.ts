@@ -13,7 +13,7 @@ export interface Book {
   description: string;
   coverColor: string;
   /**
-     * Public object path of the cover image extracted from an uploaded EPUB, or null for a color cover
+     * Public object path or HTTPS catalog thumbnail URL, or null when no cover is available
      * @nullable
      */
   coverUrl: string | null;
