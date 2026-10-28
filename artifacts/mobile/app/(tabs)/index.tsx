@@ -31,8 +31,13 @@ import { useUser } from "@/context/UserContext";
 import { EmptyState } from "@/components/EmptyState";
 import { BookCardShimmer } from "@/components/LoadingShimmer";
 import { bookCoverUrl, uploadEpub } from "@/lib/api";
+import {
+  continueAfterUploadConsent,
+  runWithFlowLock,
+} from "@/lib/epubUploadFlow";
 
 const EPUB_UPLOAD_TERMS_VERSION = "2026-10-24";
+const CONSENT_MODAL_DISMISS_FALLBACK_MS = 500;
 
 function epubUploadConsentKey(userId: number) {
   return `shelfmates:epub-upload-consent:${userId}:${EPUB_UPLOAD_TERMS_VERSION}`;
@@ -136,9 +141,33 @@ export default function LibraryScreen() {
   const [savingUploadConsent, setSavingUploadConsent] = useState(false);
   const [pickingDocument, setPickingDocument] = useState(false);
   const uploadFlowInProgressRef = useRef(false);
+  const consentDismissalRef = useRef<{
+    resolve: () => void;
+    timeout: ReturnType<typeof setTimeout>;
+  } | null>(null);
+
+  const waitForConsentModalDismissal = useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          consentDismissalRef.current = null;
+          resolve();
+        }, CONSENT_MODAL_DISMISS_FALLBACK_MS);
+        consentDismissalRef.current = { resolve, timeout };
+      }),
+    [],
+  );
+
+  const finishConsentModalDismissal = useCallback(() => {
+    const pending = consentDismissalRef.current;
+    if (!pending) return;
+    clearTimeout(pending.timeout);
+    consentDismissalRef.current = null;
+    pending.resolve();
+  }, []);
 
   const chooseAndUploadEpub = useCallback(async () => {
-    if (!user || uploading) return;
+    if (!user) return;
     setPickingDocument(true);
     try {
       const picked = await DocumentPicker.getDocumentAsync({
@@ -153,25 +182,14 @@ export default function LibraryScreen() {
       }
       setUploading(true);
       const uploadURL = await uploadEpub(asset.uri);
-      createLibraryEntry.mutate(
-        { data: { uploadURL } },
-        {
-          onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: getGetUserLibraryQueryKey(user.id) });
-            if (data.match.status === "matched") {
-              router.push(`/readium/${data.entry.id}`);
-            } else {
-              router.push(`/match/${data.entry.id}`);
-            }
-          },
-          onError: () => {
-            Alert.alert("Upload failed", "Couldn't add this to your library. Please try again.");
-          },
-          onSettled: () => setUploading(false),
-        }
-      );
+      const data = await createLibraryEntry.mutateAsync({ data: { uploadURL } });
+      queryClient.invalidateQueries({ queryKey: getGetUserLibraryQueryKey(user.id) });
+      if (data.match.status === "matched") {
+        router.push(`/readium/${data.entry.id}`);
+      } else {
+        router.push(`/match/${data.entry.id}`);
+      }
     } catch (e) {
-      setUploading(false);
       const message = e instanceof Error ? e.message : "Couldn't upload the file.";
       if (/different document picking in progress/i.test(message)) {
         Alert.alert(
@@ -182,9 +200,10 @@ export default function LibraryScreen() {
         Alert.alert("Upload failed", message);
       }
     } finally {
+      setUploading(false);
       setPickingDocument(false);
     }
-  }, [user, uploading, createLibraryEntry, queryClient]);
+  }, [user, createLibraryEntry, queryClient]);
 
   const handleUpload = useCallback(async () => {
     if (
@@ -197,25 +216,25 @@ export default function LibraryScreen() {
     ) {
       return;
     }
-    uploadFlowInProgressRef.current = true;
-    setCheckingUploadConsent(true);
-    try {
-      const acceptedVersion = await AsyncStorage.getItem(epubUploadConsentKey(user.id));
-      if (acceptedVersion === EPUB_UPLOAD_TERMS_VERSION) {
-        await chooseAndUploadEpub();
-      } else {
-        setUploadConsentChecked(false);
-        setShowUploadConsent(true);
+    await runWithFlowLock(uploadFlowInProgressRef, async () => {
+      setCheckingUploadConsent(true);
+      try {
+        const acceptedVersion = await AsyncStorage.getItem(epubUploadConsentKey(user.id));
+        if (acceptedVersion === EPUB_UPLOAD_TERMS_VERSION) {
+          await chooseAndUploadEpub();
+        } else {
+          setUploadConsentChecked(false);
+          setShowUploadConsent(true);
+        }
+      } catch {
+        Alert.alert(
+          "Couldn't check upload terms",
+          "Please try again before uploading an EPUB.",
+        );
+      } finally {
+        setCheckingUploadConsent(false);
       }
-    } catch {
-      Alert.alert(
-        "Couldn't check upload terms",
-        "Please try again before uploading an EPUB.",
-      );
-    } finally {
-      setCheckingUploadConsent(false);
-      uploadFlowInProgressRef.current = false;
-    }
+    });
   }, [
     user,
     uploading,
@@ -234,25 +253,33 @@ export default function LibraryScreen() {
     ) {
       return;
     }
-    uploadFlowInProgressRef.current = true;
-    setSavingUploadConsent(true);
-    try {
-      await AsyncStorage.setItem(
-        epubUploadConsentKey(user.id),
-        EPUB_UPLOAD_TERMS_VERSION,
-      );
-      setShowUploadConsent(false);
-      await chooseAndUploadEpub();
-    } catch {
-      Alert.alert(
-        "Couldn't save your confirmation",
-        "Please try again before uploading an EPUB.",
-      );
-    } finally {
-      setSavingUploadConsent(false);
-      uploadFlowInProgressRef.current = false;
-    }
-  }, [user, uploadConsentChecked, savingUploadConsent, chooseAndUploadEpub]);
+    await runWithFlowLock(uploadFlowInProgressRef, async () => {
+      setSavingUploadConsent(true);
+      try {
+        await continueAfterUploadConsent({
+          saveConsent: () =>
+            AsyncStorage.setItem(
+              epubUploadConsentKey(user.id),
+              EPUB_UPLOAD_TERMS_VERSION,
+            ),
+          waitForModalDismissal: waitForConsentModalDismissal,
+          closeModal: () => setShowUploadConsent(false),
+          chooseFile: chooseAndUploadEpub,
+        });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Please try again.";
+        Alert.alert("Couldn't start upload", message);
+      } finally {
+        setSavingUploadConsent(false);
+      }
+    });
+  }, [
+    user,
+    uploadConsentChecked,
+    savingUploadConsent,
+    chooseAndUploadEpub,
+    waitForConsentModalDismissal,
+  ]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -360,6 +387,7 @@ export default function LibraryScreen() {
         transparent
         animationType="slide"
         statusBarTranslucent
+        onDismiss={finishConsentModalDismissal}
         onRequestClose={() => setShowUploadConsent(false)}
       >
         <View style={styles.consentBackdrop}>
