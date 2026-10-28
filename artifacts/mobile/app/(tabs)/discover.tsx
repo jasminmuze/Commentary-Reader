@@ -196,6 +196,8 @@ export default function DiscoverScreen() {
             style={({ pressed }) => [styles.guideReopen, { opacity: pressed ? 0.65 : 1 }]}
             accessibilityRole="button"
             accessibilityLabel="Open the reading room guide"
+            accessibilityHint="Explains how public and private reading rooms work."
+            accessibilityState={{ expanded: roomGuideVisible }}
             testID="discover-room-guide-reopen"
           >
             <Feather name="help-circle" size={16} color={colors.primary} />
@@ -247,27 +249,33 @@ export default function DiscoverScreen() {
           <View style={styles.guideHeadingRow}>
             <View style={styles.guideHeading}>
               <Feather name="users" size={17} color={colors.primary} />
-              <Text style={[styles.guideTitle, { color: colors.foreground }]}>
+              <Text
+                style={[styles.guideTitle, { color: colors.foreground }]}
+                accessibilityRole="header"
+              >
                 Read together in a room
               </Text>
             </View>
-            <Pressable
-              onPress={() => void dismissRoomGuide()}
-              disabled={roomGuideSaving}
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss reading room guide"
-              testID="discover-room-guide-dismiss"
-              hitSlop={8}
-            >
-              <Text style={[styles.guideDismiss, { color: colors.mutedForeground }]}>Not now</Text>
-            </Pressable>
           </View>
           <Text style={[styles.guideBody, { color: colors.mutedForeground }]}>
-            Browse or search rooms in Discover. Public rooms can be found and joined by anyone; private rooms are invitation-only.
+            Browse or search rooms in Discover. Public rooms can be found and joined by anyone. Private rooms can only be joined by invitation.
           </Text>
           <Text style={[styles.guideBody, { color: colors.mutedForeground }]}>
             To start one, find and open a book, then tap Create under Reading rooms. Invite friends from inside your room.
           </Text>
+          <Pressable
+            onPress={() => void dismissRoomGuide()}
+            disabled={roomGuideSaving}
+            style={styles.guideDismissButton}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss reading room guide"
+            accessibilityHint="Closes this guide. You can reopen it from Discover."
+            accessibilityState={{ disabled: roomGuideSaving }}
+            testID="discover-room-guide-dismiss"
+            hitSlop={8}
+          >
+            <Text style={[styles.guideDismiss, { color: colors.mutedForeground }]}>Not now</Text>
+          </Pressable>
           <View style={styles.guideActions}>
             <Pressable
               onPress={() => {
@@ -279,6 +287,9 @@ export default function DiscoverScreen() {
               disabled={roomGuideSaving}
               style={[styles.guideAction, styles.guideSecondaryAction, { borderColor: colors.border, borderRadius: colors.radius }]}
               accessibilityRole="button"
+              accessibilityLabel="Browse reading rooms"
+              accessibilityHint="Closes the guide and shows rooms in Discover."
+              accessibilityState={{ disabled: roomGuideSaving }}
               testID="discover-room-guide-browse"
             >
               <Text style={[styles.guideSecondaryText, { color: colors.foreground }]}>Browse rooms</Text>
@@ -292,6 +303,9 @@ export default function DiscoverScreen() {
               disabled={roomGuideSaving}
               style={[styles.guideAction, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
               accessibilityRole="button"
+              accessibilityLabel="Find a book"
+              accessibilityHint="Closes the guide and moves focus to book search."
+              accessibilityState={{ disabled: roomGuideSaving }}
               testID="discover-room-guide-find-book"
             >
               <Text style={[styles.guidePrimaryText, { color: colors.primaryForeground }]}>Find a book</Text>
@@ -393,9 +407,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   guideCard: { marginHorizontal: 16, marginTop: 12, padding: 14, borderWidth: 1, gap: 9 },
-  guideHeadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  guideHeading: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
+  guideHeadingRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  guideHeading: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1, paddingRight: 76 },
   guideTitle: { fontSize: 15, fontWeight: "700", flexShrink: 1 },
+  guideDismissButton: { position: "absolute", top: 10, right: 14, minHeight: 40, justifyContent: "center" },
   guideDismiss: { fontSize: 12, fontWeight: "600", paddingVertical: 4 },
   guideBody: { fontSize: 13, lineHeight: 18 },
   guideActions: { flexDirection: "row", gap: 9, marginTop: 2 },
