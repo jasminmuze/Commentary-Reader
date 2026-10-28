@@ -862,7 +862,9 @@ function AuthScreen({
           Shelfmates
         </Text>
         <Text style={[styles.onboardingSubtitle, { color: colors.mutedForeground }]}>
-          Read together. Discover what other readers thought about the passages that moved them.
+          Some books are too good to read alone.
+          {"\n"}
+          Share every gasp, laugh, and plot twist with people who get it.
         </Text>
 
         <View style={styles.onboardingForm}>
