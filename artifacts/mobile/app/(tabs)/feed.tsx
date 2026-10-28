@@ -128,9 +128,20 @@ function FeedCard({
         ) : (
           <View style={[styles.quoteBar, { backgroundColor: item.coverColor }]} />
         )}
-        <Text style={[styles.quoteText, { color: colors.foreground }]} numberOfLines={5}>
-          {item.quoteText}
-        </Text>
+        {spoilerHidden ? (
+          <View
+            style={[
+              styles.quoteText,
+              styles.spoilerQuotePlaceholder,
+              { backgroundColor: colors.muted, borderRadius: colors.radius },
+            ]}
+            accessible={false}
+          />
+        ) : (
+          <Text style={[styles.quoteText, { color: colors.foreground }]} numberOfLines={5}>
+            {item.quoteText}
+          </Text>
+        )}
       </View>
 
       {isComment && item.commentText ? (
@@ -510,6 +521,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     fontStyle: "italic",
+  },
+  spoilerQuotePlaceholder: {
+    minHeight: 63,
   },
   commentText: {
     fontSize: 14,
