@@ -567,7 +567,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 16,
   },
-  searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+    letterSpacing: 0,
+    paddingVertical: 0,
+  },
   list: { flexGrow: 1 },
   card: {
     flexDirection: "row",

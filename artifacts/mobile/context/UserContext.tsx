@@ -1290,13 +1290,14 @@ const styles = StyleSheet.create({
   onboardingLabel: {
     fontSize: 13,
     fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 0,
   },
   onboardingInput: {
     height: 52,
     paddingHorizontal: 16,
     fontSize: 16,
+    fontFamily: "Inter_400Regular",
+    letterSpacing: 0,
     borderWidth: 1,
   },
   codeInput: {
