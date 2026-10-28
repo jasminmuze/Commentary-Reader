@@ -160,6 +160,8 @@ interface Props {
   roomId?: number | null;
   /** Viewer's reading progress (0-100) — used for the room spoiler guard. */
   myProgress?: number | null;
+  /** Hide the passage excerpt when its room feed item is a spoiler or ahead of the viewer. */
+  quoteGuarded?: boolean;
 }
 
 // Room spoiler guard: blur content written by someone further into the book
@@ -672,6 +674,7 @@ export function CommentSheet({
   initialEditingComment,
   roomId,
   myProgress,
+  quoteGuarded = false,
 }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -685,6 +688,7 @@ export function CommentSheet({
   const [containsSpoilers, setContainsSpoilers] = useState(false);
   const [replyThread, setReplyThread] = useState<Comment | null>(null);
   const [editingComment, setEditingComment] = useState<Comment | null>(null);
+  const [quoteRevealed, setQuoteRevealed] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   // Reset reply thread when sheet closes; jump straight into the requested
@@ -693,6 +697,7 @@ export function CommentSheet({
     if (!visible) {
       setReplyThread(null);
       setEditingComment(null);
+      setQuoteRevealed(false);
     } else if (initialReplyThread) {
       setReplyThread(initialReplyThread);
     }
@@ -933,12 +938,34 @@ export function CommentSheet({
                   { borderColor: colors.border, borderLeftColor: colors.primary },
                 ]}
               >
-                <Text
-                  style={[styles.passageText, { color: colors.mutedForeground }]}
-                  numberOfLines={3}
-                >
-                  {quoteText}
-                </Text>
+                {roomId && quoteGuarded && !quoteRevealed ? (
+                  <Pressable
+                    onPress={() => setQuoteRevealed(true)}
+                    style={[
+                      styles.spoilerCover,
+                      {
+                        backgroundColor: colors.muted,
+                        borderColor: colors.border,
+                        borderRadius: colors.radius,
+                      },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Spoiler passage — tap to reveal"
+                    testID="room-spoiler-passage-reveal"
+                  >
+                    <Feather name="eye-off" size={14} color={colors.mutedForeground} />
+                    <Text style={[styles.spoilerCoverText, { color: colors.mutedForeground }]}>
+                      Spoiler passage — tap to reveal
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Text
+                    style={[styles.passageText, { color: colors.mutedForeground }]}
+                    numberOfLines={3}
+                  >
+                    {quoteText}
+                  </Text>
+                )}
               </View>
 
               <View style={[styles.tabs, { borderColor: colors.border }]}>

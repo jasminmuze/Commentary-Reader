@@ -985,6 +985,13 @@ export default function RoomScreen() {
         visible={commentTarget !== null}
         quoteId={commentTarget?.quoteId ?? null}
         quoteText={commentTarget?.quoteText ?? ""}
+        quoteGuarded={
+          commentTarget !== null &&
+          (commentTarget.containsSpoilers ||
+            (commentTarget.authorProgress !== null &&
+              room?.myReadingProgress != null &&
+              commentTarget.authorProgress > room.myReadingProgress))
+        }
         onClose={() => setCommentTarget(null)}
         roomId={roomId}
         myProgress={room?.myReadingProgress ?? null}
