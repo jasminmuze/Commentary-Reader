@@ -54,7 +54,8 @@
       "expo-font",
       "expo-notifications",
       "expo-web-browser",
-      "./plugins/withReadium.js"
+      "./plugins/withReadium.js",
+      "./plugins/withOptionalGoogleServices.js"
     ],
     "experiments": {
       "typedRoutes": true,
