@@ -242,9 +242,15 @@ export default function FriendsScreen() {
               <View style={[styles.userRow, { borderColor: colors.border }]}>
                 <Pressable
                   style={styles.friendProfileButton}
-                  onPress={() => router.push(`/user/${item.id}`)}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/user/[id]",
+                      params: { id: String(item.id) },
+                    })
+                  }
                   accessibilityRole="button"
                   accessibilityLabel={`Open ${item.nickname?.trim() || item.username}'s profile`}
+                  testID={`following-profile-${item.id}`}
                 >
                   <UserAvatar
                     username={item.username}
@@ -266,6 +272,9 @@ export default function FriendsScreen() {
                     { backgroundColor: colors.muted, borderRadius: colors.radius, opacity: pressed ? 0.8 : 1 },
                   ]}
                   onPress={() => handleRemove(item.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Unfollow ${item.nickname?.trim() || item.username}`}
+                  testID={`following-unfollow-${item.id}`}
                 >
                   <Text style={[styles.actionBtnText, { color: colors.mutedForeground }]}>Unfollow</Text>
                 </Pressable>
@@ -352,6 +361,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    minHeight: 44,
   },
   userHandle: {
     fontSize: 12,
