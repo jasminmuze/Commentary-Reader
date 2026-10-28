@@ -238,8 +238,8 @@ class NativeReadiumView: UIView {
         // Official pattern (EPUBViewController.init): custom editing actions
         // resolved on the responder chain — this view implements the selectors.
         let editingActions = EditingAction.defaultActions + [
-            EditingAction(title: "하이라이트", action: #selector(highlightSelection)),
-            EditingAction(title: "댓글", action: #selector(commentSelection)),
+            EditingAction(title: "Highlight", action: #selector(highlightSelection)),
+            EditingAction(title: "Comment", action: #selector(commentSelection)),
         ]
 
         let navigator = try EPUBNavigatorViewController(

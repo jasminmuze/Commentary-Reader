@@ -305,49 +305,49 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
 
     private fun showSettingsMenu() {
         if (navigator == null) return
-        val sections = arrayOf("테마", "글꼴", "글자 크기", "줄 간격", "여백", "보기 방식")
+        val sections = arrayOf("Theme", "Font", "Font size", "Line spacing", "Margins", "Reading mode")
         AlertDialog.Builder(this)
-            .setTitle("보기 설정")
+            .setTitle("Reader settings")
             .setItems(sections) { _, index ->
                 when (index) {
                     0 -> pickOption(
-                        "테마",
+                        "Theme",
                         "theme",
                         "paper",
-                        listOf("paper" to "밝게 (기본)", "sepia" to "세피아", "dark" to "어둡게"),
+                        listOf("paper" to "Light (Default)", "sepia" to "Sepia", "dark" to "Dark"),
                     )
                     1 -> pickOption(
-                        "글꼴",
+                        "Font",
                         "font",
                         "georgia",
                         listOf(
-                            "georgia" to "출판사 기본",
-                            "serif" to "명조 (Serif)",
-                            "sans" to "고딕 (Sans)",
+                            "georgia" to "Publisher default",
+                            "serif" to "Serif",
+                            "sans" to "Sans",
                         ),
                     )
                     2 -> pickFontSize()
                     3 -> pickOption(
-                        "줄 간격",
+                        "Line spacing",
                         "lineSpacing",
                         "normal",
-                        listOf("compact" to "좁게", "normal" to "기본", "wide" to "넓게"),
+                        listOf("compact" to "Compact", "normal" to "Normal", "wide" to "Wide"),
                     )
                     4 -> pickOption(
-                        "여백",
+                        "Margins",
                         "margin",
                         "normal",
-                        listOf("narrow" to "좁게", "normal" to "기본", "wide" to "넓게"),
+                        listOf("narrow" to "Narrow", "normal" to "Normal", "wide" to "Wide"),
                     )
                     5 -> pickOption(
-                        "보기 방식",
+                        "Reading mode",
                         "scrollMode",
                         "vertical",
-                        listOf("vertical" to "스크롤", "paged" to "페이지 넘김"),
+                        listOf("vertical" to "Scroll", "paged" to "Page turns"),
                     )
                 }
             }
-            .setNegativeButton("닫기", null)
+            .setNegativeButton("Close", null)
             .show()
     }
 
@@ -365,7 +365,7 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
                 applySetting(key, options[index].first)
                 dialog.dismiss()
             }
-            .setNegativeButton("닫기", null)
+            .setNegativeButton("Close", null)
             .show()
     }
 
@@ -373,14 +373,14 @@ class NativeReadiumActivity : FragmentActivity(), EpubNavigatorFragment.Listener
         val sizes = listOf(14, 16, 18, 19, 21, 23, 26)
         val current = settingsJson.optDouble("fontSize", DEFAULT_FONT_SIZE)
         val checked = sizes.indexOfFirst { it.toDouble() == current }
-        val labels = sizes.map { if (it.toDouble() == DEFAULT_FONT_SIZE) "${it}pt (기본)" else "${it}pt" }
+        val labels = sizes.map { if (it.toDouble() == DEFAULT_FONT_SIZE) "${it}pt (Default)" else "${it}pt" }
         AlertDialog.Builder(this)
-            .setTitle("글자 크기")
+            .setTitle("Font size")
             .setSingleChoiceItems(labels.toTypedArray(), checked) { dialog, index ->
                 applySetting("fontSize", sizes[index])
                 dialog.dismiss()
             }
-            .setNegativeButton("닫기", null)
+            .setNegativeButton("Close", null)
             .show()
     }
 

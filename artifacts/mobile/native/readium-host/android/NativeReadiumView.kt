@@ -709,8 +709,8 @@ class NativeReadiumView(
     private val selectionCallback = object : BaseActionModeCallback() {
         override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
             selectionModeActive = true
-            menu.add(Menu.NONE, MENU_ID_HIGHLIGHT, 0, "하이라이트")
-            menu.add(Menu.NONE, MENU_ID_COMMENT, 1, "댓글")
+            menu.add(Menu.NONE, MENU_ID_HIGHLIGHT, 0, "Highlight")
+            menu.add(Menu.NONE, MENU_ID_COMMENT, 1, "Comment")
             return true
         }
 
