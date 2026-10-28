@@ -1,5 +1,7 @@
-import React, { useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   FlatList,
   Platform,
   Pressable,
@@ -19,7 +21,6 @@ import {
   getListRoomsQueryKey,
   getGetTrendingRoomsQueryKey,
 } from "@workspace/api-client-react";
-import { Alert } from "react-native";
 import { useResolveCatalogBook } from "@workspace/api-client-react";
 import type { BookCatalogItem } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
@@ -34,6 +35,9 @@ import { BookCard } from "@/components/BookCard";
 import { BookCardShimmer } from "@/components/LoadingShimmer";
 import { EmptyState } from "@/components/EmptyState";
 import type { Book, Room } from "@workspace/api-client-react";
+import { useUser } from "@/context/UserContext";
+
+const ROOM_GUIDE_DISMISSED_KEY = "shelfmates:reading-room-guide-dismissed";
 
 function RoomStrip({
   title,
@@ -91,9 +95,28 @@ function RoomStrip({
 export default function DiscoverScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { user } = useUser();
   const [query, setQuery] = useState("");
   const searchInputRef = useRef<TextInput>(null);
+  const listRef = useRef<FlatList<Book>>(null);
+  const [roomGuideVisible, setRoomGuideVisible] = useState(false);
+  const [roomGuideSaving, setRoomGuideSaving] = useState(false);
   const trimmed = query.trim();
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    AsyncStorage.getItem(`${ROOM_GUIDE_DISMISSED_KEY}:${user.id}`)
+      .then((dismissed) => {
+        if (!cancelled) setRoomGuideVisible(dismissed !== "true");
+      })
+      .catch(() => {
+        if (!cancelled) setRoomGuideVisible(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const { data: books, isLoading } = useListBooks(
     trimmed ? { q: trimmed } : undefined
@@ -138,13 +161,47 @@ export default function DiscoverScreen() {
     );
   };
 
+  const dismissRoomGuide = async (afterDismiss?: () => void) => {
+    if (roomGuideSaving) return;
+    setRoomGuideSaving(true);
+    try {
+      if (user?.id) {
+        await AsyncStorage.setItem(
+          `${ROOM_GUIDE_DISMISSED_KEY}:${user.id}`,
+          "true",
+        );
+      }
+      setRoomGuideVisible(false);
+      afterDismiss?.();
+    } catch {
+      Alert.alert(
+        "Couldn't save this preference",
+        "Please try again to close the room guide.",
+      );
+    } finally {
+      setRoomGuideSaving(false);
+    }
+  };
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Discover</Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { color: colors.foreground }]}>Discover</Text>
+          <Pressable
+            onPress={() => setRoomGuideVisible(true)}
+            style={({ pressed }) => [styles.guideReopen, { opacity: pressed ? 0.65 : 1 }]}
+            accessibilityRole="button"
+            accessibilityLabel="Open the reading room guide"
+            testID="discover-room-guide-reopen"
+          >
+            <Feather name="help-circle" size={16} color={colors.primary} />
+            <Text style={[styles.guideReopenText, { color: colors.primary }]}>Room guide</Text>
+          </Pressable>
+        </View>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
           Find any book, then see who is reading it
         </Text>
@@ -179,7 +236,72 @@ export default function DiscoverScreen() {
         </View>
       </View>
 
+      {roomGuideVisible ? (
+        <View
+          style={[
+            styles.guideCard,
+            { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius },
+          ]}
+          testID="discover-room-guide"
+        >
+          <View style={styles.guideHeadingRow}>
+            <View style={styles.guideHeading}>
+              <Feather name="users" size={17} color={colors.primary} />
+              <Text style={[styles.guideTitle, { color: colors.foreground }]}>
+                Read together in a room
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => void dismissRoomGuide()}
+              disabled={roomGuideSaving}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss reading room guide"
+              testID="discover-room-guide-dismiss"
+              hitSlop={8}
+            >
+              <Text style={[styles.guideDismiss, { color: colors.mutedForeground }]}>Not now</Text>
+            </Pressable>
+          </View>
+          <Text style={[styles.guideBody, { color: colors.mutedForeground }]}>
+            Browse or search rooms in Discover. Public rooms can be found and joined by anyone; private rooms are invitation-only.
+          </Text>
+          <Text style={[styles.guideBody, { color: colors.mutedForeground }]}>
+            To start one, find and open a book, then tap Create under Reading rooms. Invite friends from inside your room.
+          </Text>
+          <View style={styles.guideActions}>
+            <Pressable
+              onPress={() => {
+                setQuery("");
+                void dismissRoomGuide(() =>
+                  requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: true })),
+                );
+              }}
+              disabled={roomGuideSaving}
+              style={[styles.guideAction, styles.guideSecondaryAction, { borderColor: colors.border, borderRadius: colors.radius }]}
+              accessibilityRole="button"
+              testID="discover-room-guide-browse"
+            >
+              <Text style={[styles.guideSecondaryText, { color: colors.foreground }]}>Browse rooms</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                void dismissRoomGuide(() =>
+                  requestAnimationFrame(() => searchInputRef.current?.focus()),
+                );
+              }}
+              disabled={roomGuideSaving}
+              style={[styles.guideAction, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
+              accessibilityRole="button"
+              testID="discover-room-guide-find-book"
+            >
+              <Text style={[styles.guidePrimaryText, { color: colors.primaryForeground }]}>Find a book</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
       <FlatList<Book>
+        ref={listRef}
         data={books ?? []}
         keyExtractor={(item, index) => String(item.id ?? index)}
         renderItem={({ item }) => (
@@ -250,7 +372,10 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
   },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.5 },
+  guideReopen: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 6 },
+  guideReopenText: { fontSize: 12, fontWeight: "600" },
   subtitle: { fontSize: 13, marginTop: 2, marginBottom: 14 },
   searchBox: {
     flexDirection: "row",
@@ -267,6 +392,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  guideCard: { marginHorizontal: 16, marginTop: 12, padding: 14, borderWidth: 1, gap: 9 },
+  guideHeadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  guideHeading: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
+  guideTitle: { fontSize: 15, fontWeight: "700", flexShrink: 1 },
+  guideDismiss: { fontSize: 12, fontWeight: "600", paddingVertical: 4 },
+  guideBody: { fontSize: 13, lineHeight: 18 },
+  guideActions: { flexDirection: "row", gap: 9, marginTop: 2 },
+  guideAction: { minHeight: 40, alignItems: "center", justifyContent: "center", paddingHorizontal: 14, flex: 1 },
+  guideSecondaryAction: { borderWidth: 1 },
+  guidePrimaryText: { fontSize: 13, fontWeight: "700" },
+  guideSecondaryText: { fontSize: 13, fontWeight: "600" },
   catalogSection: { paddingHorizontal: 16, marginTop: 12 },
   list: { paddingTop: 12, flexGrow: 1 },
   roomsSection: { marginBottom: 8 },
