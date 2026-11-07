@@ -13,3 +13,4 @@
 - [Profile public activity](profile-public-activity.md) — show public highlights and top-level comments on profiles; keep replies in their conversation threads.
 - [EPUB picker concurrency](epub-picker-concurrency.md) — serialize iOS document picker launches with a synchronous lock across async consent flows.
 - [Book catalog provider constraints](book-catalog-providers.md) — anonymous Google Books returned daily quota 0; distinguish quota configuration from transient limits and work records from exact editions.
+- [Room-link store availability](room-link-availability.md) — iOS has an App Store listing; Android is not yet publicly available, so room invites need an iPhone install fallback and a clear Android notice.

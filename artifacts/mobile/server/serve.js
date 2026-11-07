@@ -41,6 +41,8 @@ const TERMS_OF_USE_TEMPLATE_PATH = path.resolve(
   "terms-of-use.html",
 );
 const basePath = (process.env.BASE_PATH || "/").replace(/\/+$/, "");
+const IOS_APP_STORE_URL =
+  "https://apps.apple.com/kr/app/shelfmates-social-reader/id6795648309?l=en-GB";
 const CURRENT_EAS_ANDROID_SIGNING_SHA256 =
   "5E:29:DB:42:43:B6:7B:F7:49:47:BE:3B:24:1B:80:76:8B:A4:15:8A:68:FA:2F:4B:5C:BA:C1:AE:51:B9:7D:AF";
 
@@ -142,7 +144,9 @@ function serveRoomInvitePage(req, res, template, url, roomId) {
   const appUrl = `shelfmates:///room/${roomId}${url.search}`;
   const htmlData = JSON.stringify({
     appUrl,
-    iosInstallUrl: getVerifiedHttpsUrl(process.env.SHELF_MATES_IOS_INSTALL_URL),
+    iosInstallUrl:
+      getVerifiedHttpsUrl(process.env.SHELF_MATES_IOS_INSTALL_URL) ||
+      IOS_APP_STORE_URL,
     androidInstallUrl: getVerifiedHttpsUrl(
       process.env.SHELF_MATES_ANDROID_INSTALL_URL,
     ),

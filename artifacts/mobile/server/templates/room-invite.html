@@ -151,13 +151,23 @@
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       const isAndroid = /Android/i.test(navigator.userAgent);
       const links = [];
+      let installNote = "";
       if (isIOS && invite.iosInstallUrl) {
-        links.push(["Install for iPhone", invite.iosInstallUrl]);
-      } else if (isAndroid && invite.androidInstallUrl) {
-        links.push(["Install for Android", invite.androidInstallUrl]);
+        links.push(["Download on the App Store", invite.iosInstallUrl]);
+        installNote = "After installing, return to this room link and tap it again to join.";
+      } else if (isAndroid) {
+        if (invite.androidInstallUrl) {
+          links.push(["Install for Android", invite.androidInstallUrl]);
+          installNote = "After installing, return to this room link and tap it again to join.";
+        } else {
+          installNote =
+            "Shelfmates is currently available on iPhone only. Open this invitation on an iPhone to install the app and join the room.";
+        }
       } else {
-        if (invite.iosInstallUrl) links.push(["Install for iPhone", invite.iosInstallUrl]);
+        if (invite.iosInstallUrl) links.push(["Download on the App Store", invite.iosInstallUrl]);
         if (invite.androidInstallUrl) links.push(["Install for Android", invite.androidInstallUrl]);
+        installNote =
+          "After installing, return to this room link and tap it again to join.";
       }
 
       const storeLinks = document.getElementById("store-links");
@@ -168,10 +178,7 @@
         link.textContent = label;
         storeLinks.appendChild(link);
       });
-      if (links.length === 0) {
-        document.getElementById("install-note").textContent =
-          "App Store and Android download links will appear here when they are available.";
-      }
+      document.getElementById("install-note").textContent = installNote;
     </script>
   </body>
 </html>
