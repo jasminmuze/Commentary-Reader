@@ -4,135 +4,240 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
-    <meta name="theme-color" content="#f9f6f0" />
+    <meta name="theme-color" content="#F9F6F0" />
+    <meta name="color-scheme" content="light" />
     <title>Join a Shelfmates reading room</title>
+    <meta name="description" content="Read and talk about a book together in Shelfmates." />
+    <!-- ROOM_INVITE_HEAD -->
     <style>
+      :root {
+        color-scheme: light;
+        --paper: #F9F6F0;
+        --card: #FFFFFF;
+        --ink: #2C2621;
+        --muted: #857A70;
+        --line: #E1D8CE;
+        --brand: #B85C38;
+        --brand-dark: #994627;
+        --soft: #F2EAE0;
+      }
       * { box-sizing: border-box; }
+      html { color-scheme: light; background: var(--paper); }
       body {
         min-height: 100vh;
         margin: 0;
-        padding: 28px 20px;
+        padding: 28px 18px;
         display: grid;
         place-items: center;
-        background: #f9f6f0;
-        color: #26231f;
+        background:
+          radial-gradient(ellipse at 50% -10%, rgba(226, 123, 88, 0.11), transparent 48%),
+          var(--paper);
+        color: var(--ink);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       main {
         width: min(100%, 440px);
-        padding: 34px 28px;
-        border: 1px solid #e5ded2;
-        border-radius: 20px;
-        background: #fffdf9;
-        box-shadow: 0 18px 50px rgba(58, 43, 26, 0.08);
+        overflow: hidden;
+        padding: 30px 26px 26px;
+        border: 1px solid rgba(184, 92, 56, 0.12);
+        border-radius: 26px;
+        background: var(--card);
+        box-shadow: 0 22px 60px rgba(68, 48, 31, 0.10);
         text-align: center;
       }
-      .mark {
-        width: 52px;
-        height: 52px;
-        margin: 0 auto 22px;
+      .brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        margin-bottom: 25px;
+        color: var(--brand);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      .brand-mark {
+        width: 30px;
+        height: 30px;
         display: grid;
         place-items: center;
-        border-radius: 16px;
-        background: #ff3c00;
+        border-radius: 10px;
+        background: var(--brand);
         color: #fff;
       }
-      .mark svg { width: 26px; height: 26px; }
+      .brand-mark svg { width: 17px; height: 17px; }
       .eyebrow {
-        margin: 0 0 10px;
-        color: #b44420;
-        font-size: 11px;
+        margin: 0 0 9px;
+        color: var(--muted);
+        font-size: 10px;
         font-weight: 750;
-        letter-spacing: 0.14em;
+        letter-spacing: 0.17em;
         text-transform: uppercase;
       }
       h1 {
         margin: 0;
         font-family: Georgia, "Times New Roman", serif;
-        font-size: clamp(27px, 7vw, 34px);
-        line-height: 1.12;
-        letter-spacing: -0.03em;
+        font-size: clamp(27px, 7vw, 33px);
+        line-height: 1.13;
+        letter-spacing: -0.035em;
       }
       .description {
-        max-width: 320px;
-        margin: 14px auto 24px;
-        color: #716b63;
+        max-width: 330px;
+        margin: 12px auto 20px;
+        color: #6D6259;
         font-size: 15px;
         line-height: 1.55;
       }
+      .book-card {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin: 0 0 22px;
+        padding: 13px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #FCFAF7;
+        text-align: left;
+      }
+      .book-cover {
+        position: relative;
+        width: 66px;
+        height: 92px;
+        flex: 0 0 66px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        border-radius: 7px;
+        background: var(--cover-color, var(--brand));
+        box-shadow: 0 5px 12px rgba(52, 39, 29, 0.18);
+      }
+      .book-cover img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .cover-fallback {
+        padding: 6px;
+        color: white;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.2;
+        text-align: center;
+      }
+      .book-copy { min-width: 0; }
+      .book-label {
+        margin: 0 0 5px;
+        color: var(--brand);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .book-title {
+        margin: 0;
+        color: var(--ink);
+        font-size: 15px;
+        font-weight: 750;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+      .book-author {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
       .button {
         width: 100%;
-        min-height: 48px;
-        padding: 13px 18px;
+        min-height: 52px;
+        padding: 14px 18px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         border: 0;
-        border-radius: 12px;
-        background: #ff3c00;
+        border-radius: 14px;
+        background: var(--brand);
         color: white;
         font-size: 15px;
         font-weight: 700;
         text-decoration: none;
+        transition: background 150ms ease, transform 150ms ease;
       }
+      .button:hover { background: var(--brand-dark); }
+      .button:active { transform: translateY(1px); }
       .button:focus-visible, .store-link:focus-visible {
-        outline: 3px solid #26231f;
+        outline: 3px solid var(--ink);
         outline-offset: 3px;
       }
       .install {
-        margin-top: 28px;
-        padding-top: 22px;
-        border-top: 1px solid #eee8df;
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--line);
       }
       .install-title {
-        margin: 0 0 12px;
+        margin: 0 0 11px;
         font-size: 13px;
         font-weight: 700;
       }
       .store-links {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 9px;
       }
       .store-link {
         min-height: 44px;
         padding: 11px 14px;
-        border: 1px solid #ded7cc;
-        border-radius: 10px;
-        color: #38332d;
+        border: 1px solid #D8C9BC;
+        border-radius: 12px;
+        background: var(--soft);
+        color: var(--ink);
         font-size: 14px;
         font-weight: 650;
         text-decoration: none;
       }
       .install-note, .privacy-note {
-        color: #827a70;
+        color: var(--muted);
         font-size: 12px;
         line-height: 1.5;
       }
-      .install-note { margin: 12px 0 0; }
-      .privacy-note { margin: 22px 0 0; }
-      @media (prefers-color-scheme: dark) {
-        body { background: #1d1b18; color: #f5f0e9; }
-        main { background: #292621; border-color: #3c3831; }
-        .description, .install-note, .privacy-note { color: #b6afa4; }
-        .install { border-color: #413c34; }
-        .store-link { border-color: #514b42; color: #f5f0e9; }
+      .install-note { margin: 11px 0 0; }
+      .privacy-note { margin: 18px 0 0; }
+      @media (max-width: 380px) {
+        body { padding: 18px 12px; }
+        main { padding: 25px 18px 22px; border-radius: 22px; }
       }
     </style>
   </head>
   <body>
     <main>
-      <div class="mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z" />
-          <path d="M4 5.5v16M8 7h8M8 11h7" />
-        </svg>
+      <div class="brand" aria-label="Shelfmates">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z" />
+            <path d="M4 5.5v16M8 7h8M8 11h7" />
+          </svg>
+        </span>
+        Shelfmates
       </div>
-      <p class="eyebrow">Shelfmates · Group reading</p>
-      <h1>A reading room is waiting for you</h1>
-      <p class="description">
+      <p class="eyebrow" id="room-label">A shared reading room</p>
+      <h1 id="invite-title">A reading room is waiting for you</h1>
+      <p class="description" id="invite-description">
         Open this invitation in Shelfmates to read and talk about the book together.
       </p>
+      <section class="book-card" id="book-card" hidden aria-label="Book in this room">
+        <div class="book-cover" id="book-cover">
+          <span class="cover-fallback" id="cover-fallback"></span>
+        </div>
+        <div class="book-copy">
+          <p class="book-label">The book you’ll read together</p>
+          <p class="book-title" id="book-title"></p>
+          <p class="book-author" id="book-author"></p>
+        </div>
+      </section>
       <a id="open-app" class="button" href="#">Open Shelfmates</a>
       <section class="install" aria-label="Install Shelfmates">
         <p class="install-title">Don't have Shelfmates yet?</p>
@@ -147,6 +252,33 @@
       const invite = ROOM_INVITE_DATA;
       const openButton = document.getElementById("open-app");
       openButton.href = invite.appUrl;
+      const title = invite.bookTitle || "a great book";
+      const roomName = invite.roomName || "";
+      document.getElementById("room-label").textContent =
+        roomName ? `READ TOGETHER · ${roomName}` : "A shared reading room";
+      document.getElementById("invite-title").textContent =
+        invite.bookTitle ? `Read ${title} together` : "A reading room is waiting for you";
+      document.getElementById("invite-description").textContent =
+        "Join your friends on Shelfmates to share reactions, favorite lines, and the moments that stay with you.";
+      if (invite.bookTitle) {
+        document.getElementById("book-card").hidden = false;
+        document.getElementById("book-title").textContent = invite.bookTitle;
+        document.getElementById("book-author").textContent = invite.bookAuthor
+          ? `by ${invite.bookAuthor}`
+          : "A book to read together";
+        document.getElementById("book-cover").style.setProperty(
+          "--cover-color",
+          invite.coverColor || "#B85C38",
+        );
+        document.getElementById("cover-fallback").textContent = invite.bookTitle;
+        if (invite.coverUrl) {
+          const cover = document.createElement("img");
+          cover.src = invite.coverUrl;
+          cover.alt = "";
+          cover.onerror = () => cover.remove();
+          document.getElementById("book-cover").appendChild(cover);
+        }
+      }
 
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       const isAndroid = /Android/i.test(navigator.userAgent);

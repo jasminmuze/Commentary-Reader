@@ -49,6 +49,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { CommentSheet } from "@/components/CommentSheet";
 import { ReportContentButton } from "@/components/ReportContentButton";
 import { navigateToQuote } from "@/lib/quoteNavigation";
+import { apiUrl } from "@/lib/api";
 
 function timeAgo(dateStr: string): string {
   const date = new Date(dateStr);
@@ -490,12 +491,19 @@ export default function RoomScreen() {
       return;
     }
     const domain = configuredDomain.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-    let url = `https://${domain}/room/${roomId}?join=1`;
+    const inviteUrl = new URL(`https://${domain}/room/${roomId}`);
+    inviteUrl.searchParams.set("join", "1");
     try {
       if (!room.isPublic) {
         const link = await createRoomShareLink.mutateAsync({ roomId });
-        url += `&shareToken=${encodeURIComponent(link.token)}`;
+        inviteUrl.searchParams.set("shareToken", link.token);
       }
+      inviteUrl.searchParams.set("roomName", room.name);
+      inviteUrl.searchParams.set("bookTitle", room.bookTitle);
+      inviteUrl.searchParams.set("bookAuthor", room.bookAuthor);
+      inviteUrl.searchParams.set("coverColor", room.coverColor);
+      if (room.coverUrl) inviteUrl.searchParams.set("coverUrl", apiUrl(room.coverUrl));
+      const url = inviteUrl.toString();
       await Share.share({
         title: `Join ${room.name}`,
         message: room.isPublic

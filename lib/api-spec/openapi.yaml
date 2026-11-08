@@ -3179,7 +3179,7 @@ components:
 
     Room:
       type: object
-      required: [id, canonicalBookId, name, description, isPublic, ownerId, memberCount, bookTitle, bookAuthor, coverColor, createdAt]
+      required: [id, canonicalBookId, name, description, isPublic, ownerId, memberCount, bookTitle, bookAuthor, coverColor, coverUrl, createdAt]
       properties:
         id:
           type: integer
@@ -3202,6 +3202,9 @@ components:
           type: string
         coverColor:
           type: string
+        coverUrl:
+          type: [string, "null"]
+          description: Public image URL or object path for the book cover
         isMember:
           type: boolean
           description: Whether the viewer is a member of this room
@@ -3232,7 +3235,7 @@ components:
 
     RoomDetail:
       type: object
-      required: [id, canonicalBookId, name, description, isPublic, ownerId, memberCount, bookTitle, bookAuthor, coverColor, createdAt, members, isMember, myRole, invitePending, myLibraryId, myReadingProgress]
+      required: [id, canonicalBookId, name, description, isPublic, ownerId, memberCount, bookTitle, bookAuthor, coverColor, coverUrl, createdAt, members, isMember, myRole, invitePending, myLibraryId, myReadingProgress]
       properties:
         id:
           type: integer
@@ -3255,6 +3258,9 @@ components:
           type: string
         coverColor:
           type: string
+        coverUrl:
+          type: [string, "null"]
+          description: Public image URL or object path for the book cover
         createdAt:
           type: string
           format: date-time

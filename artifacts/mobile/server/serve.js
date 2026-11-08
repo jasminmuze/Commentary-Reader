@@ -141,9 +141,33 @@ function serveRoomInvitePage(req, res, template, url, roomId) {
     return;
   }
 
-  const appUrl = `shelfmates:///room/${roomId}${url.search}`;
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const protocol = forwardedProto === "http" ? "http" : "https";
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  const baseUrl = `${protocol}://${host}`;
+  const deepLinkQuery = new URLSearchParams();
+  if (url.searchParams.get("join") === "1") deepLinkQuery.set("join", "1");
+  const shareToken = url.searchParams.get("shareToken");
+  if (shareToken && shareToken.length <= 100) {
+    deepLinkQuery.set("shareToken", shareToken);
+  }
+
+  const roomName = readInviteText(url, "roomName", 160);
+  const bookTitle = readInviteText(url, "bookTitle", 240);
+  const bookAuthor = readInviteText(url, "bookAuthor", 160);
+  const coverColorParam = url.searchParams.get("coverColor") || "";
+  const coverColor = /^#[0-9a-f]{6}$/i.test(coverColorParam)
+    ? coverColorParam
+    : "#B85C38";
+  const coverUrl = getInviteCoverUrl(url.searchParams.get("coverUrl"), baseUrl);
+  const appUrl = `shelfmates:///room/${roomId}${deepLinkQuery.size ? `?${deepLinkQuery}` : ""}`;
   const htmlData = JSON.stringify({
     appUrl,
+    roomName,
+    bookTitle,
+    bookAuthor,
+    coverColor,
+    coverUrl,
     iosInstallUrl:
       getVerifiedHttpsUrl(process.env.SHELF_MATES_IOS_INSTALL_URL) ||
       IOS_APP_STORE_URL,
@@ -151,7 +175,34 @@ function serveRoomInvitePage(req, res, template, url, roomId) {
       process.env.SHELF_MATES_ANDROID_INSTALL_URL,
     ),
   }).replace(/</g, "\\u003c");
-  const html = template.replace("ROOM_INVITE_DATA", htmlData);
+  const shareTitle = bookTitle
+    ? `Read ${bookTitle} together on Shelfmates`
+    : roomName
+      ? `Join ${roomName} on Shelfmates`
+      : "Join a Shelfmates reading room";
+  const shareDescription = bookTitle
+    ? `Join your friends in ${roomName || "a Shelfmates reading room"} to read ${bookTitle}${bookAuthor ? ` by ${bookAuthor}` : ""} together.`
+    : "Open this invitation in Shelfmates to read and talk about a book together.";
+  const metaTags = [
+    `<title>${escapeHtml(shareTitle)}</title>`,
+    `<meta name="description" content="${escapeHtml(shareDescription)}" />`,
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="Shelfmates" />`,
+    `<meta property="og:title" content="${escapeHtml(shareTitle)}" />`,
+    `<meta property="og:description" content="${escapeHtml(shareDescription)}" />`,
+    `<meta name="twitter:card" content="${coverUrl ? "summary_large_image" : "summary"}" />`,
+    `<meta name="twitter:title" content="${escapeHtml(shareTitle)}" />`,
+    `<meta name="twitter:description" content="${escapeHtml(shareDescription)}" />`,
+    ...(coverUrl
+      ? [
+          `<meta property="og:image" content="${escapeHtml(coverUrl)}" />`,
+          `<meta name="twitter:image" content="${escapeHtml(coverUrl)}" />`,
+        ]
+      : []),
+  ].join("\n    ");
+  const html = template
+    .replace("<!-- ROOM_INVITE_HEAD -->", metaTags)
+    .replace("ROOM_INVITE_DATA", htmlData);
   res.writeHead(200, {
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store",
@@ -161,6 +212,44 @@ function serveRoomInvitePage(req, res, template, url, roomId) {
       "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   });
   res.end(req.method === "HEAD" ? undefined : html);
+}
+
+function readInviteText(url, key, maxLength) {
+  const value = (url.searchParams.get(key) || "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .trim();
+  return value.slice(0, maxLength);
+}
+
+function getInviteCoverUrl(raw, baseUrl) {
+  if (!raw || raw.length > 2048 || raw.startsWith("//")) return "";
+  try {
+    const base = new URL(baseUrl);
+    const parsed = new URL(raw, base);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) return "";
+    const isSameHost = parsed.host === base.host;
+    const isKnownCoverHost = [
+      "books.google.com",
+      "books.googleusercontent.com",
+      "covers.openlibrary.org",
+    ].includes(parsed.hostname.toLowerCase());
+    return isSameHost || isKnownCoverHost ? parsed.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => {
+    const entities = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[character];
+  });
 }
 
 function getVerifiedHttpsUrl(value) {

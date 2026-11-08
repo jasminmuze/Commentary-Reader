@@ -1693,6 +1693,7 @@ export const ListRoomsResponseItem = zod.object({
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public image URL or object path for the book cover'),
   "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
   "createdAt": zod.coerce.date()
 })
@@ -1730,6 +1731,7 @@ export const GetTrendingRoomsResponseItem = zod.object({
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public image URL or object path for the book cover'),
   "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
   "createdAt": zod.coerce.date()
 })
@@ -1754,6 +1756,7 @@ export const GetMyRoomsResponseItem = zod.object({
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public image URL or object path for the book cover'),
   "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
   "createdAt": zod.coerce.date()
 })
@@ -1778,6 +1781,7 @@ export const GetRoomResponse = zod.object({
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public image URL or object path for the book cover'),
   "createdAt": zod.coerce.date(),
   "members": zod.array(zod.object({
   "userId": zod.number(),
@@ -1826,6 +1830,7 @@ export const UpdateRoomResponse = zod.object({
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public image URL or object path for the book cover'),
   "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
   "createdAt": zod.coerce.date()
 })
@@ -1997,6 +2002,7 @@ export const GetUserRoomsResponseItem = zod.object({
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public image URL or object path for the book cover'),
   "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
   "createdAt": zod.coerce.date()
 })
@@ -2021,6 +2027,7 @@ export const GetBookRoomsResponseItem = zod.object({
   "bookTitle": zod.string(),
   "bookAuthor": zod.string(),
   "coverColor": zod.string(),
+  "coverUrl": zod.string().nullable().describe('Public image URL or object path for the book cover'),
   "isMember": zod.boolean().optional().describe('Whether the viewer is a member of this room'),
   "createdAt": zod.coerce.date()
 })

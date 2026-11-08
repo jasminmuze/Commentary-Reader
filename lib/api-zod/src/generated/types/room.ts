@@ -21,6 +21,11 @@ export interface Room {
   bookTitle: string;
   bookAuthor: string;
   coverColor: string;
+  /**
+     * Public image URL or object path for the book cover
+     * @nullable
+     */
+  coverUrl: string | null;
   /** Whether the viewer is a member of this room */
   isMember?: boolean;
   createdAt: Date;

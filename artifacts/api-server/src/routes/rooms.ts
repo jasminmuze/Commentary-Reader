@@ -95,6 +95,7 @@ async function toRoomDtos(
       bookTitle: book?.title ?? "Unknown book",
       bookAuthor: book?.author ?? "",
       coverColor: book?.coverColor ?? "#B85C38",
+      coverUrl: book?.coverUrl ?? null,
       isMember: mySet.has(r.id),
       createdAt: r.createdAt,
     };
