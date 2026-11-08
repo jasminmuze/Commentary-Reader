@@ -40,3 +40,17 @@ mtime_ms = 1790672231863
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:859e6eaf-a93c-4212-a1b5-975a030e3ef1/e344e08f-c25e-488a-8c8c-b640d7e17cf1/8a59de78-4615-4760-832f-af79054ac2e9"
 storage_version_token = "1790672244615270"
 content_type = "image/png"
+
+[[outputs]]
+id = "lqe2coVjI2IuXS7DO48l1"
+uri = "file://attached_assets/generated_images/shelfmates-google-play-feature-graphic.png"
+type = "image"
+title = "Shelfmates Google Play Feature Graphic"
+description = "1024 × 500 PNG feature graphic for the Google Play listing."
+logical_id = "f00b2130-5ea9-43f0-8004-fe7f44b5ef2b"
+content_hash = "sha256:8fbe8d0e80946c5623682b8ac5bcdaf7f7a100dd3ab347633bfd9ecd991c1135"
+size = 578469
+mtime_ms = 1794155992832
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:859e6eaf-a93c-4212-a1b5-975a030e3ef1/f00b2130-5ea9-43f0-8004-fe7f44b5ef2b/adccf445-e7af-49bb-98fb-a9a821e00688"
+storage_version_token = "1794156011736084"
+content_type = "image/png"
