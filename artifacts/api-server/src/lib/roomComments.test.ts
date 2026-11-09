@@ -7,7 +7,7 @@ import {
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { roomCommentScope } from "./roomComments";
-import { visibilityPredicate, type Viewer } from "./social";
+import { activityFeedCommentPredicate, visibilityPredicate, type Viewer } from "./social";
 
 test("ordinary book comments reach shared rooms without exposing private or other-room posts", async () => {
   const rollback = new Error("rollback-only room-comment fixtures");
@@ -63,10 +63,15 @@ test("ordinary book comments reach shared rooms without exposing private or othe
         commentsTable.visibility, commentsTable.userId, v, commentsTable.roomId, includeRooms,
       );
       assert.deepEqual(await names(visible(viewer)), expected);
+      // The All activity feed includes room participants even when the viewer
+      // follows nobody, alongside the existing followed-user community stream.
+      assert.deepEqual(await names(activityFeedCommentPredicate([], viewer)), expected);
       // Community-only surfaces retain their original public/friends policy.
       assert.deepEqual(await names(visible(viewer, false)), ["ordinary-public"]);
       assert.deepEqual(await names(visible({ ...viewer, roomIds: [] })), ["ordinary-public"]);
       assert.deepEqual(await names(visible({ ...viewer, blockedIds: [author.id] })), []);
+      assert.deepEqual(await names(activityFeedCommentPredicate([], { ...viewer, blockedIds: [author.id] })), []);
+      assert.deepEqual(await names(activityFeedCommentPredicate([], { ...viewer, roomIds: [] })), []);
       // Multiple matching rooms do not duplicate a comment.
       assert.equal((await names(roomCommentScope([room.id, otherRoom.id]))).length, 5);
       await tx.delete(roomMembersTable).where(and(

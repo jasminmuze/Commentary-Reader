@@ -15,7 +15,7 @@ import type { FeedItem, FeedPage } from "@workspace/api-zod";
 import {
   getFollowingIds,
   getViewer,
-  visibilityPredicate,
+  activityFeedCommentPredicate,
 } from "../lib/social";
 import { getOwnedBookIds, truncateQuoteText } from "../lib/contentLimits";
 import { authenticate } from "../middlewares/authenticate.js";
@@ -109,20 +109,12 @@ router.get("/feed", authenticate, async (req, res): Promise<void> => {
   }
 
   const followingIds = roomId === undefined ? await getFollowingIds(userId) : [];
-  if (roomId === undefined && followingIds.length === 0) {
-    const empty: FeedPage = { items: [], nextCursor: null };
-    res.json(empty);
-    return;
-  }
   const viewer = await getViewer(userId);
 
   const commentFilters: SQL[] =
     roomId !== undefined
       ? [eq(commentsTable.roomId, roomId)]
-      : [
-          inArray(commentsTable.userId, followingIds),
-          visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId),
-        ];
+      : [activityFeedCommentPredicate(followingIds, viewer)];
   if (cursor) {
     commentFilters.push(
       cursorPredicate(

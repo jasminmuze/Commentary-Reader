@@ -13,6 +13,7 @@ import {
   ne,
   notInArray,
   or,
+  sql,
   type SQL,
 } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
@@ -222,4 +223,38 @@ export function visibilityPredicate(
 
   if (!viewer || viewer.blockedIds.length === 0) return visible;
   return and(visible, notInArray(authorCol, viewer.blockedIds))!;
+}
+
+/**
+ * The general activity feed combines the existing followed-user stream with
+ * accessible activity from the viewer's reading rooms. Room posts do not
+ * require following the author; implicit book-room posts still honor the
+ * current membership, audience, block and private-content rules.
+ */
+export function activityFeedCommentPredicate(
+  followingIds: number[],
+  viewer: Viewer,
+): SQL {
+  const scopes: (SQL | undefined)[] = [];
+  if (followingIds.length > 0) {
+    scopes.push(
+      and(
+        inArray(commentsTable.userId, followingIds),
+        visibilityPredicate(
+          commentsTable.visibility,
+          commentsTable.userId,
+          viewer,
+          commentsTable.roomId,
+        ),
+      ),
+    );
+  }
+  if (viewer.roomIds.length > 0) {
+    scopes.push(roomCommentScope(viewer.roomIds));
+  }
+  if (scopes.length === 0) return sql`false`;
+  const blocked = viewer.blockedIds.length > 0
+    ? notInArray(commentsTable.userId, viewer.blockedIds)
+    : undefined;
+  return and(or(...scopes), blocked)!;
 }
