@@ -12,6 +12,7 @@ import { and, count, eq, inArray } from "drizzle-orm";
 import type { Book, Comment, Quote } from "@workspace/api-zod";
 import { normalizeText, hashText, leadingSubstring } from "./text";
 import { visibilityPredicate, type Viewer } from "./social";
+import { roomCommentScope } from "./roomComments";
 
 /**
  * Maps a community highlight count to a 0..1 intensity used to shade the
@@ -197,12 +198,16 @@ export async function getQuoteCountsMap(
         );
   const commentScope =
     roomId != null
-      ? eq(commentsTable.roomId, roomId)
+      ? and(
+          roomCommentScope([roomId]),
+          visibilityPredicate(commentsTable.visibility, commentsTable.userId, viewer, commentsTable.roomId, true),
+        )
       : visibilityPredicate(
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
           commentsTable.roomId,
+          true,
         );
 
   const hc = await db

@@ -10,7 +10,7 @@ import type { GetQuoteCommentsFilter } from './getQuoteCommentsFilter';
 export type GetQuoteCommentsParams = {
 filter?: GetQuoteCommentsFilter;
 /**
- * Only comments scoped to this room (viewer must be a member)
+ * Comments shared with this room, including ordinary Public/Friends book comments by current members (viewer must be a member). Private comments remain author-only.
  */
 roomId?: number;
 };

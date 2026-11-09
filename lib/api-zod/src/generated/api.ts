@@ -320,7 +320,7 @@ export const getQuoteCommentsQueryFilterDefault = `all`;
 
 export const GetQuoteCommentsQueryParams = zod.object({
   "filter": zod.enum(['best', 'friends', 'all']).default(getQuoteCommentsQueryFilterDefault),
-  "roomId": zod.coerce.number().optional().describe('Only comments scoped to this room (viewer must be a member)')
+  "roomId": zod.coerce.number().optional().describe('Comments shared with this room, including ordinary Public\/Friends book comments by current members (viewer must be a member). Private comments remain author-only.')
 })
 
 export const GetQuoteCommentsResponseItem = zod.object({
@@ -1957,7 +1957,7 @@ export const DeclineRoomInviteResponse = zod.object({
 
 
 /**
- * @summary Latest room-scoped comments (members only)
+ * @summary Latest room activity including ordinary Public/Friends book comments by current members (members only)
  */
 export const GetRoomFeedParams = zod.object({
   "roomId": zod.coerce.number()

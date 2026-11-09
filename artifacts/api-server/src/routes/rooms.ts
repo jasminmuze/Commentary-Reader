@@ -42,6 +42,7 @@ import { createRoomShareToken, verifyRoomShareToken } from "../lib/auth.js";
 import { createRoomInviteNotification } from "../lib/notifications";
 import { getOwnedBookIds, truncateQuoteText } from "../lib/contentLimits";
 import { getBlockedUserIds, getMutualFriendIds, isBlockedBetween } from "../lib/social";
+import { roomCommentScope } from "../lib/roomComments";
 
 const router: IRouter = Router();
 
@@ -1084,7 +1085,10 @@ router.get("/rooms/:roomId/feed", authenticate, async (req, res): Promise<void> 
   }
 
   const blockedIds = await getBlockedUserIds(req.userId);
-  const feedConditions = [eq(commentsTable.roomId, room.id)];
+  const feedConditions = [
+    roomCommentScope([room.id]),
+    eq(quotesTable.canonicalBookId, room.canonicalBookId),
+  ];
   if (blockedIds.length > 0) {
     feedConditions.push(notInArray(commentsTable.userId, blockedIds));
   }

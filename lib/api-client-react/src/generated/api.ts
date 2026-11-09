@@ -6366,7 +6366,7 @@ export const getGetRoomFeedUrl = (roomId: number,) => {
 }
 
 /**
- * @summary Latest room-scoped comments (members only)
+ * @summary Latest room activity including ordinary Public/Friends book comments by current members (members only)
  */
 export const getRoomFeed = async (roomId: number, options?: RequestInit): Promise<RoomFeedItem[]> => {
 
@@ -6413,7 +6413,7 @@ export type GetRoomFeedQueryError = ErrorType<void>
 
 
 /**
- * @summary Latest room-scoped comments (members only)
+ * @summary Latest room activity including ordinary Public/Friends book comments by current members (members only)
  */
 
 export function useGetRoomFeed<TData = Awaited<ReturnType<typeof getRoomFeed>>, TError = ErrorType<void>>(

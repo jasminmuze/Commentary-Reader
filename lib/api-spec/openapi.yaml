@@ -298,7 +298,7 @@ paths:
           required: false
           schema:
             type: integer
-          description: Only comments scoped to this room (viewer must be a member)
+          description: Comments shared with this room, including ordinary Public/Friends book comments by current members (viewer must be a member). Private comments remain author-only.
       responses:
         "200":
           description: Comments list
@@ -1937,7 +1937,7 @@ paths:
     get:
       operationId: getRoomFeed
       tags: [rooms]
-      summary: Latest room-scoped comments (members only)
+      summary: Latest room activity including ordinary Public/Friends book comments by current members (members only)
       parameters:
         - name: roomId
           in: path

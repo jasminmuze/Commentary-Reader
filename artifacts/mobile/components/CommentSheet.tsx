@@ -33,12 +33,13 @@ import {
 } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
+import { getReplyAudience } from "@/lib/replyAudience";
 import { CommentCard } from "./CommentCard";
 import { EmptyState } from "./EmptyState";
 import { LoadingShimmer } from "./LoadingShimmer";
 import type { Comment, ContentVisibility, Visibility } from "@workspace/api-client-react";
 
-type FilterType = "best" | "friends";
+type FilterType = "best" | "friends" | "room";
 
 // ── @mention autocomplete helpers ────────────────────────────────────────────
 
@@ -241,9 +242,10 @@ function ReplyThread({
     !parentSpoilerRevealed;
   const [replyText, setReplyText] = useState(`@${parentComment.username} `);
   // Room-scoped threads (parent lives in a room) default to members-only.
-  const threadRoomId = parentComment.roomId ?? roomId ?? null;
+  const replyAudience = getReplyAudience(parentComment.roomId, user?.defaultVisibility ?? "public");
+  const threadRoomId = replyAudience.roomId;
   const [visibility, setVisibility] = useState<ContentVisibility>(
-    threadRoomId != null ? "room" : (user?.defaultVisibility ?? "public"),
+    replyAudience.visibility,
   );
   const [containsSpoilers, setContainsSpoilers] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -299,9 +301,8 @@ function ReplyThread({
           text: replyText.trim(),
           visibility,
           containsSpoilers,
-          ...(roomId
-            ? { roomId, ...(myProgress !== null && myProgress !== undefined ? { authorProgress: myProgress } : {}) }
-            : {}),
+          ...(threadRoomId != null ? { roomId: threadRoomId } : {}),
+          ...(myProgress !== null && myProgress !== undefined ? { authorProgress: myProgress } : {}),
         },
       },
       {
@@ -309,15 +310,12 @@ function ReplyThread({
           setReplyText(`@${parentComment.username} `);
           setContainsSpoilers(false);
           Keyboard.dismiss();
-          queryClient.invalidateQueries({
-            queryKey: getGetCommentRepliesQueryKey(parentComment.id),
-          });
-          // Refresh parent comment list so replyCount updates.
-          queryClient.invalidateQueries({ queryKey: ["getQuoteComments"] });
+          // Replies also contribute to room activity; refresh all affected views.
+          queryClient.invalidateQueries();
         },
       },
     );
-  }, [user, replyText, visibility, containsSpoilers, createReply, parentComment, queryClient, roomId, myProgress]);
+  }, [user, replyText, visibility, containsSpoilers, createReply, parentComment, queryClient, threadRoomId, myProgress]);
 
   const handleMentionChip = (username: string) => {
     setReplyText((prev) => completeMentionText(prev, username));
@@ -741,6 +739,7 @@ export function CommentSheet({
 
   useEffect(() => {
     if (visible) {
+      setFilter("best");
       setVisibility(roomId ? "room" : (user?.defaultVisibility ?? "public"));
       setContainsSpoilers(false);
     }
@@ -763,7 +762,11 @@ export function CommentSheet({
     }
   }, [visible, slideAnim]);
 
-  const listParams = roomId ? { filter, roomId } : { filter };
+  // Best includes all accessible comments, even when opened from a room.
+  // Selecting Room changes the list only, never where a new comment is sent.
+  const listParams = filter === "room" && roomId
+    ? { filter: "all" as const, roomId }
+    : { filter: filter === "room" ? "best" as const : filter };
   const { data: comments, isLoading } = useGetQuoteComments(
     quoteId ?? 0,
     listParams,
@@ -897,9 +900,8 @@ export function CommentSheet({
           text: commentText.trim(),
           visibility,
           containsSpoilers,
-          ...(roomId
-            ? { roomId, ...(myProgress !== null && myProgress !== undefined ? { authorProgress: myProgress } : {}) }
-            : {}),
+          ...(roomId ? { roomId } : {}),
+          ...(myProgress !== null && myProgress !== undefined ? { authorProgress: myProgress } : {}),
         },
       },
       {
@@ -907,14 +909,12 @@ export function CommentSheet({
           setCommentText("");
           setContainsSpoilers(false);
           Keyboard.dismiss();
-          queryClient.invalidateQueries({
-            queryKey: getGetQuoteCommentsQueryKey(quoteId),
-          });
+          refreshSocialQueries();
           onCommentSaved?.(visibility);
         },
       },
     );
-  }, [user, quoteId, commentText, visibility, containsSpoilers, createComment, queryClient, onCommentSaved, roomId, myProgress]);
+  }, [user, quoteId, commentText, visibility, containsSpoilers, createComment, refreshSocialQueries, onCommentSaved, roomId, myProgress]);
 
   const translateY = slideAnim.interpolate({
     inputRange: [0, 1],
@@ -1003,9 +1003,10 @@ export function CommentSheet({
               </View>
 
               <View style={[styles.tabs, { borderColor: colors.border }]}>
-                {(["best", "friends"] as FilterType[]).map((f) => (
+                {((roomId ? ["best", "friends", "room"] : ["best", "friends"]) as FilterType[]).map((f) => (
                   <Pressable
                     key={f}
+                    testID={`comment-filter-${f}`}
                     style={[
                       styles.tab,
                       filter === f && {
@@ -1021,7 +1022,7 @@ export function CommentSheet({
                         { color: filter === f ? colors.primary : colors.mutedForeground },
                       ]}
                     >
-                      {f === "best" ? "Best" : "Friends"}
+                      {f === "best" ? "Best" : f === "friends" ? "Friends" : "Room"}
                     </Text>
                   </Pressable>
                 ))}
@@ -1033,7 +1034,7 @@ export function CommentSheet({
                 keyExtractor={(item, index) => String(item.id ?? index)}
                 renderItem={({ item }) => (
                   <ProgressGuard
-                    authorProgress={roomId ? item.authorProgress : null}
+                    authorProgress={item.authorProgress}
                     myProgress={myProgress}
                   >
                     <CommentCard

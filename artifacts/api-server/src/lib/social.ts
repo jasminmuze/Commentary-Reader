@@ -3,6 +3,7 @@ import {
   friendshipsTable,
   roomMembersTable,
   userBlocksTable,
+  commentsTable,
 } from "@workspace/db";
 import {
   and,
@@ -15,6 +16,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { roomCommentScope } from "./roomComments";
 
 /**
  * Follow graph helpers. `friendships` is DIRECTIONAL: one row (userId -> friendId)
@@ -166,8 +168,9 @@ export async function getViewer(userId: number): Promise<Viewer> {
  *   - false (default, LIST contexts: community overlays, feeds, profiles,
  *     counts): 'room'-visibility rows are excluded entirely — they only show
  *     when a route explicitly filters by a roomId the viewer belongs to.
- *   - true (ID-ADDRESSED contexts: open a specific comment/thread from a
- *     notification or room feed): room rows are visible to that room's members.
+ *   - true (reader and ID-addressed contexts): room rows are visible to members.
+ *     Comments additionally include ordinary Public/Friends book comments by
+ *     fellow members of the viewer's book rooms. Private is always author-only.
  */
 export function visibilityPredicate(
   visibilityCol: AnyPgColumn,
@@ -205,7 +208,14 @@ export function visibilityPredicate(
       and(or(isNull(roomIdCol), ne(visibilityCol, "room")), communityClause),
     ];
     if (allowViewerRooms && viewer && viewer.roomIds.length > 0) {
-      scoped.push(inArray(roomIdCol, viewer.roomIds));
+      // Comment readers (including ID-addressed replies/likes) also see
+      // ordinary comments shared through a book room. Other social lists
+      // retain their existing audience rules.
+      scoped.push(
+        visibilityCol === commentsTable.visibility
+          ? roomCommentScope(viewer.roomIds)
+          : inArray(roomIdCol, viewer.roomIds),
+      );
     }
     visible = or(...scoped)!;
   }

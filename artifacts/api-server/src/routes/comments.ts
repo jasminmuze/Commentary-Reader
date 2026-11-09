@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, and, inArray, isNull, asc, sql } from "drizzle-orm";
+import { eq, desc, and, inArray, isNull, asc, sql, notInArray, or } from "drizzle-orm";
 import {
   db,
   commentsTable,
@@ -8,6 +8,7 @@ import {
   quotesTable,
   usersTable,
   notificationsTable,
+  readingRoomsTable,
 } from "@workspace/db";
 import {
   createLikeNotification,
@@ -37,6 +38,7 @@ import {
   visibilityPredicate,
 } from "../lib/social";
 import { authenticate } from "../middlewares/authenticate.js";
+import { roomCommentScope } from "../lib/roomComments";
 
 const router: IRouter = Router();
 
@@ -57,20 +59,26 @@ router.get("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<
 
   const { quoteId } = params.data;
   const viewer = await getViewer(userId);
-  // Room scope: only that room's comments, members only. Otherwise the
-  // community visibility rules (which exclude other rooms' content).
+  // The room is a reading filter, not a requirement for writing comments.
   if (roomId != null && !viewer.roomIds.includes(roomId)) {
     res.status(403).json({ error: "Not a member of this room" });
     return;
   }
   const visible =
     roomId != null
-      ? eq(commentsTable.roomId, roomId)
+      ? and(
+          or(
+            roomCommentScope([roomId]),
+            and(eq(commentsTable.roomId, roomId), eq(commentsTable.userId, userId)),
+          ),
+          viewer.blockedIds.length ? notInArray(commentsTable.userId, viewer.blockedIds) : undefined,
+        )!
       : visibilityPredicate(
           commentsTable.visibility,
           commentsTable.userId,
           viewer,
           commentsTable.roomId,
+          true,
         );
   // Only return top-level comments — replies are fetched separately.
   const topLevel = isNull(commentsTable.parentId);
@@ -99,8 +107,7 @@ router.get("/quotes/:quoteId/comments", authenticate, async (req, res): Promise<
       .select()
       .from(commentsTable)
       .where(and(eq(commentsTable.quoteId, quoteId), visible, topLevel))
-      .orderBy(desc(commentsTable.likeCount))
-      .limit(10);
+      .orderBy(desc(commentsTable.likeCount), desc(commentsTable.createdAt));
   } else {
     comments = await db
       .select()
@@ -146,6 +153,11 @@ router.post("/quotes/:quoteId/comments", authenticate, async (req, res): Promise
     const viewer = await getViewer(userId);
     if (!viewer.roomIds.includes(roomId)) {
       res.status(403).json({ error: "Not a member of this room" });
+      return;
+    }
+    const [room] = await db.select().from(readingRoomsTable).where(eq(readingRoomsTable.id, roomId));
+    if (!room || room.canonicalBookId !== quote.canonicalBookId) {
+      res.status(400).json({ error: "Room and passage must belong to the same book" });
       return;
     }
   }

@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -323,9 +323,16 @@ export default function RoomScreen() {
   const isMember = room?.isMember === true;
   const isOwner = room?.myRole === "owner";
 
-  const { data: feed } = useGetRoomFeed(roomId, {
-    query: { enabled: !!roomId && isMember, queryKey: getGetRoomFeedQueryKey(roomId) },
+  const { data: feed, refetch: refetchFeed } = useGetRoomFeed(roomId, {
+    query: {
+      enabled: !!roomId && isMember,
+      queryKey: getGetRoomFeedQueryKey(roomId),
+      refetchInterval: 30_000,
+    },
   });
+  useFocusEffect(useCallback(() => {
+    if (roomId && isMember) void refetchFeed();
+  }, [roomId, isMember, refetchFeed]));
 
   // ── Feed row interactions: like, open comments, jump to the passage ──────
   const likeHighlight = useLikeHighlight();
