@@ -4,7 +4,6 @@ import {
   Alert,
   FlatList,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -15,6 +14,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -247,6 +247,24 @@ function ReplyThread({
   );
   const [containsSpoilers, setContainsSpoilers] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSubscription = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  const dismissKeyboard = useCallback(() => {
+    inputRef.current?.blur();
+    Keyboard.dismiss();
+    setKeyboardVisible(false);
+  }, []);
 
   const { data: replies, isLoading } = useGetCommentReplies(
     parentComment.id,
@@ -313,11 +331,23 @@ function ReplyThread({
         <Pressable onPress={onBack} style={styles.backBtn} hitSlop={10}>
           <Feather name="arrow-left" size={20} color={colors.foreground} />
         </Pressable>
-        <Text style={[styles.threadTitle, { color: colors.foreground }]}>
+        <Text style={[styles.threadTitle, { color: colors.foreground, flex: 1 }]}>
           {(replies?.length ?? 0) > 0
             ? `${replies!.length} ${replies!.length === 1 ? "reply" : "replies"}`
             : "Replies"}
         </Text>
+        {keyboardVisible ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Hide keyboard"
+            testID="reply-keyboard-dismiss"
+            onPress={dismissKeyboard}
+            hitSlop={10}
+            style={styles.keyboardDismiss}
+          >
+            <Feather name="chevron-down" size={21} color={colors.mutedForeground} />
+          </Pressable>
+        ) : null}
       </View>
 
       {/* Parent comment (static) */}
@@ -410,6 +440,7 @@ function ReplyThread({
             />
           }
           contentContainerStyle={{ paddingBottom: 8, flexGrow: 1 }}
+          keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
         />
       )}
@@ -516,6 +547,8 @@ function ReplyThread({
             multiline
             maxLength={500}
             autoFocus
+            onFocus={() => setKeyboardVisible(true)}
+            onBlur={() => setKeyboardVisible(false)}
           />
           <Pressable
             style={({ pressed }) => [
@@ -898,7 +931,8 @@ export function CommentSheet({
 
       <KeyboardAvoidingView
         style={styles.kvWrapper}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
+        keyboardVerticalOffset={0}
         pointerEvents="box-none"
       >
         <Animated.View
@@ -1351,6 +1385,9 @@ const styles = StyleSheet.create({
   threadTitle: {
     fontSize: 16,
     fontWeight: "700",
+  },
+  keyboardDismiss: {
+    padding: 4,
   },
   parentCard: {
     marginHorizontal: 16,
