@@ -54,3 +54,17 @@ mtime_ms = 1794155992832
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:859e6eaf-a93c-4212-a1b5-975a030e3ef1/f00b2130-5ea9-43f0-8004-fe7f44b5ef2b/adccf445-e7af-49bb-98fb-a9a821e00688"
 storage_version_token = "1794156011736084"
 content_type = "image/png"
+
+[[outputs]]
+id = "rEDj7qWr32g7Drue89j5w"
+uri = "file://generated-artifacts/shelfmates-android-1.0.1-9.aab"
+type = "unspecified"
+title = "Shelfmates Android AAB 1.0.1 (9)"
+description = "Google Play production-signed Android App Bundle for the private test release. Build completed successfully; not submitted to Google Play."
+logical_id = "f975d0af-c962-4cb4-88f6-ce31f3b564bc"
+content_hash = "sha256:4619686e88d23de44d35d4f8c3f4add3acb9774d678c329c1c6ffc368d5999c0"
+size = 87683129
+mtime_ms = 1794226466101
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:859e6eaf-a93c-4212-a1b5-975a030e3ef1/f975d0af-c962-4cb4-88f6-ce31f3b564bc/177ec1ba-0f50-4e18-8bda-aed0dd2da2ad"
+storage_version_token = "1794226514353787"
+content_type = "application/octet-stream"
