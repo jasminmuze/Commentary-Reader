@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -740,6 +741,14 @@ export default function RoomScreen() {
               <Text style={styles.bookCoverText} numberOfLines={3}>
                 {room.bookTitle}
               </Text>
+              {bookCoverUrl(room.coverUrl) ? (
+                <Image
+                  source={{ uri: bookCoverUrl(room.coverUrl) ?? undefined }}
+                  style={[StyleSheet.absoluteFill, { borderRadius: 6 }]}
+                  contentFit="cover"
+                  accessibilityLabel={`Cover of ${room.bookTitle}`}
+                />
+              ) : null}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.bookTitle, { color: colors.foreground }]} numberOfLines={2}>

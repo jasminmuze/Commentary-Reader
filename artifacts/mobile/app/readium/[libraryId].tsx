@@ -1150,7 +1150,6 @@ function EmbeddedReader({
         description="Choose who can see it outside the room."
         onClose={() => {
           setHighlightVisibilityVisible(false);
-          pendingHighlightRef.current = null;
         }}
         actions={[
           {

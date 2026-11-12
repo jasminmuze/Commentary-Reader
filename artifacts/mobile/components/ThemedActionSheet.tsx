@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import {
   Modal,
   Platform,
@@ -42,6 +42,7 @@ export function ThemedActionSheet({
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
+  const pendingAction = useRef<(() => void) | null>(null);
 
   return (
     <Modal
@@ -49,6 +50,11 @@ export function ThemedActionSheet({
       transparent
       animationType="slide"
       onRequestClose={onClose}
+      onDismiss={() => {
+        const action = pendingAction.current;
+        pendingAction.current = null;
+        action?.();
+      }}
       statusBarTranslucent
     >
       <View style={styles.root} accessibilityViewIsModal>
@@ -95,8 +101,15 @@ export function ThemedActionSheet({
                   disabled={action.disabled}
                   testID={action.testID}
                   onPress={() => {
-                    action.onPress();
-                    onClose();
+                    if (Platform.OS === "ios") {
+                      // Finish dismissing before an action opens an edit or
+                      // confirmation modal on top of the existing comment sheet.
+                      pendingAction.current = action.onPress;
+                      onClose();
+                    } else {
+                      action.onPress();
+                      onClose();
+                    }
                   }}
                   style={({ pressed }) => [
                     styles.action,
