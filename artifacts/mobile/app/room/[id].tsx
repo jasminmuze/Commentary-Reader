@@ -49,7 +49,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { CommentSheet } from "@/components/CommentSheet";
 import { ReportContentButton } from "@/components/ReportContentButton";
 import { navigateToQuote } from "@/lib/quoteNavigation";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, bookCoverUrl } from "@/lib/api";
 
 function timeAgo(dateStr: string): string {
   const date = new Date(dateStr);
@@ -509,14 +509,20 @@ export default function RoomScreen() {
       inviteUrl.searchParams.set("bookTitle", room.bookTitle);
       inviteUrl.searchParams.set("bookAuthor", room.bookAuthor);
       inviteUrl.searchParams.set("coverColor", room.coverColor);
-      if (room.coverUrl) inviteUrl.searchParams.set("coverUrl", apiUrl(room.coverUrl));
+      const coverUri = bookCoverUrl(room.coverUrl);
+      if (coverUri) inviteUrl.searchParams.set("coverUrl", coverUri);
       const url = inviteUrl.toString();
+      const invitationCopy = room.isPublic
+        ? `${room.name} — join me on Shelfmates`
+        : `${room.name} — join my private reading room on Shelfmates. Anyone with this link can join`;
       await Share.share({
         title: `Join ${room.name}`,
-        message: room.isPublic
-          ? `${room.name} — join me on Shelfmates: ${url}`
-          : `${room.name} — join my private reading room on Shelfmates. Anyone with this link can join: ${url}`,
-        url,
+        // Android shares the URL from message; iOS gets a separate URL so
+        // share previews can use the room page's book metadata and cover.
+        message: Platform.OS === "android"
+          ? `${invitationCopy}: ${url}`
+          : invitationCopy,
+        ...(Platform.OS === "android" ? {} : { url }),
       });
     } catch {
       Alert.alert("Couldn't share room", "Please try again in a moment.");

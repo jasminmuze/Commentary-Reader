@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { AppState } from "react-native";
 import { useRegisterPushToken } from "@workspace/api-client-react";
 
 import { useUser } from "@/context/UserContext";
@@ -21,11 +22,22 @@ export function PushTokenRegistrar() {
 
   useEffect(() => {
     if (!user || !isPushSupported()) return;
-    if (registeredForUserId.current === user.id) return;
-    registeredForUserId.current = user.id;
 
     let cancelled = false;
-    (async () => {
+    let registering = false;
+    let retryAfter = 0;
+
+    const registerToken = async () => {
+      if (
+        cancelled ||
+        registering ||
+        registeredForUserId.current === user.id ||
+        Date.now() < retryAfter
+      ) {
+        return;
+      }
+      registering = true;
+      retryAfter = Date.now() + 60_000;
       try {
         const token = await registerForPushNotificationsAsync();
         if (!token || cancelled) return;
@@ -34,19 +46,26 @@ export function PushTokenRegistrar() {
           data: { token },
         });
         await rememberPushToken(token);
+        registeredForUserId.current = user.id;
       } catch {
-        // Best-effort: allow a retry on next login if registration failed.
-        if (registeredForUserId.current === user.id) {
-          registeredForUserId.current = null;
-        }
+        // A later foreground retry can recover from transient network or
+        // notification-service failures without requiring the user to log in
+        // again. Never block the in-app notification feed on push delivery.
+      } finally {
+        registering = false;
       }
-    })();
+    };
+
+    void registerToken();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void registerToken();
+    });
 
     return () => {
       cancelled = true;
+      subscription.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, registerPushToken.mutateAsync]);
 
   return null;
 }

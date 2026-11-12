@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
@@ -7,6 +7,7 @@ import { useColors } from "@/hooks/useColors";
 import { useUser } from "@/context/UserContext";
 import { UserAvatar } from "./UserAvatar";
 import { ReportContentButton } from "./ReportContentButton";
+import { ThemedActionSheet } from "./ThemedActionSheet";
 import type { Comment } from "@workspace/api-client-react";
 
 interface Props {
@@ -49,6 +50,7 @@ export function CommentCard({
   const colors = useColors();
   const { user } = useUser();
   const [spoilerRevealed, setSpoilerRevealed] = useState(false);
+  const [ownerMenuVisible, setOwnerMenuVisible] = useState(false);
 
   const isAuthor = user?.id === comment.userId;
   const isSpoiler = comment.containsSpoilers === true;
@@ -77,14 +79,11 @@ export function CommentCard({
 
   const handleOwnerMenu = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert("Comment options", undefined, [
-      { text: "Edit", onPress: () => onEdit?.(comment) },
-      { text: "Delete", style: "destructive", onPress: () => onDelete?.(comment) },
-      { text: "Cancel", style: "cancel" },
-    ]);
+    setOwnerMenuVisible(true);
   };
 
   return (
+    <>
     <Pressable
       onPress={onPress ? () => onPress(comment) : undefined}
       disabled={!onPress}
@@ -228,6 +227,32 @@ export function CommentCard({
         ) : null}
       </View>
     </Pressable>
+    <ThemedActionSheet
+      visible={ownerMenuVisible}
+      title="Comment options"
+      description="Manage your comment."
+      onClose={() => setOwnerMenuVisible(false)}
+      actions={[
+        ...(onEdit
+          ? [{
+              label: "Edit comment",
+              icon: "edit-2" as const,
+              testID: `edit-comment-${comment.id}`,
+              onPress: () => onEdit(comment),
+            }]
+          : []),
+        ...(onDelete
+          ? [{
+              label: "Delete comment",
+              icon: "trash-2" as const,
+              destructive: true,
+              testID: `delete-comment-${comment.id}`,
+              onPress: () => onDelete(comment),
+            }]
+          : []),
+      ]}
+    />
+    </>
   );
 }
 

@@ -20,3 +20,9 @@ Keep canonical book cover paths usable by older installed builds.
 **Why:** Existing APK/TestFlight clients unconditionally prepend `/api` to canonical cover paths. Adding absolute URL support only to the newest client would leave older clients with broken images as soon as shared book metadata acquired remote covers.
 
 **How to apply:** Keep API-relative cover URLs for shared canonical records, with trusted-source redirects for external thumbnails. Direct provider URLs are fine in the new catalog response, which older clients do not consume as canonical book covers.
+
+Room-invitation links must resolve canonical cover paths with the same `bookCoverUrl` helper.
+
+**Why:** The room invitation page is served by the app host, while catalog cover redirects live under `/api`; using `apiUrl` alone points `/catalog-covers` at the wrong service and drops the shared-book image.
+
+**How to apply:** When a canonical `coverUrl` is embedded in a room share URL or Open Graph metadata, convert it to its absolute `/api/...` URL with `bookCoverUrl` before adding it to the query string.

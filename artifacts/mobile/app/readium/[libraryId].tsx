@@ -41,6 +41,7 @@ import type { ReaderSettings } from "@/hooks/useReaderSettings";
 import { ChapterPullIndicator } from "@/components/ChapterPullIndicator";
 import type { ChapterPullState } from "@/components/ChapterPullIndicator";
 import { CommentSheet } from "@/components/CommentSheet";
+import { ThemedActionSheet } from "@/components/ThemedActionSheet";
 import { ReaderSettingsPanel } from "@/components/ReaderSettingsPanel";
 import { TocPanel } from "@/components/TocPanel";
 import type { TocSection } from "@/components/TocPanel";
@@ -281,6 +282,7 @@ function EmbeddedReader({
   const [settingsPanelVisible, setSettingsPanelVisible] = useState(false);
   const [tocVisible, setTocVisible] = useState(false);
   const [notesVisible, setNotesVisible] = useState(false);
+  const [highlightVisibilityVisible, setHighlightVisibilityVisible] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<{
     id: number;
     text: string;
@@ -288,6 +290,7 @@ function EmbeddedReader({
   } | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [initialEditingComment, setInitialEditingComment] = useState<Comment | null>(null);
+  const pendingHighlightRef = useRef<((visibility: ContentVisibility) => void) | null>(null);
   // Scroll-mode chapter pull indicator (driven by the native chapterPull event)
   const [chapterPull, setChapterPull] = useState<ChapterPullState | null>(null);
   const pullArmedRef = useRef(false);
@@ -662,16 +665,8 @@ function EmbeddedReader({
               if (selectedRoomId) {
                 // Room scope: let the author choose whether the highlight stays
                 // members-only or is also shared to the community/friends.
-                Alert.alert(
-                  "Who can see this highlight?",
-                  "Room only keeps it visible to room members.",
-                  [
-                    { text: "Public", onPress: () => doHighlight("public") },
-                    { text: "Friends", onPress: () => doHighlight("friends") },
-                    { text: "Room only", onPress: () => doHighlight("room") },
-                  ],
-                  { cancelable: true },
-                );
+                pendingHighlightRef.current = doHighlight;
+                setHighlightVisibilityVisible(true);
               } else {
                 // Community scope: server applies the user's default visibility.
                 doHighlight();
@@ -1148,6 +1143,44 @@ function EmbeddedReader({
             },
           );
         }}
+      />
+      <ThemedActionSheet
+        visible={highlightVisibilityVisible}
+        title="Who can see this highlight?"
+        description="Choose who can see it outside the room."
+        onClose={() => {
+          setHighlightVisibilityVisible(false);
+          pendingHighlightRef.current = null;
+        }}
+        actions={[
+          {
+            label: "Public",
+            description: "Visible to everyone on Shelfmates.",
+            icon: "globe",
+            onPress: () => {
+              pendingHighlightRef.current?.("public");
+              pendingHighlightRef.current = null;
+            },
+          },
+          {
+            label: "Friends",
+            description: "Visible to your friends and room members.",
+            icon: "users",
+            onPress: () => {
+              pendingHighlightRef.current?.("friends");
+              pendingHighlightRef.current = null;
+            },
+          },
+          {
+            label: "Room only",
+            description: "Visible only to members of this room.",
+            icon: "home",
+            onPress: () => {
+              pendingHighlightRef.current?.("room");
+              pendingHighlightRef.current = null;
+            },
+          },
+        ]}
       />
     </View>
   );
