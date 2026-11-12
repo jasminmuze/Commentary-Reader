@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "810949499316",
+    "project_id": "shelfmates-eadba",
+    "storage_bucket": "shelfmates-eadba.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:810949499316:android:7186f0d6452f922e7a3ae1",
+        "android_client_info": {
+          "package_name": "app.shelfmates"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJkVye4WN_tXuolZh2BXP95D7ZpyyFA8M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
